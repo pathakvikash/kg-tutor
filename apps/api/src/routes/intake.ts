@@ -256,6 +256,47 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     return { sessionId: id, open: session.endedAt === null, turns };
   });
 
+  /**
+   * Deleting a session removes its transcript, not what was learned from it.
+   *
+   * Evidence rows carry a nullable sessionId precisely so a transcript can be cleared
+   * without rewriting history: mastery was earned, and forgetting the conversation
+   * should not silently un-earn it.
+   */
+  app.delete("/api/sessions/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const session = await prisma.session.findUnique({ where: { id } });
+    if (!session) return reply.code(404).send({ error: "session not found" });
+
+    const result = await prisma.$transaction(async (tx) => {
+      const detached = await tx.evidenceEvent.updateMany({
+        where: { sessionId: id }, data: { sessionId: null },
+      });
+      const turns = await tx.lessonTurn.deleteMany({ where: { sessionId: id } });
+      await tx.plannerDecision.deleteMany({ where: { sessionId: id } });
+      await tx.session.delete({ where: { id } });
+      return { turnsDeleted: turns.count, evidenceKept: detached.count };
+    });
+    return result;
+  });
+
+  app.delete("/api/learners/:id/sessions", async (req) => {
+    const { id } = req.params as { id: string };
+    const sessions = await prisma.session.findMany({ where: { learnerId: id }, select: { id: true } });
+    const ids = sessions.map((s) => s.id);
+    if (ids.length === 0) return { sessionsDeleted: 0, evidenceKept: 0 };
+
+    return prisma.$transaction(async (tx) => {
+      const detached = await tx.evidenceEvent.updateMany({
+        where: { sessionId: { in: ids } }, data: { sessionId: null },
+      });
+      await tx.lessonTurn.deleteMany({ where: { sessionId: { in: ids } } });
+      await tx.plannerDecision.deleteMany({ where: { sessionId: { in: ids } } });
+      await tx.session.deleteMany({ where: { id: { in: ids } } });
+      return { sessionsDeleted: ids.length, evidenceKept: detached.count };
+    });
+  });
+
   /** Reopening a past session makes it the live one again. */
   app.post("/api/sessions/:id/resume", async (req, reply) => {
     const { id } = req.params as { id: string };

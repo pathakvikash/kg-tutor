@@ -13,6 +13,7 @@ import { expandJobRoutes } from "./routes/expand-job.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { intakeRoutes } from "./routes/intake.js";
 import { roadmapRoutes } from "./routes/roadmap.js";
+import { widgetRoutes } from "./routes/widget.js";
 import { providerStatus, refreshLlm } from "./context.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -20,6 +21,23 @@ const webDist = resolve(here, "../../web/dist");
 const PORT = Number(process.env.PORT ?? 4000);
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
+
+// Several endpoints take no body. Fastify's default JSON parser rejects an empty one
+// with a 400 before any handler runs, which is a confusing failure for a request that
+// is perfectly valid.
+app.addContentTypeParser(
+  "application/json",
+  { parseAs: "string" },
+  (_req, body, done) => {
+    const text = (body as string).trim();
+    if (text.length === 0) return done(null, {});
+    try {
+      done(null, JSON.parse(text));
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  },
+);
 
 await app.register(graphRoutes);
 await app.register(learnerRoutes);
@@ -32,6 +50,7 @@ await app.register(expandJobRoutes);
 await app.register(settingsRoutes);
 await app.register(intakeRoutes);
 await app.register(roadmapRoutes);
+await app.register(widgetRoutes);
 
 if (existsSync(join(webDist, "index.html"))) {
   await app.register(fastifyStatic, { root: webDist });

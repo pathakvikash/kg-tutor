@@ -28,15 +28,25 @@ async function get<T>(url: string): Promise<T> {
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
 }
-async function post<T>(url: string, body?: unknown): Promise<T> {
+async function send<T>(method: "POST" | "PUT" | "DELETE", url: string, body?: unknown): Promise<T> {
+  // Declaring a JSON content-type with no body makes Fastify reject the request
+  // outright, so the header only goes on when there is something to send.
   const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    method,
+    ...(body === undefined
+      ? {}
+      : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
   });
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-  return res.json() as Promise<T>;
+  if (!res.ok) {
+    let detail = await res.text();
+    try { detail = JSON.parse(detail).error ?? detail; } catch { /* keep the raw text */ }
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return res.status === 204 ? (undefined as T) : (res.json() as Promise<T>);
 }
+
+const post = <T>(url: string, body?: unknown) => send<T>("POST", url, body);
+const del = <T>(url: string) => send<T>("DELETE", url);
 
 export const api = {
   graph: (params: { topicId?: string; learnerId?: string } = {}) => {
@@ -81,15 +91,11 @@ export const api = {
   sessionTranscript: (id: string) => get<any>(`/api/sessions/${id}/transcript`),
   resumeSession: (id: string) => post<any>(`/api/sessions/${id}/resume`),
   modelSettings: () => get<any>("/api/settings/model"),
-  setModel: (payload: Record<string, unknown>) =>
-    fetch("/api/settings/model", {
-      method: "PUT", headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    }).then(async (r) => {
-      const body = await r.json();
-      if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
-      return body;
-    }),
+  setModel: (payload: Record<string, unknown>) => send<any>("PUT", "/api/settings/model", payload),
+  deleteSession: (id: string) => del<any>(`/api/sessions/${id}`),
+  deleteAllSessions: (learnerId: string) => del<any>(`/api/learners/${learnerId}/sessions`),
+  widget: (learnerId: string, conceptId: string, focus?: string) =>
+    post<any>("/api/lesson/widget", { learnerId, conceptId, focus }),
   resolveGoal: (goal: string) => post<any>("/api/roadmap/resolve", { goal }),
   createOutcome: (payload: Record<string, unknown>) => post<any>("/api/roadmap/outcome", payload),
   roadmap: (learnerId: string) => get<any>(`/api/roadmap/${learnerId}`),

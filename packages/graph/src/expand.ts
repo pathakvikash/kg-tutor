@@ -57,8 +57,15 @@ export interface ExpandOptions {
   resolver: ResolverDeps;
   prisma: PrismaClient;
   thresholds?: Thresholds;
-  /** Called as the job advances, so a minutes-long expansion is not a blind wait. */
-  onProgress?: (phase: string, progress: number) => void;
+  /**
+   * Called as the job advances, carrying the report so far.
+   *
+   * A percentage alone is dead time. Expansion is the most interesting thing this
+   * system does — concepts appearing, duplicates being caught, unjustified hard edges
+   * being demoted — and streaming the partial result turns a blind wait into watching
+   * the graph get built.
+   */
+  onProgress?: (phase: string, progress: number, partial: ExpandReport) => void;
 }
 
 export interface ExpandReport {
@@ -74,6 +81,10 @@ export interface ExpandReport {
   prerequisitesDroppedByConsensus: string[];
   /** Concepts written, but whose prerequisite pass failed. Reported, not hidden. */
   conceptsWithFailedPrerequisites: string[];
+  /** Survivors of the consensus filter, with how many samples named each. */
+  conceptsFound: { name: string; votes: number }[];
+  /** An append-only activity log the UI renders live. */
+  events: { kind: string; name: string; detail: string }[];
 }
 
 async function sample<T>(
@@ -137,9 +148,16 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     conceptsDroppedByConsensus: droppedConcepts.map((d) => d.value.name),
     prerequisitesDroppedByConsensus: [],
     conceptsWithFailedPrerequisites: [],
+    conceptsFound: [],
+    events: droppedConcepts.map((d) => ({
+      kind: "dropped",
+      name: d.value.name,
+      detail: `only ${d.votes} of ${conceptSamples.length} samples proposed it`,
+    })),
   };
 
-  opts.onProgress?.(`writing ${concepts.length} concepts`, 0.25);
+  report.conceptsFound = concepts.map((c) => ({ name: c.value.name, votes: c.votes }));
+  opts.onProgress?.(`writing ${concepts.length} concepts`, 0.25, report);
 
   const conceptIds = new Map<string, string>();
   let written = 0;
@@ -155,9 +173,15 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     else report.conceptsBound++;
     await link(opts.prisma, topic.id, r.conceptId, true);
     written++;
+    report.events.push({
+      kind: r.outcome === "created" ? "concept_created" : "concept_reused",
+      name: c.value.name,
+      detail: r.outcome === "created" ? c.value.sense : `bound to an existing concept`,
+    });
     opts.onProgress?.(
       `writing concepts (${written}/${concepts.length})`,
       0.25 + 0.2 * (written / Math.max(1, concepts.length)),
+      report,
     );
   }
 
@@ -167,6 +191,7 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     opts.onProgress?.(
       `prerequisites for "${c.value.name}" (${done + 1}/${concepts.length})`,
       0.45 + 0.55 * (done / Math.max(1, concepts.length)),
+      report,
     );
     done++;
     const targetId = conceptIds.get(normalizeKey(c.value.name));
@@ -220,11 +245,26 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
         failureMode: best.failureMode,
         confidence: Math.min(0.9, p.votes / prereqSamples.length),
       });
-      if (edge.rejected === "cycle") report.edgesRejectedAsCycle++;
-      else if (edge.edgeId) {
+      if (edge.rejected === "cycle") {
+        report.edgesRejectedAsCycle++;
+        report.events.push({
+          kind: "edge_rejected",
+          name: `${best.name} → ${c.value.name}`,
+          detail: "would close a prerequisite cycle",
+        });
+      } else if (edge.edgeId) {
         report.edgesWritten++;
         if (edge.demoted) report.edgesDemoted++;
+        report.events.push({
+          kind: edge.demoted ? "edge_demoted" : "edge_written",
+          name: `${best.name} → ${c.value.name}`,
+          detail: edge.demoted
+            ? "proposed hard, but the failure mode said nothing concrete — kept as soft"
+            : (best.failureMode ?? edge.strength),
+        });
       }
+      // Keep the tail bounded; the UI only shows the most recent activity anyway.
+      if (report.events.length > 200) report.events.splice(0, report.events.length - 200);
     }
   }
 

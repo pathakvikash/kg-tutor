@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { Elapsed } from "../components/Elapsed";
 import { Markdown } from "../components/Markdown";
 import { Intake } from "../components/Intake";
+import { Widget } from "../widget/Widget";
 
 interface Turn {
   role: string;
   text: string;
   meta?: {
     kind?: string; itemId?: string; requiresTransfer?: boolean;
-    intent?: string; language?: string;
+    intent?: string; language?: string; spec?: unknown;
   } | null;
 }
 
@@ -72,6 +74,39 @@ export function LearnPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
+  };
+
+  const removeSession = async (id: string) => {
+    setBusy("deleting");
+    try {
+      const r = await api.deleteSession(id);
+      if (id === viewingSession) setViewingSession(null);
+      await load(learnerId);
+      const t = await api.transcript(learnerId);
+      setTurns(t.turns ?? []);
+      push({
+        role: "note",
+        text: `session deleted · ${r.turnsDeleted} turns removed · ${r.evidenceKept} evidence events kept`,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally { setBusy(null); }
+  };
+
+  const clearSessions = async () => {
+    setBusy("clearing");
+    try {
+      const r = await api.deleteAllSessions(learnerId);
+      setTurns([]); setViewingSession(null); setPending(null);
+      await load(learnerId);
+      setError(null);
+      push({
+        role: "note",
+        text: `${r.sessionsDeleted} sessions deleted · ${r.evidenceKept} evidence events kept, so nothing you learned was lost`,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally { setBusy(null); }
   };
 
   const resume = async (id: string) => {
@@ -153,7 +188,15 @@ export function LearnPage() {
             push({ role: "system", text: `Milestone reached: ${done.completedMilestones.join("; ")}` });
           }
           setOverride(null);
-        } catch { /* not yet at the required level; stay on this concept */ }
+        } catch (err) {
+          // "Not yet at the required level" is the expected case and stays quiet.
+          // Anything else is a real failure and was previously swallowed whole — which
+          // is exactly how a broken request hid while plans silently stopped advancing.
+          const message = err instanceof Error ? err.message : String(err);
+          if (!/not yet at the required level/i.test(message)) {
+            push({ role: "note", text: `could not advance the plan: ${message}` });
+          }
+        }
         await load(learnerId);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -176,6 +219,23 @@ export function LearnPage() {
       if (r.detourTo && r.namedConcept) setDetour({ conceptId: r.detourTo, name: r.namedConcept });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally { setBusy(null); }
+  };
+
+  /**
+   * An interactive example, on demand. Prose and a code block are static; sequencing —
+   * which is most of what is hard about the event loop, recursion or async ordering —
+   * only becomes obvious when the learner can step through it themselves.
+   */
+  const showMe = async (focus?: string) => {
+    if (!current) return;
+    setBusy("building an interactive example"); setError(null);
+    try {
+      const w = await api.widget(learnerId, current.conceptId, focus);
+      push({ role: "widget", text: w.conceptName, meta: { spec: w.spec } });
+    } catch (err) {
+      // A failed widget is not a failed lesson.
+      push({ role: "note", text: `could not build an interactive example: ${err instanceof Error ? err.message : String(err)}` });
     } finally { setBusy(null); }
   };
 
@@ -231,6 +291,8 @@ export function LearnPage() {
               <div className="bubble">
                 {t.role === "note" ? (
                   t.text
+                ) : t.role === "widget" ? (
+                  <Widget spec={t.meta?.spec} />
                 ) : t.role === "code" ? (
                   // Code is never run through the markdown parser: a `#` comment would
                   // become a heading and indentation would be lost.
@@ -243,7 +305,14 @@ export function LearnPage() {
               </div>
             </div>
           ))}
-          {busy && <div className="turn note"><div className="bubble">{busy}…</div></div>}
+          {busy && (
+            <div className="turn note">
+              <div className="bubble busy">
+                <span className="spinner" aria-hidden="true" />
+                {busy} <Elapsed />
+              </div>
+            </div>
+          )}
           {error && <div className="turn note"><div className="bubble err">{error}</div></div>}
 
           {detour && (
@@ -290,6 +359,13 @@ export function LearnPage() {
           <button onClick={() => void teach()} disabled={!current || !!busy}>
             {turns.length === 0 ? "Start lesson" : "Re-explain"}
           </button>
+          <button
+            onClick={() => void showMe(input.trim() || undefined)}
+            disabled={!current || !!busy}
+            title="Build an interactive example of this concept — or of whatever you have typed"
+          >
+            Show me
+          </button>
           {turns.length > 0 && <button onClick={() => void reset()} disabled={!!busy}>Start over</button>}
           </>
           )}
@@ -310,24 +386,50 @@ export function LearnPage() {
 
         {sessions.length > 0 && (
           <section>
-            <h4>Sessions ({sessions.length})</h4>
+            <div className="section-head">
+              <h4>Sessions ({sessions.length})</h4>
+              <button
+                className="linkish danger"
+                onClick={() => {
+                  if (confirm(`Delete all ${sessions.length} sessions? Transcripts go; what you learned stays.`)) {
+                    void clearSessions();
+                  }
+                }}
+                disabled={!!busy}
+              >
+                clear all
+              </button>
+            </div>
             <div className="session-list">
               {sessions.map((s) => (
-                <button
+                <div
                   key={s.id}
                   className={`session-item${
                     (viewingSession ?? sessions.find((x) => x.open)?.id) === s.id ? " on" : ""
                   }`}
-                  onClick={() => void openSession(s.id)}
                 >
-                  <span className="t">{s.title.replace(/^Now teaching: /, "")}</span>
-                  <span className="s">
-                    {new Date(s.startedAt).toLocaleString(undefined, {
-                      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-                    })}
-                    {" · "}{s.turns} turns{s.open ? " · current" : ""}
-                  </span>
-                </button>
+                  <button className="session-open" onClick={() => void openSession(s.id)}>
+                    <span className="t">{s.title.replace(/^Now teaching: /, "")}</span>
+                    <span className="s">
+                      {new Date(s.startedAt).toLocaleString(undefined, {
+                        month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                      })}
+                      {" · "}{s.turns} turns{s.open ? " · current" : ""}
+                    </span>
+                  </button>
+                  <button
+                    className="session-delete"
+                    title="Delete this transcript. Mastery earned in it is kept."
+                    onClick={() => {
+                      if (confirm("Delete this session's transcript? What you learned in it is kept.")) {
+                        void removeSession(s.id);
+                      }
+                    }}
+                    disabled={!!busy}
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
             </div>
           </section>

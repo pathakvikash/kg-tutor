@@ -95,7 +95,7 @@ export function Intake({
         if (match) setTopicId(match.id);
         setStage("goal");
       } catch { /* transient */ }
-    }, 2500);
+    }, 1200);
     return () => clearInterval(timer);
   }, [stage, job, buildQueue]);
 
@@ -166,24 +166,69 @@ export function Intake({
   }
 
   if (stage === "building") {
+    const report = job?.report ?? {};
+    const events: { kind: string; name: string; detail: string }[] = report.events ?? [];
+    // Newest first: a live log the user reads from the top rather than chasing.
+    const recent = [...events].reverse().slice(0, 40);
+
     return (
-      <div className="intake">
+      <div className="intake wide">
         <h2>Building the graph for {job?.topicName}</h2>
         <p className="muted">
           {resolved?.kind === "outcome"
             ? `"${resolved.canonicalName}" breaks down into ${resolved.components.join(", ")}. Building what's missing.`
             : "Finding the concepts and how they depend on each other."}
         </p>
+
         <div className="progress" style={{ marginTop: 12 }}>
           <div className="bar" style={{ width: `${Math.round((job?.progress ?? 0) * 100)}%` }} />
         </div>
+        <div className="build-stats">
+          <span>{job?.phase}</span>
+          <span className="spacer" />
+          {report.conceptsCreated > 0 && <span><b>{report.conceptsCreated}</b> new</span>}
+          {report.conceptsBound > 0 && <span><b>{report.conceptsBound}</b> reused</span>}
+          {report.edgesWritten > 0 && <span><b>{report.edgesWritten}</b> edges</span>}
+          {report.edgesDemoted > 0 && <span><b>{report.edgesDemoted}</b> demoted</span>}
+        </div>
+
+        {report.conceptsFound?.length > 0 && (
+          <div className="build-section">
+            <h4>Concepts that survived consensus ({report.conceptsFound.length})</h4>
+            <div className="chips">
+              {report.conceptsFound.map((c: any) => (
+                <span className="chip" key={c.name} title={`named by ${c.votes} of 3 samples`}>
+                  {c.name} <em>{c.votes}/3</em>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="build-section">
+          <h4>Live</h4>
+          {recent.length === 0 ? (
+            <p className="muted" style={{ fontSize: 12.5 }}>
+              Sampling the model three times for the concept list. Nothing is written
+              until a majority agrees, so the first result takes a moment.
+            </p>
+          ) : (
+            <ul className="build-log">
+              {recent.map((e, i) => (
+                <li key={`${e.kind}-${e.name}-${i}`} className={`ev ${e.kind}`}>
+                  <span className="ev-kind">{e.kind.replace(/_/g, " ")}</span>
+                  <span className="ev-name">{e.name}</span>
+                  <span className="ev-detail">{e.detail}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <p className="muted" style={{ fontSize: 12 }}>
-          {job?.phase} · {Math.round((job?.progress ?? 0) * 100)}%
-          {buildQueue.length > 1 && ` · ${buildQueue.length - 1} more topic(s) after this`}
-        </p>
-        <p className="muted" style={{ fontSize: 12 }}>
-          Each concept is sampled three times independently and only what a majority
-          agrees on is kept, so this takes a few minutes.
+          Each question is asked of the model three times independently and only what a
+          majority names is kept — that filter is why this takes minutes, and it is what
+          stops the graph filling with plausible-sounding concepts nobody needs.
         </p>
         {error && <p className="err">{error}</p>}
       </div>

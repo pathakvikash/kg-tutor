@@ -37,9 +37,11 @@ async function runJob(jobId: string): Promise<void> {
       llm,
       prisma,
       resolver,
-      onProgress: (phase, progress) => {
+      onProgress: (phase, progress, partial) => {
+        // The partial report is written on every tick so the UI can render the graph
+        // being built rather than a percentage that means nothing to a learner.
         void prisma.expansionJob
-          .update({ where: { id: jobId }, data: { phase, progress } })
+          .update({ where: { id: jobId }, data: { phase, progress, report: partial as never } })
           .catch(() => undefined);
       },
     });

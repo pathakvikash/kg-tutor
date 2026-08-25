@@ -351,10 +351,23 @@ button.linkish:hover { text-decoration: underline; }
 }
 .session-list { display: flex; flex-direction: column; gap: 2px; }
 .session-item {
-  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px;
-  border: 1px solid transparent; border-radius: 5px; cursor: pointer; text-align: left;
-  background: none; width: 100%;
+  display: flex; align-items: center; gap: 4px; padding: 2px 4px 2px 6px;
+  border: 1px solid transparent; border-radius: 5px; width: 100%;
 }
+.session-open {
+  display: flex; flex-direction: column; gap: 2px; padding: 6px 4px;
+  border: none; background: none; text-align: left; flex: 1; min-width: 0; cursor: pointer;
+}
+.session-open:hover { color: inherit; }
+.session-delete {
+  border: none; background: none; color: var(--ink-soft); font-size: 16px; line-height: 1;
+  padding: 2px 6px; border-radius: 4px; opacity: 0; cursor: pointer;
+}
+.session-item:hover .session-delete { opacity: 1; }
+.session-delete:hover { color: #b3261e; background: var(--surface-alt); }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; }
+button.linkish.danger { color: var(--ink-soft); font-weight: 400; font-size: 11px; }
+button.linkish.danger:hover { color: #b3261e; }
 .session-item:hover { background: var(--surface-alt); }
 .session-item.on { border-color: var(--accent); background: var(--accent-bg); }
 .session-item .t { font-size: 12.5px; font-weight: 600; }
@@ -364,3 +377,144 @@ button.linkish:hover { text-decoration: underline; }
 
 a.badge { text-decoration: none; }
 a.badge:hover { border-color: var(--accent); color: var(--accent); }
+
+.intake.wide { max-width: 860px; }
+.build-stats {
+  display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap;
+  font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--ink-soft);
+  margin-bottom: 18px;
+}
+.build-stats b { color: var(--ink); }
+.build-section { margin-bottom: 18px; }
+.build-section h4 {
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--ink-soft); margin: 0 0 8px;
+}
+.chip em { font-style: normal; opacity: 0.6; }
+.build-log {
+  list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto;
+  border: 1px solid var(--rule); border-radius: 6px; background: var(--surface);
+}
+.ev {
+  display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 10px; align-items: baseline; padding: 7px 12px;
+  border-bottom: 1px solid var(--rule); font-size: 12px;
+  animation: slideIn 220ms ease;
+}
+.ev:last-child { border-bottom: none; }
+@keyframes slideIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ev { animation: none; } }
+.ev-kind {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--ink-soft);
+}
+.ev-name { font-weight: 600; }
+.ev-detail { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev.concept_created .ev-kind { color: var(--m-functional); }
+.ev.concept_reused .ev-kind { color: var(--structure); }
+.ev.edge_demoted .ev-kind, .ev.edge_rejected .ev-kind { color: var(--accent); }
+.ev.dropped { opacity: 0.55; }
+.ev.dropped .ev-name { text-decoration: line-through; }
+@media (max-width: 700px) { .ev { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Interactive widgets. Sequencing is the thing prose cannot show, so the timeline
+   controls are the most prominent element rather than a decorative flourish. */
+.turn.widget .bubble { padding: 0; background: none; border: none; }
+.w-root {
+  border: 1px solid var(--rule); border-radius: 8px; background: var(--surface);
+  padding: 16px; max-width: 720px;
+}
+.w-stack { display: flex; flex-direction: column; }
+.w-heading {
+  font-family: "Zilla Slab", Georgia, serif; font-weight: 600; font-size: 14px;
+  margin-bottom: 2px;
+}
+.w-text { margin: 0; line-height: 1.6; font-size: 13.5px; }
+.w-text.muted { color: var(--ink-soft); font-size: 12.5px; }
+.w-code .line { display: block; padding: 0 4px; margin: 0 -4px; border-radius: 2px; }
+.w-code .line.hl { background: var(--accent-bg); box-shadow: inset 2px 0 0 var(--accent); }
+
+.w-timeline { border: 1px solid var(--rule); border-radius: 6px; padding: 12px; }
+.w-tl-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.w-tl-head button { padding: 2px 9px; line-height: 1.4; }
+.w-tl-dots { display: flex; gap: 5px; flex: 1; }
+.w-tl-dots .dot {
+  width: 9px; height: 9px; border-radius: 50%; padding: 0; border: 1px solid var(--rule-strong);
+  background: var(--surface); cursor: pointer;
+}
+.w-tl-dots .dot.done { background: var(--rule-strong); }
+.w-tl-dots .dot.on { background: var(--accent); border-color: var(--accent); transform: scale(1.25); }
+.w-tl-count { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-soft); }
+.w-tl-label { font-weight: 600; font-size: 13.5px; margin-bottom: 8px; }
+
+.w-frames { border: 1px solid var(--rule); border-radius: 6px; padding: 10px; }
+.w-frames-title {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-soft); margin-bottom: 7px;
+}
+.w-frame-list { display: flex; flex-direction: column; gap: 4px; }
+.as-queue .w-frame-list { flex-direction: row; flex-wrap: wrap; }
+.w-frame {
+  padding: 6px 10px; border-radius: 4px; background: var(--surface-alt);
+  border: 1px solid var(--rule); font-family: "IBM Plex Mono", monospace; font-size: 12px;
+}
+.w-frame.top { border-color: var(--structure); box-shadow: inset 3px 0 0 var(--structure); }
+.w-frame.empty { color: var(--ink-soft); font-style: italic; background: none; border-style: dashed; }
+
+.w-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 640px) { .w-compare { grid-template-columns: 1fr; } }
+
+.w-choice { border: 1px solid var(--rule); border-radius: 6px; padding: 12px; }
+.w-options { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.w-opt { text-align: left; padding: 8px 11px; }
+.w-opt.right { border-color: var(--m-functional); color: var(--m-functional); }
+.w-opt.wrong { border-color: #b3261e; color: #b3261e; }
+.w-opt.dim { opacity: 0.4; }
+.w-feedback { font-size: 13px; margin: 0 0 6px; }
+.w-feedback.right { color: var(--m-functional); }
+.w-feedback.wrong { color: var(--ink-mid); }
+
+.w-toggle { display: flex; gap: 10px; align-items: center; padding: 8px 12px; }
+.w-toggle.on { border-color: var(--accent); background: var(--accent-bg); }
+.w-toggle-state {
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-soft);
+}
+.w-failed { color: var(--ink-soft); font-size: 12.5px; }
+
+.bubble.busy { display: flex; align-items: center; gap: 8px; }
+.elapsed { font-family: "IBM Plex Mono", monospace; opacity: 0.7; }
+.elapsed em { font-style: normal; }
+.spinner {
+  width: 10px; height: 10px; border-radius: 50%; flex: none;
+  border: 2px solid var(--rule-strong); border-top-color: var(--accent);
+  animation: spin 700ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; border-top-color: var(--rule-strong); }
+}
+
+/* Responsive. The composer previously laid out in one non-wrapping row, so at narrow
+   widths its trailing buttons rendered past the edge of the pane — present in the DOM,
+   unreachable with a mouse. */
+.composer { flex-wrap: wrap; }
+.composer input { min-width: 180px; }
+
+@media (max-width: 900px) {
+  .inspector { width: 260px; }
+  .lesson .inspector { width: 240px; }
+}
+@media (max-width: 760px) {
+  /* Below this the side-by-side split leaves neither pane usable, so the inspector
+     moves under the content instead of competing with it. */
+  .graph-wrap, .lesson { flex-direction: column; }
+  .inspector {
+    width: auto; max-height: 44vh; border-left: none; border-top: 1px solid var(--rule);
+  }
+  .lesson-main { min-height: 46vh; }
+  .canvas { min-height: 50vh; }
+  .topbar { gap: 10px; padding: 0 12px; overflow-x: auto; }
+  .nav a { padding: 5px 8px; }
+  .page { padding: 14px; }
+  .toolbar { gap: 8px; padding: 8px 10px; }
+}
