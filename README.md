@@ -14,7 +14,29 @@ tutor has nowhere to put what it learns, so its quality and its cost are flat fo
 
 ## Status
 
-Phase 0. Data model landed, nothing running yet. See `context/progress.md`.
+v0 complete: engine, HTTP API and web UI. See `context/progress.md`.
+
+## Running it
+
+```bash
+docker compose up -d                      # Postgres 16 + pgvector on :5433
+pnpm install
+pnpm --filter @kg/db exec prisma migrate deploy
+pnpm --filter @kg/api seed                # a small real JS graph to look at
+pnpm --filter @kg/web build
+pnpm --filter @kg/api start               # http://localhost:4000
+```
+
+For UI work, `pnpm --filter @kg/web dev` runs Vite on **:5173** proxying `/api` to :4000.
+
+Four views: **Graph** (layered DAG, click a concept for its prerequisites and their
+failure modes), **Learner** (path, milestones, probes due, known concepts,
+misconceptions), **Review** (proposals, negative evidence, traversal-ordered queue),
+**Metrics** (reuse rate, wasted teaching, cost per verified outcome, arms).
+
+Expansion, grading and chat return **503 without a model key** — deliberately, since a
+fabricated concept is worse than a clear failure. Set `ANTHROPIC_API_KEY` or
+`OPENAI_API_KEY` and restart.
 
 ## Design
 
@@ -28,7 +50,16 @@ decision it comes from.
 
 ```
 context/          plan, decisions, tech stack, progress, related work
-packages/db/      Prisma schema + SQL invariant guards
+packages/db       Prisma schema, migrations, SQL invariant guards
+packages/shared   mastery ladder, failure-mode validator, milestone trimming
+packages/llm      tiered provider, JSON extraction, scripted provider
+packages/graph    resolver, candidate generation, adjudication, expansion, eval
+packages/planner  goal resolution, ordering, versioned plans
+packages/teach    grading, execution, attempt loop, chat routing, probes, content
+packages/metrics  reuse, wasted teaching, persistence, cost per outcome
+packages/evidence control-arm claims, promotion proposals, negative evidence
+apps/api          Fastify HTTP layer; serves the built web app
+apps/web          React + React Flow + elkjs
 ```
 
 ## Getting started

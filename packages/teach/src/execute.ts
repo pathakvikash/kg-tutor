@@ -6,8 +6,8 @@ import { join } from "node:path";
 export interface ExecuteRequest {
   code: string;
   /** Appended after the learner's code; usually assertions. */
-  harness?: string;
-  timeoutMs?: number;
+  harness?: string | undefined;
+  timeoutMs?: number | undefined;
 }
 
 export interface ExecuteResult {

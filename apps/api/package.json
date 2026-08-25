@@ -1,0 +1,30 @@
+{
+  "name": "@kg/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "seed": "tsx src/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/static": "^7.0.4",
+    "@kg/db": "workspace:*",
+    "@kg/evidence": "workspace:*",
+    "@kg/graph": "workspace:*",
+    "@kg/llm": "workspace:*",
+    "@kg/metrics": "workspace:*",
+    "@kg/planner": "workspace:*",
+    "@kg/shared": "workspace:*",
+    "@kg/teach": "workspace:*",
+    "fastify": "^4.28.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
