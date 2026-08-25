@@ -12,7 +12,11 @@
   "dependencies": {
     "@kg/db": "workspace:*",
     "@kg/shared": "workspace:*",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@kg/llm": "workspace:*"
   },
-  "devDependencies": { "typescript": "^5.5.0", "vitest": "^2.1.0" }
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0"
+  }
 }

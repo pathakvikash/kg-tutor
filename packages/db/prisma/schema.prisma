@@ -92,6 +92,7 @@ model Topic {
 
   milestones  MilestoneTemplate[]
   goals       Goal[]
+  concepts    TopicConcept[]
 
   @@unique([name])
 }
@@ -127,9 +128,27 @@ model Concept {
   evidence      EvidenceEvent[]
   planSteps     PlanStep[]
   milestoneReqs MilestoneConcept[]
+  topics        TopicConcept[]
 
   @@index([canonicalName])
   @@index([deprecatedAt])
+}
+
+/// Topic->Concept containment. `Edge` joins Concepts only, so this cannot live there,
+/// and containment is a different relation anyway: Topics organize, Concepts depend. (02)
+model TopicConcept {
+  id        String   @id @default(uuid())
+  topicId   String
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  conceptId String
+  concept   Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  /// True when the concept came from expanding this topic directly, rather than being
+  /// pulled in as a prerequisite of one that did.
+  direct    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([topicId, conceptId])
+  @@index([conceptId])
 }
 
 /// A `same` verdict aliases instead of merging — no destructive op, no id migration. (05)
