@@ -1,0 +1,543 @@
+// Knowledge Graph Tutor — canonical data model.
+// Every table here traces to a numbered decision in ../../../context/decisions.md.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ─────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────
+
+enum EdgeType {
+  prerequisite_of
+  contains
+  related_to
+  applied_in
+  extends
+}
+
+/// hard = target is not understandable without it; requires a failureMode. (03)
+enum EdgeStrength {
+  hard
+  soft
+}
+
+/// Ordinal, never a float — LLM grading cannot justify finer precision. (06)
+enum MasteryLevel {
+  unknown
+  familiar
+  functional
+  solid
+}
+
+enum EvidenceSource {
+  self_reported
+  assessed
+  taught
+  inferred
+}
+
+/// How deep the learner needs the target; selects which soft edges apply. (03, 08)
+enum GoalDepth {
+  use
+  debug
+  build
+}
+
+/// Five-way verdict — binary same/different forces overlap into a wrong bucket. (05)
+enum ResolverVerdict {
+  same
+  narrower
+  broader
+  related
+  distinct
+}
+
+enum ReviewStatus {
+  open
+  accepted
+  rejected
+}
+
+/// Canonical content is reviewed; candidate is generated and unproven. (12, 15)
+enum ContentStatus {
+  candidate
+  canonical
+  retired
+}
+
+// ─────────────────────────────────────────────────────────────
+// The shared graph  (02, 03, 05, 13)
+// ─────────────────────────────────────────────────────────────
+
+/// Container and goal target. Never taught, never mastered. (02)
+model Topic {
+  id          String   @id @default(uuid())
+  name        String
+  /// Distinguishes a subject ("JavaScript") from an outcome ("Backend Developer"). (08)
+  kind        String   @default("subject")
+  description String   @db.Text
+  /// False when the domain is not genuinely dependency-structured; planner degenerates. (22, policy H)
+  isDagLike   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  milestones  MilestoneTemplate[]
+  goals       Goal[]
+
+  @@unique([name])
+}
+
+/// The only teachable, masterable, evidence-bearing unit. (02)
+model Concept {
+  id            String   @id @default(uuid())
+  canonicalName String
+
+  /// IMMUTABLE after creation — identity depends on it. Fix by deprecating, never editing. (05)
+  sense         String   @db.Text
+  /// Embedding of (canonicalName + sense). Never drifts, because sense never changes. (05, 13)
+  senseVector   Unsupported("vector(1536)")?
+
+  /// Mutable teaching notes. Identity does NOT depend on this. (05)
+  description   String   @db.Text @default("")
+
+  deprecatedAt  DateTime?
+  supersededById String?
+  supersededBy  Concept?  @relation("supersede", fields: [supersededById], references: [id])
+  supersedes    Concept[] @relation("supersede")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  aliases       ConceptAlias[]
+  outgoing      Edge[] @relation("edgeSrc")
+  incoming      Edge[] @relation("edgeDst")
+  items         AssessmentItem[]
+  content       ExplanationContent[]
+  states        LearnerConceptState[]
+  misconceptions Misconception[]
+  evidence      EvidenceEvent[]
+  planSteps     PlanStep[]
+  milestoneReqs MilestoneConcept[]
+
+  @@index([canonicalName])
+  @@index([deprecatedAt])
+}
+
+/// A `same` verdict aliases instead of merging — no destructive op, no id migration. (05)
+model ConceptAlias {
+  id        String   @id @default(uuid())
+  conceptId String
+  concept   Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+
+  @@unique([name])
+  @@index([conceptId])
+}
+
+model Edge {
+  id        String       @id @default(uuid())
+  srcId     String
+  src       Concept      @relation("edgeSrc", fields: [srcId], references: [id], onDelete: Cascade)
+  dstId     String
+  dst       Concept      @relation("edgeDst", fields: [dstId], references: [id], onDelete: Cascade)
+  type      EdgeType
+  strength  EdgeStrength @default(soft)
+
+  /// REQUIRED for hard edges — the concrete misunderstanding that occurs without the
+  /// prerequisite. Serves as hallucination filter, grading rubric, and failure router. (03, 07, 10, 15)
+  failureMode String?    @db.Text
+
+  confidence  Float      @default(0.5)
+  /// Provisional edges came from evidence promotion and stay monitored. (11)
+  provisional Boolean    @default(false)
+  /// Evidence packet that promoted this edge, for audit and reversal. (11)
+  promotedById String?
+  promotedBy  PromotionProposal? @relation(fields: [promotedById], references: [id])
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  retiredAt   DateTime?
+  retiredReason String?
+
+  @@unique([srcId, dstId, type])
+  @@index([dstId, type, strength])
+  @@index([srcId, type, strength])
+}
+
+/// Every node creation is a proposal through the resolver — never a blind insert. (05)
+model ConceptProposal {
+  id            String           @id @default(uuid())
+  proposedName  String
+  proposedSense String           @db.Text
+  context       String?          @db.Text
+  verdict       ResolverVerdict?
+  resolvedToId  String?
+  /// Candidates considered, similarity scores, adjudicator reasoning.
+  candidates    Json?
+  resolvedAt    DateTime?
+  createdAt     DateTime         @default(now())
+
+  @@index([resolvedAt])
+}
+
+/// Merges are recorded and reversible — never a delete. (05)
+model MergeRecord {
+  id            String   @id @default(uuid())
+  winnerId      String
+  loserId       String
+  rewrittenEdges Json
+  movedStates   Json
+  reason        String   @db.Text
+  reversedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([loserId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Assessment and content  (07, 12)
+// ─────────────────────────────────────────────────────────────
+
+model AssessmentItem {
+  id         String        @id @default(uuid())
+  conceptId  String
+  concept    Concept       @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  version    Int           @default(1)
+  prompt     String        @db.Text
+  /// Rubric is expressed as failure modes to detect, not open-ended answer quality. (07)
+  rubric     Json
+  /// Level this item discriminates at — gates which promotion it can justify. (10)
+  targetsLevel MasteryLevel @default(functional)
+  /// Requires transfer to a context the explanation did not use — blocks parroting. (16)
+  requiresTransfer Boolean  @default(false)
+  status     ContentStatus @default(candidate)
+
+  timesUsed       Int   @default(0)
+  correctCount    Int   @default(0)
+  /// Does getting this right predict downstream success? Low → retire. (07)
+  discrimination  Float @default(0)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  evidence   EvidenceEvent[]
+
+  @@index([conceptId, status])
+}
+
+/// Substance is stored and reviewable; delivery is generated per learner. (12)
+model ExplanationContent {
+  id        String        @id @default(uuid())
+  conceptId String
+  concept   Concept       @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  version   Int           @default(1)
+  status    ContentStatus @default(candidate)
+
+  /// The claims, mental model, key distinctions. The LLM may adapt delivery, not these.
+  claims    String   @db.Text
+  examples  Json     @default("[]")
+  /// Analogies tagged by the background they assume — selection input, not invention. (12)
+  analogies Json     @default("[]")
+
+  /// Cache/selection key: (background, goal, level) bucket rather than per learner. (17)
+  bucket    String?
+
+  timesShown     Int   @default(0)
+  followedByPass Int   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evidence  EvidenceEvent[]
+
+  @@index([conceptId, status, bucket])
+}
+
+// ─────────────────────────────────────────────────────────────
+// The learner overlay  (06)
+// ─────────────────────────────────────────────────────────────
+
+model Learner {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  /// Background bucket drives analogy selection and explanation caching. (12, 17)
+  background String? @db.Text
+  /// Raw evidence is private by default; only aggregates may reach the graph. (policy D)
+  orgId     String?
+  createdAt DateTime @default(now())
+
+  states         LearnerConceptState[]
+  misconceptions Misconception[]
+  evidence       EvidenceEvent[]
+  goals          Goal[]
+  plans          Plan[]
+  sessions       Session[]
+
+  @@index([orgId])
+}
+
+model LearnerConceptState {
+  id        String       @id @default(uuid())
+  learnerId String
+  learner   Learner      @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  conceptId String
+  concept   Concept      @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  /// Highest level demonstrated. Never demoted on a single failure. (06, 10)
+  mastery   MasteryLevel @default(unknown)
+  /// Decays with time since evidence — mastery itself does not. (06)
+  confidence Float       @default(0)
+  source    EvidenceSource @default(inferred)
+
+  lastEvidenceAt DateTime?
+  /// Set when a failure contradicts the estimate; demotion needs a confirmed re-probe. (10)
+  reprobeQueuedAt DateTime?
+  /// Bounded-detour escape hatch — revisit next session rather than descending. (10)
+  blockedUntil    DateTime?
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([learnerId, conceptId])
+  @@index([learnerId, mastery])
+  @@index([conceptId])
+}
+
+/// "Believes something false" needs correcting, not re-teaching. (06)
+model Misconception {
+  id        String   @id @default(uuid())
+  learnerId String
+  learner   Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  conceptId String
+  concept   Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  /// Free text; when it matches a stored failureMode, that edge gains support. (11)
+  belief    String   @db.Text
+  matchedFailureMode String?
+  observedCount Int   @default(1)
+  resolvedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([learnerId, conceptId])
+  @@index([conceptId, resolvedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Evidence  (10, 11, 19)
+// ─────────────────────────────────────────────────────────────
+
+enum EvidenceKind {
+  restated
+  applied
+  transferred
+  failed_check
+  misconception_shown
+  careless_error
+  self_reported_skip
+  /// Learner named their own prerequisite gap — premium missing-edge signal. (19)
+  spontaneous_prerequisite_request
+  downstream_success
+  reprobe_pass
+  reprobe_fail
+}
+
+/// Append-only. Read per-learner for the model, pooled per-concept for promotion. (06, 11)
+model EvidenceEvent {
+  id        String       @id @default(uuid())
+  learnerId String
+  learner   Learner      @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  conceptId String
+  concept   Concept      @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  sessionId String?
+  session   Session?     @relation(fields: [sessionId], references: [id])
+
+  kind      EvidenceKind
+  itemId    String?
+  item      AssessmentItem? @relation(fields: [itemId], references: [id])
+  contentId String?
+  content   ExplanationContent? @relation(fields: [contentId], references: [id])
+
+  /// For spontaneous_prerequisite_request: the concept the learner asked about.
+  referencedConceptId String?
+  response  String?      @db.Text
+  detail    Json?
+
+  createdAt DateTime     @default(now())
+
+  @@index([conceptId, kind, createdAt])
+  @@index([learnerId, createdAt])
+  @@index([sessionId])
+}
+
+/// Structural graph changes are proposals with a control arm — never auto-applied. (11)
+model PromotionProposal {
+  id        String   @id @default(uuid())
+  /// new_hard_edge | remove_edge | flip_strength | split_concept | retire_failure_mode
+  kind      String
+  srcId     String?
+  dstId     String?
+  claim     String   @db.Text
+
+  distinctLearners Int   @default(0)
+  effectSize       Float @default(0)
+  /// Failure rate at target among learners who DID know the prerequisite. Without this
+  /// the system promotes difficulty as prerequisite. (11)
+  controlFailureRate Float?
+  treatmentFailureRate Float?
+  distinctGoals    Int   @default(0)
+
+  evidencePacket Json
+  status    ReviewStatus @default(open)
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  promotedEdges Edge[]
+
+  @@index([status, effectSize])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Goals, milestones, plans  (08, 09, 18)
+// ─────────────────────────────────────────────────────────────
+
+model Goal {
+  id        String    @id @default(uuid())
+  learnerId String
+  learner   Learner   @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  topicId   String
+  topic     Topic     @relation(fields: [topicId], references: [id])
+  depth     GoalDepth @default(use)
+  constraints Json?
+  /// Versioned independently of the learner model — pivoting keeps all mastery. (08)
+  version   Int       @default(1)
+  active    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  plans     Plan[]
+
+  @@index([learnerId, active])
+}
+
+/// Reusable template on a Topic — never generated per learner. (18)
+model MilestoneTemplate {
+  id        String   @id @default(uuid())
+  topicId   String
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  /// A capability claim: "you can model and query a relational database".
+  claim     String
+  ordering  Int      @default(0)
+  status    ContentStatus @default(candidate)
+  createdAt DateTime @default(now())
+
+  concepts  MilestoneConcept[]
+  instances MilestoneInstance[]
+
+  @@index([topicId, ordering])
+}
+
+model MilestoneConcept {
+  id          String       @id @default(uuid())
+  templateId  String
+  template    MilestoneTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  conceptId   String
+  concept     Concept      @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  requiredLevel MasteryLevel @default(functional)
+
+  @@unique([templateId, conceptId])
+}
+
+/// Persisted and versioned so plan growth can be explained by diff. (09)
+model Plan {
+  id        String   @id @default(uuid())
+  learnerId String
+  learner   Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  goalId    String
+  goal      Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  version   Int      @default(1)
+  /// Why this version differs from the last — shown to the learner. (08, 09)
+  revisionReason String? @db.Text
+  supersededAt DateTime?
+  createdAt DateTime @default(now())
+
+  steps      PlanStep[]
+  milestones MilestoneInstance[]
+
+  @@index([learnerId, supersededAt])
+}
+
+model PlanStep {
+  id        String   @id @default(uuid())
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  conceptId String
+  concept   Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  position  Int
+  requiredLevel MasteryLevel @default(functional)
+  /// Only the first ~3 steps are firm; the rest are visible but revisable. (09)
+  committed Boolean  @default(false)
+  unlockCount Int    @default(0)
+  completedAt DateTime?
+
+  @@unique([planId, position])
+  @@index([conceptId])
+}
+
+/// A template trimmed against one learner's state. (18)
+model MilestoneInstance {
+  id         String   @id @default(uuid())
+  planId     String
+  plan       Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  templateId String
+  template   MilestoneTemplate @relation(fields: [templateId], references: [id])
+  position   Int
+  /// True when >2/3 was already satisfied and it was folded into the next one. (18)
+  foldedForward Boolean @default(false)
+  completedAt DateTime?
+
+  @@unique([planId, position])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sessions and observability  (10, 20, 14)
+// ─────────────────────────────────────────────────────────────
+
+model Session {
+  id        String   @id @default(uuid())
+  learnerId String
+  learner   Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  /// Which arm this learner is in — graph-planned vs baseline tutor. (14)
+  variant   String   @default("graph")
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+
+  evidence  EvidenceEvent[]
+  decisions PlannerDecision[]
+
+  @@index([learnerId, startedAt])
+}
+
+/// Every instructional choice is logged so "why this?" never needs a retrospective guess.
+model PlannerDecision {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  candidates Json
+  selected  Json
+  reasonCodes String[]
+  stateSnapshot Json
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+}
