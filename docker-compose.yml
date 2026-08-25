@@ -1,0 +1,19 @@
+# Local dev database. pgvector's image ships the extension prebuilt.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: kg-tutor-pg
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: kg_tutor
+    # 5433 so it does not collide with any host Postgres on the default port.
+    ports: ["5433:5432"]
+    volumes: ["kg-tutor-pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kg_tutor"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  kg-tutor-pgdata:
