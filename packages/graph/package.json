@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval": "tsx eval/run.ts"
   },
   "dependencies": {
     "@kg/db": "workspace:*",
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "typescript": "^5.5.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "tsx": "^4.19.0"
   }
 }
