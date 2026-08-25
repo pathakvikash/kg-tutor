@@ -180,6 +180,10 @@ model ConceptProposal {
   proposedName  String
   proposedSense String           @db.Text
   context       String?          @db.Text
+  /// Concepts this was discovered next to — the target it was proposed as a
+  /// prerequisite of, or the topic being expanded. A proposal has no edges of its
+  /// own yet, so this is what neighborhood overlap is measured against. (05)
+  expectedNeighborIds String[]   @default([])
   verdict       ResolverVerdict?
   resolvedToId  String?
   /// Candidates considered, similarity scores, adjudicator reasoning.
