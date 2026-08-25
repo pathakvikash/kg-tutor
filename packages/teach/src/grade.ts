@@ -1,0 +1,116 @@
+import { z } from "zod";
+import { completeJson, type LLMProvider } from "@kg/llm";
+import { failureDiagnosis, type FailureDiagnosis } from "@kg/shared";
+
+export interface GradeInput {
+  /** The item's prompt. NOT the explanation the learner just read. */
+  prompt: string;
+  response: string;
+  /** Stored failure modes on this concept's hard prerequisite edges. (03, 07) */
+  failureModes: { edgeId: string; prerequisiteName: string; failureMode: string }[];
+  /** Named so the grader can tell "restated the definition" from "applied it". */
+  conceptName: string;
+  /** True when the item deliberately uses a context the explanation did not. (16) */
+  requiresTransfer: boolean;
+}
+
+export interface GradeResult {
+  correct: boolean;
+  /** Only meaningful when `correct` is false. */
+  diagnosis: FailureDiagnosis;
+  /** Set when the response exhibited one of the stored failure modes. */
+  matchedEdgeId: string | null;
+  /** The learner's actual wrong belief, when one was visible. */
+  belief: string | null;
+  /** True when the answer only restates the concept rather than applying it. */
+  restatementOnly: boolean;
+  reasoning: string;
+}
+
+const schema = z.object({
+  correct: z.boolean(),
+  diagnosis: failureDiagnosis,
+  matchedFailureModeIndex: z.number().int().nullable(),
+  belief: z.string().nullable(),
+  restatementOnly: z.boolean(),
+  reasoning: z.string(),
+});
+
+/**
+ * The grader is deliberately blind to the explanation that preceded the question. (16)
+ *
+ * A model that just explained closures will accept a paraphrase of its own explanation
+ * as evidence of understanding. That is not learner cheating — it is systematic mastery
+ * inflation baked into the loop, and every plan built on it is wrong. Nothing in this
+ * prompt may carry the explanation text.
+ */
+export const GRADE_SYSTEM_PROMPT = `You grade a learner's answer against a rubric. You have NOT seen any explanation the learner was given, and you must not assume one.
+
+You are given the question, the learner's answer, and a numbered list of known failure
+modes — specific wrong beliefs learners hold about this concept.
+
+Decide:
+- correct: does the answer demonstrate real understanding of what was asked?
+- restatementOnly: does the answer merely restate a definition without applying it?
+  An answer that repeats the concept back in different words is NOT an application.
+- matchedFailureModeIndex: if the answer exhibits one of the listed failure modes,
+  its index. Otherwise null. Only match when the answer really shows that belief.
+- belief: if the answer reveals a specific wrong belief, state it in one sentence as
+  the learner would hold it. Otherwise null.
+- diagnosis (when incorrect):
+  - "misconception": exhibits a specific wrong belief
+  - "missing_prerequisite": confused about something the concept builds on
+  - "cannot_apply": understands the idea but cannot use it
+  - "careless": essentially right, with a slip
+
+Do not be generous. An answer that sounds fluent but does not answer the question is
+incorrect.
+
+Respond with JSON: {"correct","diagnosis","matchedFailureModeIndex","belief","restatementOnly","reasoning"}`;
+
+export async function gradeResponse(
+  llm: LLMProvider,
+  input: GradeInput,
+): Promise<GradeResult> {
+  const modes = input.failureModes
+    .map((f, i) => `${i}. (missing "${f.prerequisiteName}") ${f.failureMode}`)
+    .join("\n");
+
+  const user = [
+    `Concept under test: ${input.conceptName}`,
+    input.requiresTransfer
+      ? `This question deliberately uses an unfamiliar context. Recall alone is not enough.`
+      : "",
+    "",
+    `Question:\n${input.prompt}`,
+    "",
+    `Learner's answer:\n${input.response}`,
+    "",
+    `Known failure modes:\n${modes || "(none recorded)"}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  // Small tier: narrow, rubric-bound, and a large model is more likely to charitably
+  // reinterpret a bad answer into a good one. (17)
+  const raw = await completeJson(
+    llm,
+    { system: GRADE_SYSTEM_PROMPT, user, tier: "small", temperature: 0 },
+    schema,
+  );
+
+  const idx = raw.matchedFailureModeIndex;
+  const matched =
+    idx !== null && idx >= 0 && idx < input.failureModes.length
+      ? input.failureModes[idx]!
+      : null;
+
+  return {
+    correct: raw.correct,
+    diagnosis: raw.diagnosis,
+    matchedEdgeId: matched?.edgeId ?? null,
+    belief: raw.belief,
+    restatementOnly: raw.restatementOnly,
+    reasoning: raw.reasoning,
+  };
+}
