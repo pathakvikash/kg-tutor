@@ -216,8 +216,10 @@ async function link(
   direct: boolean,
 ): Promise<void> {
   await prisma.topicConcept.upsert({
-    where: { topicId_conceptId: { topicId, conceptId } },
-    create: { topicId, conceptId, direct },
+    where: {
+      topicId_conceptId_relation: { topicId, conceptId, relation: "contains" },
+    },
+    create: { topicId, conceptId, direct, relation: "contains" },
     // A concept that arrives as a prerequisite must not downgrade an existing direct link.
     update: direct ? { direct: true } : {},
   });

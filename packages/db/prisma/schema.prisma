@@ -16,6 +16,13 @@ datasource db {
 // Enums
 // ─────────────────────────────────────────────────────────────
 
+/// Topic-side relations. `contains` organizes; `applied_in` is what answers
+/// "what comes after JavaScript, given that I want backend development". (02, 08)
+enum TopicRelation {
+  contains
+  applied_in
+}
+
 enum EdgeType {
   prerequisite_of
   contains
@@ -142,12 +149,15 @@ model TopicConcept {
   topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
   conceptId String
   concept   Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  relation  TopicRelation @default(contains)
   /// True when the concept came from expanding this topic directly, rather than being
   /// pulled in as a prerequisite of one that did.
   direct    Boolean  @default(true)
+  /// How central this concept is to the topic — the goal-relevance tie-breaker. (09)
+  relevance Float    @default(0.5)
   createdAt DateTime @default(now())
 
-  @@unique([topicId, conceptId])
+  @@unique([topicId, conceptId, relation])
   @@index([conceptId])
 }
 
