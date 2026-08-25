@@ -61,6 +61,8 @@ export interface ExpandOptions {
   resolver: ResolverDeps;
   prisma: PrismaClient;
   thresholds?: Thresholds;
+  /** Called as the job advances, so a minutes-long expansion is not a blind wait. */
+  onProgress?: (phase: string, progress: number) => void;
 }
 
 export interface ExpandReport {
@@ -141,7 +143,10 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     conceptsWithFailedPrerequisites: [],
   };
 
+  opts.onProgress?.(`writing ${concepts.length} concepts`, 0.25);
+
   const conceptIds = new Map<string, string>();
+  let written = 0;
   for (const c of concepts) {
     const r = await proposeConcept(opts.resolver, {
       name: c.value.name,
@@ -153,10 +158,21 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     if (r.outcome === "created") report.conceptsCreated++;
     else report.conceptsBound++;
     await link(opts.prisma, topic.id, r.conceptId, true);
+    written++;
+    opts.onProgress?.(
+      `writing concepts (${written}/${concepts.length})`,
+      0.25 + 0.2 * (written / Math.max(1, concepts.length)),
+    );
   }
 
   // One level of prerequisites per concept.
+  let done = 0;
   for (const c of concepts) {
+    opts.onProgress?.(
+      `prerequisites for "${c.value.name}" (${done + 1}/${concepts.length})`,
+      0.45 + 0.55 * (done / Math.max(1, concepts.length)),
+    );
+    done++;
     const targetId = conceptIds.get(normalizeKey(c.value.name));
     if (!targetId) continue;
 

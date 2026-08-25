@@ -67,6 +67,14 @@ export const api = {
     post<any>("/api/lesson/ask", { learnerId, conceptId, question }),
   attempt: (learnerId: string, payload: Record<string, unknown>) =>
     post<any>(`/api/learners/${learnerId}/attempt`, payload),
+  transcript: (learnerId: string) => get<any>(`/api/lesson/${learnerId}/transcript`),
+  resetLesson: (learnerId: string) => post<any>(`/api/lesson/${learnerId}/reset`),
+  completeStep: (learnerId: string, conceptId: string) =>
+    post<any>(`/api/learners/${learnerId}/steps/${conceptId}/complete`),
+  startExpansion: (topicName: string, description?: string) =>
+    post<any>("/api/expansions", { topicName, description }),
+  expansion: (id: string) => get<any>(`/api/expansions/${id}`),
+  expansions: () => get<any[]>("/api/expansions"),
   acceptProposal: (id: string, failureMode: string) =>
     post<any>(`/api/review/proposals/${id}/accept`, { failureMode, reviewedBy: "reviewer" }),
   rejectProposal: (id: string) => post<any>(`/api/review/proposals/${id}/reject`, { reviewedBy: "reviewer" }),

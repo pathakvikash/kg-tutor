@@ -565,6 +565,7 @@ model Session {
 
   evidence  EvidenceEvent[]
   decisions PlannerDecision[]
+  turns     LessonTurn[]
 
   @@index([learnerId, startedAt])
 }
@@ -587,6 +588,45 @@ model UsageRecord {
   @@index([purpose, createdAt])
   @@index([learnerId, createdAt])
   @@index([sessionId])
+}
+
+/// Chat and lesson turns, so a reload does not discard the lesson. Also the record of
+/// what was actually said, which the transcript-derived evidence refers back to.
+model LessonTurn {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  learnerId String
+  conceptId String?
+  /// system | tutor | learner | question | note
+  role      String
+  text      String   @db.Text
+  /// Item id for a question turn; grading/routing detail for a note turn.
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+  @@index([learnerId, createdAt])
+}
+
+/// Expansion takes minutes over dozens of model calls, so it cannot sit inside a
+/// request. This is the job record the UI polls for progress.
+model ExpansionJob {
+  id          String    @id @default(uuid())
+  topicName   String
+  description String?
+  /// queued | running | done | failed
+  status      String    @default("queued")
+  phase       String    @default("starting")
+  /// 0..1, so the UI can show real progress rather than an indeterminate spinner.
+  progress    Float     @default(0)
+  report      Json?
+  error       String?   @db.Text
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([status, createdAt])
 }
 
 /// Every instructional choice is logged so "why this?" never needs a retrospective guess.

@@ -1,5 +1,5 @@
 import {
-  forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation,
+  forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceY,
   type Simulation, type SimulationLinkDatum, type SimulationNodeDatum,
 } from "d3-force";
 import type { GraphEdge, GraphNode } from "./api";
@@ -7,6 +7,8 @@ import type { GraphEdge, GraphNode } from "./api";
 export interface ForceNode extends SimulationNodeDatum {
   id: string;
   degree: number;
+  /** Longest prerequisite chain behind this concept. Drives the vertical bias. */
+  depth: number;
 }
 type ForceLink = SimulationLinkDatum<ForceNode> & { strength: "hard" | "soft" };
 
@@ -16,14 +18,46 @@ export interface ForceResult {
 }
 
 /**
- * Force-directed layout, for exploring the graph rather than reading a teaching order.
+ * Longest prerequisite chain behind each concept. Foundations are 0 and everything
+ * else is one past its deepest prerequisite.
+ */
+export function prerequisiteDepth(nodes: GraphNode[], edges: GraphEdge[]): Map<string, number> {
+  const incoming = new Map<string, string[]>();
+  for (const e of edges) {
+    if (e.type !== "prerequisite_of") continue;
+    incoming.set(e.target, [...(incoming.get(e.target) ?? []), e.source]);
+  }
+  const depth = new Map<string, number>();
+  const visiting = new Set<string>();
+
+  const walk = (id: string): number => {
+    const cached = depth.get(id);
+    if (cached !== undefined) return cached;
+    // A soft prerequisite pair may cycle; the DB only forbids hard ones.
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
+    const parents = incoming.get(id) ?? [];
+    const d = parents.length === 0 ? 0 : Math.max(...parents.map(walk)) + 1;
+    visiting.delete(id);
+    depth.set(id, d);
+    return d;
+  };
+
+  for (const n of nodes) walk(n.id);
+  return depth;
+}
+
+/**
+ * Force-directed layout with a vertical bias by prerequisite depth.
  *
- * This answers different questions from the layered view: which concepts are hubs,
- * where the graph is dense, what sits near what. It deliberately does NOT preserve
- * prerequisite direction — for "what do I teach first", use the layered mode.
+ * A pure force layout clusters beautifully and reads terribly: with no orientation, a
+ * chain like call stack → event loop → promises could be drawn in any direction, and a
+ * reader cannot tell where to start. That was the actual complaint about this view.
  *
- * Hard prerequisites pull harder than soft ones, so genuinely coupled clusters sit
- * together and merely-related concepts drift apart.
+ * So: horizontal position comes from the simulation (clustering, hubs, density) while
+ * vertical position is pulled toward the concept's depth. Foundations settle at the top,
+ * everything that depends on them below. Organic clustering, readable direction —
+ * neither the hairball nor the rigid diagram.
  */
 export function runForceLayout(
   nodes: GraphNode[],
@@ -36,13 +70,19 @@ export function runForceLayout(
     degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
   }
 
+  const depth = prerequisiteDepth(nodes, edges);
+  const maxDepth = Math.max(1, ...[...depth.values()]);
+  const rowHeight = Math.max(110, opts.height / (maxDepth + 1));
+  const depthY = (id: string) => 60 + (depth.get(id) ?? 0) * rowHeight;
+
   const simNodes: ForceNode[] = nodes.map((n, i) => ({
     id: n.id,
     degree: degree.get(n.id) ?? 0,
+    depth: depth.get(n.id) ?? 0,
     // Seed on a circle rather than at the origin: a symmetric start makes the layout
     // reproducible instead of depending on how the simulation happens to break ties.
     x: opts.width / 2 + Math.cos((i / nodes.length) * Math.PI * 2) * 180,
-    y: opts.height / 2 + Math.sin((i / nodes.length) * Math.PI * 2) * 180,
+    y: depthY(n.id),
   }));
   const byId = new Map(simNodes.map((n) => [n.id, n]));
 
@@ -61,6 +101,9 @@ export function runForceLayout(
     // Hubs repel more, so dense areas open up instead of collapsing into a knot.
     .force("charge", forceManyBody<ForceNode>().strength((d) => -230 - d.degree * 45))
     .force("center", forceCenter(opts.width / 2, opts.height / 2))
+    // The bias that makes direction readable. Strong enough to hold the ordering,
+    // weak enough that clustering still does the horizontal work.
+    .force("depth", forceY<ForceNode>((d) => depthY(d.id)).strength(0.85))
     .force("collide", forceCollide<ForceNode>().radius((d) => 34 + d.degree * 1.8))
     .stop();
 

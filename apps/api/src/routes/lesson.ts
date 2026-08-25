@@ -3,17 +3,57 @@ import { z } from "zod";
 import { completeJson } from "@kg/llm";
 import { loadMastery } from "@kg/planner";
 import { generateItems, selectItem, routeChatQuestion, recordEvidence } from "@kg/teach";
+import { assignVariant } from "@kg/teach";
 import { prisma, getLlm } from "../context.js";
+
+/**
+ * One open session per learner. Sessions were never being created, which quietly killed
+ * the arm comparison — `compareArms` reads variants off sessions, and there were none.
+ */
+async function openSession(learnerId: string): Promise<string> {
+  const existing = await prisma.session.findFirst({
+    where: { learnerId, endedAt: null },
+    orderBy: { startedAt: "desc" },
+  });
+  if (existing) return existing.id;
+  const created = await prisma.session.create({
+    data: { learnerId, variant: assignVariant(learnerId) },
+  });
+  return created.id;
+}
+
+async function saveTurn(
+  sessionId: string,
+  learnerId: string,
+  conceptId: string | null,
+  role: string,
+  text: string,
+  meta?: unknown,
+): Promise<void> {
+  await prisma.lessonTurn.create({
+    data: { sessionId, learnerId, conceptId, role, text, meta: (meta ?? null) as never },
+  });
+}
 
 const NO_MODEL = {
   error: "no model configured",
   detail: "Set LLM_PROVIDER=claude-code, or ANTHROPIC_API_KEY / OPENAI_API_KEY, then restart.",
 };
 
+/**
+ * `example` is a typed object rather than a markdown string. Asking a model to embed a
+ * fenced code block inside a prose field means the fence is sometimes missing, and then
+ * `# comment` lines render as markdown headings. Giving code its own field removes the
+ * ambiguity instead of trying to parse around it.
+ */
 const explanationSchema = z.object({
   hook: z.string(),
   explanation: z.string(),
-  example: z.string(),
+  example: z.object({
+    language: z.string().default("javascript"),
+    code: z.string(),
+    walkthrough: z.string(),
+  }),
 });
 
 const EXPLAIN_SYSTEM = `You explain one concept to one learner.
@@ -27,7 +67,11 @@ is the single most valuable thing you can do here.
 
 Keep it to one sitting. Be concrete. No filler, no encouragement padding.
 
-Respond with JSON: {"hook","explanation","example"}`;
+Put runnable code in example.code as PLAIN CODE — no markdown fences, no backticks.
+example.language is its language. example.walkthrough explains what the code shows, in
+prose. Prose fields may use markdown (bold, inline code, lists); the code field may not.
+
+Respond with JSON: {"hook","explanation","example":{"language","code","walkthrough"}}`;
 
 export async function lessonRoutes(app: FastifyInstance): Promise<void> {
   /** Explanation for the concept about to be taught. Delivery is generated; the
@@ -67,7 +111,68 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
       explanationSchema,
     );
 
-    return { concept: { id: concept.id, name: concept.canonicalName, sense: concept.sense }, ...out };
+    const sessionId = await openSession(body.data.learnerId);
+
+    // Persisted as a candidate so the promotion pipeline has something to promote.
+    // Previously every generated explanation was thrown away the moment it was shown. (12)
+    const bucket = [learner.background ?? "none", concept.canonicalName].join("|").slice(0, 120);
+    const content = await prisma.explanationContent.create({
+      data: {
+        conceptId: concept.id,
+        claims: out.explanation,
+        examples: [out.example] as never,
+        bucket,
+        status: "candidate",
+        timesShown: 1,
+      },
+    });
+
+    await saveTurn(sessionId, body.data.learnerId, concept.id, "system",
+      `Now teaching: ${concept.canonicalName}`);
+    await saveTurn(sessionId, body.data.learnerId, concept.id, "tutor", out.hook, {
+      kind: "hook", contentId: content.id,
+    });
+    await saveTurn(sessionId, body.data.learnerId, concept.id, "tutor", out.explanation, {
+      kind: "explanation", contentId: content.id,
+    });
+    await saveTurn(sessionId, body.data.learnerId, concept.id, "code", out.example.code, {
+      kind: "example", language: out.example.language, contentId: content.id,
+    });
+    await saveTurn(sessionId, body.data.learnerId, concept.id, "tutor", out.example.walkthrough, {
+      kind: "walkthrough", contentId: content.id,
+    });
+
+    return {
+      concept: { id: concept.id, name: concept.canonicalName, sense: concept.sense },
+      sessionId,
+      contentId: content.id,
+      ...out,
+    };
+  });
+
+  /** Everything said in the learner's open session, so a reload resumes rather than resets. */
+  app.get("/api/lesson/:learnerId/transcript", async (req) => {
+    const { learnerId } = req.params as { learnerId: string };
+    const session = await prisma.session.findFirst({
+      where: { learnerId, endedAt: null },
+      orderBy: { startedAt: "desc" },
+    });
+    if (!session) return { sessionId: null, turns: [] };
+    const turns = await prisma.lessonTurn.findMany({
+      where: { sessionId: session.id },
+      orderBy: { createdAt: "asc" },
+    });
+    return { sessionId: session.id, turns };
+  });
+
+  /** Ends the open session, so "start over" is explicit rather than a lost reload. */
+  app.post("/api/lesson/:learnerId/reset", async (req) => {
+    const { learnerId } = req.params as { learnerId: string };
+    await prisma.session.updateMany({
+      where: { learnerId, endedAt: null },
+      data: { endedAt: new Date() },
+    });
+    return { ok: true };
   });
 
   /** The check that follows an explanation. Generates items on demand if none exist. */
@@ -90,11 +195,18 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     }
     if (!item) return reply.code(422).send({ error: "no item could be produced for this concept" });
 
+    const sessionId = await openSession(body.data.learnerId);
+    await saveTurn(sessionId, body.data.learnerId, body.data.conceptId, "question", item.prompt, {
+      itemId: item.id,
+      requiresTransfer: item.requiresTransfer,
+    });
+
     return {
       itemId: item.id,
       prompt: item.prompt,
       requiresTransfer: item.requiresTransfer,
       targetsLevel: item.targetsLevel,
+      sessionId,
     };
   });
 
@@ -145,7 +257,14 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
       temperature: 0.4,
     });
 
+    const sessionId = await openSession(body.data.learnerId);
+    await saveTurn(sessionId, body.data.learnerId, body.data.conceptId, "learner", body.data.question);
+    await saveTurn(sessionId, body.data.learnerId, body.data.conceptId, "tutor", answer, {
+      intent: route.intent,
+    });
+
     return {
+      sessionId,
       intent: route.intent,
       answer,
       // The UI offers a detour rather than silently taking one.
@@ -153,5 +272,60 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
       namedConcept: route.namedConcept,
       reasoning: route.reasoning,
     };
+  });
+}
+
+/**
+ * Advancing the plan. Steps were never being completed, so a learner would be re-taught
+ * step one indefinitely no matter how well they did.
+ */
+export async function progressRoutes(app: import("fastify").FastifyInstance): Promise<void> {
+  app.post("/api/learners/:id/steps/:conceptId/complete", async (req, reply) => {
+    const { id, conceptId } = req.params as { id: string; conceptId: string };
+    const plan = await prisma.plan.findFirst({
+      where: { learnerId: id, supersededAt: null },
+      include: { steps: true, milestones: { include: { template: { include: { concepts: true } } } } },
+      orderBy: { version: "desc" },
+    });
+    if (!plan) return reply.code(404).send({ error: "no active plan" });
+
+    const step = plan.steps.find((s) => s.conceptId === conceptId);
+    if (!step) return reply.code(404).send({ error: "concept is not on the active plan" });
+
+    const state = await prisma.learnerConceptState.findUnique({
+      where: { learnerId_conceptId: { learnerId: id, conceptId } },
+    });
+    const { atLeast } = await import("@kg/shared");
+    // Completion is earned by evidence, not asserted by the client.
+    if (!state || !atLeast(state.mastery, step.requiredLevel)) {
+      return reply.code(422).send({
+        error: "not yet at the required level",
+        have: state?.mastery ?? "unknown",
+        need: step.requiredLevel,
+      });
+    }
+
+    await prisma.planStep.update({ where: { id: step.id }, data: { completedAt: new Date() } });
+
+    // A milestone completes when every concept it claims is at its required level.
+    const mastery = new Map(
+      (await prisma.learnerConceptState.findMany({ where: { learnerId: id } })).map((s) => [
+        s.conceptId, s.mastery,
+      ]),
+    );
+    const completedMilestones: string[] = [];
+    for (const m of plan.milestones) {
+      if (m.completedAt) continue;
+      const satisfied = m.template.concepts.every((c) =>
+        atLeast(mastery.get(c.conceptId) ?? "unknown", c.requiredLevel),
+      );
+      if (!satisfied) continue;
+      await prisma.milestoneInstance.update({
+        where: { id: m.id }, data: { completedAt: new Date() },
+      });
+      completedMilestones.push(m.template.claim);
+    }
+
+    return { completed: conceptId, completedMilestones };
   });
 }

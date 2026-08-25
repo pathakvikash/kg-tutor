@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Background, Controls, MiniMap, ReactFlow, type Edge, type Node } from "@xyflow/react";
+import { Background, Controls, MarkerType, MiniMap, ReactFlow, type Edge, type Node } from "@xyflow/react";
 import { api, type GraphEdge, type GraphPayload, type Mastery } from "../api";
 import { layoutGraph } from "../layout";
 import { neighborhood, runForceLayout } from "../force";
@@ -338,6 +338,9 @@ export function GraphPage() {
           <span><span className="swatch" style={{ background: "var(--m-familiar)" }} />familiar</span>
           <span><span className="swatch" style={{ background: "var(--m-functional)" }} />functional</span>
           <span><span className="swatch" style={{ background: "var(--m-solid)" }} />solid</span>
+          <span className="orient" title="Arrows point from a prerequisite to what it unlocks">
+            ↑ foundations · ↓ builds on them
+          </span>
           {counts && <span className="mono">{counts.nodes} · {counts.hard} hard · {counts.soft} soft</span>}
         </div>
       </div>
@@ -398,6 +401,16 @@ function toFlowEdge(e: GraphEdge, dim: boolean): Edge {
     // Clickable and thick enough to hit — an unclickable edge hides the failure mode,
     // which is the most useful thing on it.
     interactionWidth: 18,
+    // Direction was completely invisible before this: a prerequisite graph drawn
+    // without arrowheads cannot be read at all.
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 16,
+      height: 16,
+      // Deliberately higher contrast than the line: the arrowhead is what carries
+      // direction, and direction is the thing that was unreadable before.
+      color: e.provisional ? "var(--accent)" : "var(--ink-soft)",
+    },
     style: {
       stroke: e.provisional ? "var(--accent)" : "var(--rule-strong)",
       strokeWidth: e.strength === "hard" ? 1.8 : 1.2,

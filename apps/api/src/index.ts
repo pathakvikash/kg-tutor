@@ -8,7 +8,8 @@ import { learnerRoutes } from "./routes/learner.js";
 import { reviewRoutes } from "./routes/review.js";
 import { metricsRoutes } from "./routes/metrics.js";
 import { teachRoutes } from "./routes/teach.js";
-import { lessonRoutes } from "./routes/lesson.js";
+import { lessonRoutes, progressRoutes } from "./routes/lesson.js";
+import { expandJobRoutes } from "./routes/expand-job.js";
 import { providerStatus } from "./context.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -23,6 +24,8 @@ await app.register(reviewRoutes);
 await app.register(metricsRoutes);
 await app.register(teachRoutes);
 await app.register(lessonRoutes);
+await app.register(progressRoutes);
+await app.register(expandJobRoutes);
 
 if (existsSync(join(webDist, "index.html"))) {
   await app.register(fastifyStatic, { root: webDist });
