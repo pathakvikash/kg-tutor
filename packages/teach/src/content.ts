@@ -1,20 +1,19 @@
 import { z } from "zod";
 import { Prisma } from "@kg/db";
 import type { PrismaClient } from "@kg/db";
-import { completeJson, type LLMProvider } from "@kg/llm";
+import { arrayOrWrapped, completeJson, type LLMProvider } from "@kg/llm";
 import type { MasteryLevel } from "@kg/shared";
 
-const itemSchema = z.object({
-  items: z.array(
-    z.object({
-      prompt: z.string().min(1),
-      targetsLevel: z.enum(["familiar", "functional", "solid"]),
-      requiresTransfer: z.boolean(),
-      /** What a correct answer must demonstrate — not a model answer to match against. */
-      mustDemonstrate: z.array(z.string()).min(1),
-    }),
-  ).max(6),
-});
+const itemSchema = arrayOrWrapped(
+  "items",
+  z.object({
+    prompt: z.string().min(1),
+    targetsLevel: z.enum(["familiar", "functional", "solid"]),
+    requiresTransfer: z.boolean(),
+    /** What a correct answer must demonstrate — not a model answer to match against. */
+    mustDemonstrate: z.array(z.string()).min(1),
+  }),
+);
 
 const ITEM_SYSTEM = `You write assessment items for a single learning concept.
 
@@ -77,7 +76,7 @@ export async function generateItems(
   const seen = new Set(existing.map((e) => e.prompt.trim().toLowerCase()));
 
   let created = 0;
-  for (const item of out.items) {
+  for (const item of (out.items ?? []).slice(0, 6)) {
     if (seen.has(item.prompt.trim().toLowerCase())) continue;
     await prisma.assessmentItem.create({
       data: {

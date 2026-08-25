@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { Markdown } from "../components/Markdown";
+import { Intake } from "../components/Intake";
 
 interface Turn {
   role: string;
@@ -21,15 +22,21 @@ export function LearnPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ itemId: string; prompt: string; requiresTransfer: boolean } | null>(null);
   const [detour, setDetour] = useState<{ conceptId: string; name: string } | null>(null);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [viewingSession, setViewingSession] = useState<string | null>(null);
+  const [topics, setTopics] = useState<any[]>([]);
+  const [showIntake, setShowIntake] = useState(false);
   const [override, setOverride] = useState<{ conceptId: string; name: string } | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void api.learners().then((l) => { setLearners(l); if (l[0]) setLearnerId(l[0].id); });
+    void api.topics().then(setTopics);
   }, []);
 
   const load = useCallback(async (id: string) => {
     if (!id) return;
+    void api.sessions(id).then(setSessions).catch(() => undefined);
     try { setPlan(await api.plan(id)); } catch { setPlan(null); }
     // Resume the open session rather than starting blank on every reload.
     try {
@@ -52,7 +59,31 @@ export function LearnPage() {
     } catch { setTurns([]); }
   }, []);
 
-  useEffect(() => { void load(learnerId); }, [learnerId, load]);
+  useEffect(() => { void load(learnerId); setViewingSession(null); }, [learnerId, load]);
+
+  /** Switching to a past session shows it read-only until it is resumed. */
+  const openSession = async (id: string) => {
+    setViewingSession(id);
+    setPending(null); setDetour(null); setError(null);
+    try {
+      const t = await api.sessionTranscript(id);
+      setTurns(t.turns ?? []);
+      if (t.open) setViewingSession(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const resume = async (id: string) => {
+    setBusy("resuming");
+    try {
+      await api.resumeSession(id);
+      setViewingSession(null);
+      await load(learnerId);
+      const t = await api.transcript(learnerId);
+      setTurns(t.turns ?? []);
+    } finally { setBusy(null); }
+  };
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [turns, busy]);
 
   const planned = plan?.steps?.find((s: any) => !s.completed) ?? null;
@@ -160,15 +191,34 @@ export function LearnPage() {
     } finally { setBusy(null); }
   };
 
+  if (showIntake) {
+    return (
+      <div className="page">
+        <Intake
+          learnerId={learnerId}
+          topics={topics}
+          onComplete={() => { setShowIntake(false); void load(learnerId); }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="page flush lesson">
       <div className="lesson-main">
         <div className="chat">
           {turns.length === 0 && (
             <div className="empty" style={{ margin: 24 }}>
-              {current
-                ? <>Next up: <strong>{current.name}</strong>. Start the lesson, then ask anything.</>
-                : "No active plan. Set a goal on the Learner tab, or expand a new topic there."}
+              {current ? (
+                <>Next up: <strong>{current.name}</strong>. Start the lesson, then ask anything.</>
+              ) : (
+                <>
+                  <p style={{ marginTop: 0 }}>No plan yet.</p>
+                  <button className="primary" onClick={() => setShowIntake(true)}>
+                    Tell me what you want to learn
+                  </button>
+                </>
+              )}
             </div>
           )}
           {turns.map((t, i) => (
@@ -213,6 +263,20 @@ export function LearnPage() {
         </div>
 
         <div className="composer">
+          {viewingSession ? (
+            <>
+              <span className="muted" style={{ flex: 1, alignSelf: "center" }}>
+                Viewing a past session. Resume it to continue.
+              </span>
+              <button className="primary" onClick={() => void resume(viewingSession)} disabled={!!busy}>
+                Resume this session
+              </button>
+              <button onClick={() => void load(learnerId).then(() => setViewingSession(null))}>
+                Back to current
+              </button>
+            </>
+          ) : (
+          <>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -227,6 +291,8 @@ export function LearnPage() {
             {turns.length === 0 ? "Start lesson" : "Re-explain"}
           </button>
           {turns.length > 0 && <button onClick={() => void reset()} disabled={!!busy}>Start over</button>}
+          </>
+          )}
         </div>
       </div>
 
@@ -237,6 +303,35 @@ export function LearnPage() {
             {learners.map((l) => <option key={l.id} value={l.id}>{l.email}</option>)}
           </select>
         </label>
+
+        <button style={{ width: "100%", marginBottom: 14 }} onClick={() => setShowIntake(true)}>
+          New goal &amp; assessment
+        </button>
+
+        {sessions.length > 0 && (
+          <section>
+            <h4>Sessions ({sessions.length})</h4>
+            <div className="session-list">
+              {sessions.map((s) => (
+                <button
+                  key={s.id}
+                  className={`session-item${
+                    (viewingSession ?? sessions.find((x) => x.open)?.id) === s.id ? " on" : ""
+                  }`}
+                  onClick={() => void openSession(s.id)}
+                >
+                  <span className="t">{s.title.replace(/^Now teaching: /, "")}</span>
+                  <span className="s">
+                    {new Date(s.startedAt).toLocaleString(undefined, {
+                      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                    })}
+                    {" · "}{s.turns} turns{s.open ? " · current" : ""}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         {override && (
           <div className="banner" style={{ fontSize: 12 }}>

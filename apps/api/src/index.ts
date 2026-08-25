@@ -10,7 +10,10 @@ import { metricsRoutes } from "./routes/metrics.js";
 import { teachRoutes } from "./routes/teach.js";
 import { lessonRoutes, progressRoutes } from "./routes/lesson.js";
 import { expandJobRoutes } from "./routes/expand-job.js";
-import { providerStatus } from "./context.js";
+import { settingsRoutes } from "./routes/settings.js";
+import { intakeRoutes } from "./routes/intake.js";
+import { roadmapRoutes } from "./routes/roadmap.js";
+import { providerStatus, refreshLlm } from "./context.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webDist = resolve(here, "../../web/dist");
@@ -26,6 +29,9 @@ await app.register(teachRoutes);
 await app.register(lessonRoutes);
 await app.register(progressRoutes);
 await app.register(expandJobRoutes);
+await app.register(settingsRoutes);
+await app.register(intakeRoutes);
+await app.register(roadmapRoutes);
 
 if (existsSync(join(webDist, "index.html"))) {
   await app.register(fastifyStatic, { root: webDist });
@@ -41,6 +47,7 @@ if (existsSync(join(webDist, "index.html"))) {
   }));
 }
 
+await refreshLlm();
 const status = providerStatus();
 app.log.info(
   { llm: status.llm ?? "none", embedding: status.embedding },

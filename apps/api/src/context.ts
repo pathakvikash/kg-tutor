@@ -1,16 +1,79 @@
 import { db } from "@kg/db";
 import { DeterministicEmbedding, LLMAdjudicator, embeddingFromEnv } from "@kg/graph";
-import { llmFromEnv, type LLMProvider } from "@kg/llm";
+import { AnthropicLLM, ClaudeCodeLLM, OpenAICompatibleLLM, llmFromEnv, type LLMProvider } from "@kg/llm";
 
 export const prisma = db();
 export const embedding = embeddingFromEnv();
 
 let llm: LLMProvider | null | undefined;
 
+export interface ModelSettings {
+  provider: "claude-code" | "anthropic" | "openai" | "none";
+  small: string;
+  strong: string;
+}
+
+const SETTING_KEY = "model";
+
+/**
+ * Runtime model selection. Reading it from env alone means changing model requires
+ * editing a file and restarting, which is not a thing anyone should have to do to try
+ * a different tier. A stored setting overrides env; env remains the default.
+ */
+export async function loadModelSettings(): Promise<ModelSettings> {
+  const row = await prisma.appSetting.findUnique({ where: { key: SETTING_KEY } });
+  if (row) return row.value as unknown as ModelSettings;
+  const fromEnv = llmFromEnv();
+  if (!fromEnv) return { provider: "none", small: "", strong: "" };
+  const [, models] = fromEnv.name.split(":");
+  const [small = "", strong = ""] = (models ?? "").split("/");
+  const provider = fromEnv.name.startsWith("claude-code")
+    ? "claude-code"
+    : fromEnv.name.startsWith("anthropic")
+      ? "anthropic"
+      : "openai";
+  return { provider, small, strong };
+}
+
+export async function saveModelSettings(next: ModelSettings): Promise<ModelSettings> {
+  await prisma.appSetting.upsert({
+    where: { key: SETTING_KEY },
+    create: { key: SETTING_KEY, value: next as never },
+    update: { value: next as never },
+  });
+  // Force a rebuild on the next call rather than restarting the process.
+  llm = undefined;
+  return next;
+}
+
+let settingsCache: ModelSettings | null = null;
+export async function refreshLlm(): Promise<void> {
+  settingsCache = await loadModelSettings();
+  llm = undefined;
+}
+
+function buildFromSettings(s: ModelSettings): LLMProvider | null {
+  const models = { small: s.small, strong: s.strong };
+  switch (s.provider) {
+    case "claude-code":
+      return new ClaudeCodeLLM({ models });
+    case "anthropic": {
+      const key = process.env.ANTHROPIC_API_KEY;
+      return key ? new AnthropicLLM({ apiKey: key, models }) : null;
+    }
+    case "openai": {
+      const key = process.env.OPENAI_API_KEY ?? process.env.LLM_API_KEY;
+      return key ? new OpenAICompatibleLLM({ apiKey: key, models }) : null;
+    }
+    default:
+      return null;
+  }
+}
+
 /** Null when no provider is configured — routes that need a model return 503, not a mock. */
 export function getLlm(): LLMProvider | null {
   if (llm === undefined) {
-    llm = llmFromEnv();
+    llm = settingsCache ? buildFromSettings(settingsCache) : llmFromEnv();
     if (llm) {
       // Every call is costed, so `cost per verified outcome` is measured rather than
       // assumed. Writes are fire-and-forget: a metrics failure must not fail a lesson.

@@ -590,6 +590,33 @@ model UsageRecord {
   @@index([sessionId])
 }
 
+/// The initial assessment in progress. (07)
+model IntakeSession {
+  id         String   @id @default(uuid())
+  learnerId  String
+  topicId    String
+  /// use | debug | build, gathered conversationally rather than from a dropdown.
+  depth      String   @default("use")
+  goalText   String?  @db.Text
+  /// Binary-search windows plus answers so far.
+  state      Json
+  /// asking | complete | abandoned
+  status     String   @default("asking")
+  currentConceptId String?
+  currentItemId    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([learnerId, status])
+}
+
+/// Runtime settings, so switching model does not mean editing env and restarting.
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
 /// Chat and lesson turns, so a reload does not discard the lesson. Also the record of
 /// what was actually said, which the transcript-derived evidence refers back to.
 model LessonTurn {

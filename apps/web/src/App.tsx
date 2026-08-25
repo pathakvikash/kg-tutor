@@ -5,6 +5,7 @@ import { LearnPage } from "./pages/LearnPage";
 import { LearnerPage } from "./pages/LearnerPage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { MetricsPage } from "./pages/MetricsPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 function ProviderBadge() {
   const [status, setStatus] = useState<{ llm: string | null; degraded: boolean } | null>(null);
@@ -12,12 +13,10 @@ function ProviderBadge() {
     fetch("/api/health").then((r) => r.json()).then(setStatus).catch(() => setStatus(null));
   }, []);
   if (!status) return null;
-  return status.llm ? (
-    <span className="badge" title={status.llm}>model: {status.llm.split(":")[0]}</span>
-  ) : (
-    <span className="badge warn" title="Expansion, grading and chat return 503 without a key">
-      no model key
-    </span>
+  return (
+    <NavLink to="/settings" className={status.llm ? "badge" : "badge warn"} title={status.llm ?? "no model configured"}>
+      {status.llm ? `model: ${status.llm.split(":")[0]}` : "no model — click to set"}
+    </NavLink>
   );
 }
 
@@ -33,6 +32,7 @@ export function App() {
             <NavLink to="/learner">Learner</NavLink>
             <NavLink to="/review">Review</NavLink>
             <NavLink to="/metrics">Metrics</NavLink>
+            <NavLink to="/settings">Settings</NavLink>
           </nav>
           <span className="spacer" />
           <ProviderBadge />
@@ -44,6 +44,7 @@ export function App() {
           <Route path="/learner" element={<LearnerPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/metrics" element={<MetricsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </div>
     </BrowserRouter>

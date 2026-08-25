@@ -1,28 +1,24 @@
 import { z } from "zod";
-import { completeJson, type LLMProvider } from "@kg/llm";
+import { arrayOrWrapped, completeJson, type LLMProvider } from "@kg/llm";
 import { DEFAULT_THRESHOLDS, type Thresholds } from "@kg/shared";
 import type { PrismaClient } from "@kg/db";
 import { consensus, normalizeKey, type ConsensusItem } from "./consensus.js";
 import { proposeConcept, proposeEdge, type ResolverDeps } from "./resolve.js";
 
-const conceptSchema = z.object({
-  concepts: z
-    .array(z.object({ name: z.string().min(1), sense: z.string().min(1) }))
-    .max(40),
-});
+const conceptSchema = arrayOrWrapped(
+  "concepts",
+  z.object({ name: z.string().min(1), sense: z.string().min(1) }),
+);
 
-const prereqSchema = z.object({
-  prerequisites: z
-    .array(
-      z.object({
-        name: z.string().min(1),
-        sense: z.string().min(1),
-        strength: z.enum(["hard", "soft"]),
-        failureMode: z.string().nullable(),
-      }),
-    )
-    .max(12),
-});
+const prereqSchema = arrayOrWrapped(
+  "prerequisites",
+  z.object({
+    name: z.string().min(1),
+    sense: z.string().min(1),
+    strength: z.enum(["hard", "soft"]),
+    failureMode: z.string().nullable(),
+  }),
+);
 
 const CONCEPT_SYSTEM = `You break a learning topic into its teachable concepts.
 
@@ -127,7 +123,7 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
   );
 
   const { survived: concepts, dropped: droppedConcepts } = consensus(
-    conceptSamples.map((s) => s.concepts),
+    conceptSamples.map((s) => (s.concepts ?? []).slice(0, 40)),
     { key: (c) => normalizeKey(c.name) },
   );
 
@@ -176,7 +172,7 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     const targetId = conceptIds.get(normalizeKey(c.value.name));
     if (!targetId) continue;
 
-    let prereqSamples: z.infer<typeof prereqSchema>[];
+    let prereqSamples: Record<string, { name: string; sense: string; strength: "hard" | "soft"; failureMode: string | null }[]>[];
     try {
       prereqSamples = await sample(
         opts.llm,
@@ -195,7 +191,7 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     }
 
     const { survived, dropped } = consensus(
-      prereqSamples.map((s) => s.prerequisites),
+      prereqSamples.map((s) => (s.prerequisites ?? []).slice(0, 12)),
       { key: (p) => normalizeKey(p.name) },
     );
     report.prerequisitesDroppedByConsensus.push(...dropped.map((d) => d.value.name));

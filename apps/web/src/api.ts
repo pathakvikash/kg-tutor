@@ -75,6 +75,24 @@ export const api = {
     post<any>("/api/expansions", { topicName, description }),
   expansion: (id: string) => get<any>(`/api/expansions/${id}`),
   expansions: () => get<any[]>("/api/expansions"),
+  startIntake: (payload: Record<string, unknown>) => post<any>("/api/intake/start", payload),
+  answerIntake: (id: string, answer: string) => post<any>(`/api/intake/${id}/answer`, { answer }),
+  sessions: (learnerId: string) => get<any[]>(`/api/learners/${learnerId}/sessions`),
+  sessionTranscript: (id: string) => get<any>(`/api/sessions/${id}/transcript`),
+  resumeSession: (id: string) => post<any>(`/api/sessions/${id}/resume`),
+  modelSettings: () => get<any>("/api/settings/model"),
+  setModel: (payload: Record<string, unknown>) =>
+    fetch("/api/settings/model", {
+      method: "PUT", headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(async (r) => {
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
+      return body;
+    }),
+  resolveGoal: (goal: string) => post<any>("/api/roadmap/resolve", { goal }),
+  createOutcome: (payload: Record<string, unknown>) => post<any>("/api/roadmap/outcome", payload),
+  roadmap: (learnerId: string) => get<any>(`/api/roadmap/${learnerId}`),
   acceptProposal: (id: string, failureMode: string) =>
     post<any>(`/api/review/proposals/${id}/accept`, { failureMode, reviewedBy: "reviewer" }),
   rejectProposal: (id: string) => post<any>(`/api/review/proposals/${id}/reject`, { reviewedBy: "reviewer" }),

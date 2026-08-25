@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 
 /**
  * Two tiers, per decision 17.
@@ -91,6 +91,21 @@ export function extractJson(text: string): unknown {
     }
   }
   throw new LLMError(`no parseable JSON in response: ${text.slice(0, 300)}`);
+}
+
+/**
+ * Accepts either `{key: [...]}` or a bare `[...]`.
+ *
+ * Models drop the wrapper object routinely, especially on the small tier, and a strict
+ * schema turns that into a hard failure of the whole call. The wrapper carries no
+ * information, so insisting on it buys nothing and costs a retry — or, worse, a 500
+ * halfway through a multi-step flow.
+ */
+export function arrayOrWrapped<T>(key: string, item: z.ZodType<T>) {
+  return z.preprocess(
+    (raw) => (Array.isArray(raw) ? { [key]: raw } : raw),
+    z.object({ [key]: z.array(item) } as Record<string, z.ZodType<T[]>>),
+  ) as unknown as z.ZodType<Record<string, T[]>>;
 }
 
 /**

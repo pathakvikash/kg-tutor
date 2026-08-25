@@ -71,3 +71,25 @@ describe("llmFromEnv", () => {
     expect(p?.name).toContain("anthropic");
   });
 });
+
+describe("arrayOrWrapped", () => {
+  it("accepts the wrapper object", async () => {
+    const { arrayOrWrapped } = await import("../src/provider.js");
+    const schema = arrayOrWrapped("items", z.object({ a: z.number() }));
+    expect(schema.parse({ items: [{ a: 1 }] })).toEqual({ items: [{ a: 1 }] });
+  });
+
+  it("accepts a bare array, which is what models actually return", async () => {
+    const { arrayOrWrapped } = await import("../src/provider.js");
+    const schema = arrayOrWrapped("items", z.object({ a: z.number() }));
+    // Strictness here bought nothing and cost a 500 halfway through an intake.
+    expect(schema.parse([{ a: 1 }, { a: 2 }])).toEqual({ items: [{ a: 1 }, { a: 2 }] });
+  });
+
+  it("still rejects genuinely wrong shapes", async () => {
+    const { arrayOrWrapped } = await import("../src/provider.js");
+    const schema = arrayOrWrapped("items", z.object({ a: z.number() }));
+    expect(() => schema.parse([{ a: "not a number" }])).toThrow();
+    expect(() => schema.parse({ wrong: [] })).toThrow();
+  });
+});
