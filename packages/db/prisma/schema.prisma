@@ -68,6 +68,13 @@ enum ResolverVerdict {
   distinct
 }
 
+/// Recorded rather than inferred from timestamps: graph reuse rate is the earliest
+/// falsification signal for the whole shared-graph premise. (14)
+enum ProposalOutcome {
+  created
+  bound
+}
+
 enum ReviewStatus {
   open
   accepted
@@ -214,6 +221,7 @@ model ConceptProposal {
   /// own yet, so this is what neighborhood overlap is measured against. (05)
   expectedNeighborIds String[]   @default([])
   verdict       ResolverVerdict?
+  outcome       ProposalOutcome?
   resolvedToId  String?
   /// Candidates considered, similarity scores, adjudicator reasoning.
   candidates    Json?
@@ -559,6 +567,26 @@ model Session {
   decisions PlannerDecision[]
 
   @@index([learnerId, startedAt])
+}
+
+/// One row per model call. Cost per verified outcome is half the case for the
+/// architecture, and it is cheap to measure. (17)
+model UsageRecord {
+  id            String   @id @default(uuid())
+  sessionId     String?
+  learnerId     String?
+  /// adjudicate | expand | grade | route_chat | explain | assess
+  purpose       String
+  tier          String
+  model         String
+  promptTokens  Int      @default(0)
+  outputTokens  Int      @default(0)
+  costUsd       Float    @default(0)
+  createdAt     DateTime @default(now())
+
+  @@index([purpose, createdAt])
+  @@index([learnerId, createdAt])
+  @@index([sessionId])
 }
 
 /// Every instructional choice is logged so "why this?" never needs a retrospective guess.

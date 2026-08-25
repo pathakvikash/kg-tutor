@@ -118,7 +118,7 @@ export async function proposeConcept(
     if (existing) {
       await tx.conceptProposal.update({
         where: { id: proposal.id },
-        data: { resolvedToId: existing.conceptId },
+        data: { resolvedToId: existing.conceptId, outcome: "bound" },
       });
       return {
         conceptId: existing.conceptId,
@@ -138,7 +138,7 @@ export async function proposeConcept(
       });
       await tx.conceptProposal.update({
         where: { id: proposal.id },
-        data: { resolvedToId: action.targetConceptId },
+        data: { resolvedToId: action.targetConceptId, outcome: "bound" },
       });
       return {
         conceptId: action.targetConceptId,
@@ -176,7 +176,7 @@ export async function proposeConcept(
 
     await tx.conceptProposal.update({
       where: { id: proposal.id },
-      data: { resolvedToId: concept.id },
+      data: { resolvedToId: concept.id, outcome: "created" },
     });
 
     return {

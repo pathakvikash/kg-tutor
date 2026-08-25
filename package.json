@@ -2,11 +2,13 @@
   "name": "kg-tutor",
   "private": true,
   "packageManager": "pnpm@9.0.0",
-  "engines": { "node": ">=20.0.0" },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "turbo run test --concurrency=1",
     "db:generate": "pnpm --filter @kg/db db:generate",
     "db:migrate": "pnpm --filter @kg/db db:migrate",
     "db:studio": "pnpm --filter @kg/db db:studio",
