@@ -71,6 +71,26 @@ export async function graphRoutes(app: FastifyInstance): Promise<void> {
     return c;
   });
 
+  /** A cheap stamp the UI polls, so a full graph fetch only happens on real change. */
+  app.get("/api/graph/version", async () => {
+    const [rows] = await prisma.$queryRawUnsafe<
+      { concepts: bigint; edges: bigint; latest: Date | null }[]
+    >(`
+      SELECT (SELECT COUNT(*) FROM "Concept" WHERE "deprecatedAt" IS NULL) AS concepts,
+             (SELECT COUNT(*) FROM "Edge" WHERE "retiredAt" IS NULL) AS edges,
+             GREATEST(
+               (SELECT MAX("updatedAt") FROM "Concept"),
+               (SELECT MAX("updatedAt") FROM "Edge"),
+               (SELECT MAX("updatedAt") FROM "LearnerConceptState")
+             ) AS latest
+    `);
+    return {
+      concepts: Number(rows?.concepts ?? 0),
+      edges: Number(rows?.edges ?? 0),
+      stamp: `${rows?.concepts}-${rows?.edges}-${rows?.latest?.toISOString() ?? ""}`,
+    };
+  });
+
   app.get("/api/topics", async () => {
     const topics = await prisma.topic.findMany({
       include: { _count: { select: { concepts: true, milestones: true } } },

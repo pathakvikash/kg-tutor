@@ -8,6 +8,7 @@ import { learnerRoutes } from "./routes/learner.js";
 import { reviewRoutes } from "./routes/review.js";
 import { metricsRoutes } from "./routes/metrics.js";
 import { teachRoutes } from "./routes/teach.js";
+import { lessonRoutes } from "./routes/lesson.js";
 import { providerStatus } from "./context.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -21,6 +22,7 @@ await app.register(learnerRoutes);
 await app.register(reviewRoutes);
 await app.register(metricsRoutes);
 await app.register(teachRoutes);
+await app.register(lessonRoutes);
 
 if (existsSync(join(webDist, "index.html"))) {
   await app.register(fastifyStatic, { root: webDist });

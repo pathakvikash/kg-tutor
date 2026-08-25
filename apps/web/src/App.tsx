@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { GraphPage } from "./pages/GraphPage";
+import { LearnPage } from "./pages/LearnPage";
 import { LearnerPage } from "./pages/LearnerPage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { MetricsPage } from "./pages/MetricsPage";
@@ -27,6 +28,7 @@ export function App() {
         <header className="topbar">
           <span className="brand">kg-tutor</span>
           <nav className="nav">
+            <NavLink to="/learn">Learn</NavLink>
             <NavLink to="/graph">Graph</NavLink>
             <NavLink to="/learner">Learner</NavLink>
             <NavLink to="/review">Review</NavLink>
@@ -36,7 +38,8 @@ export function App() {
           <ProviderBadge />
         </header>
         <Routes>
-          <Route path="/" element={<Navigate to="/graph" replace />} />
+          <Route path="/" element={<Navigate to="/learn" replace />} />
+          <Route path="/learn" element={<LearnPage />} />
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/learner" element={<LearnerPage />} />
           <Route path="/review" element={<ReviewPage />} />

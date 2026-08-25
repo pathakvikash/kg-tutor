@@ -29,12 +29,24 @@ pnpm --filter @kg/api start               # http://localhost:4000
 
 For UI work, `pnpm --filter @kg/web dev` runs Vite on **:5173** proxying `/api` to :4000.
 
-Four views: **Graph** (layered DAG, click a concept for its prerequisites and their
-failure modes), **Learner** (path, milestones, probes due, known concepts,
+Five views: **Learn** (the lesson: explanation, check, and chat that routes rather than
+teaches), **Graph** (two modes — *explore* clusters by connection to find hubs and gaps,
+*teach* layers by dependency to read the order; click any node or edge, focus a
+neighbourhood, hop through the breadcrumb), **Learner** (path, milestones, probes due, known concepts,
 misconceptions), **Review** (proposals, negative evidence, traversal-ordered queue),
 **Metrics** (reuse rate, wasted teaching, cost per verified outcome, arms).
 
-Expansion, grading and chat return **503 without a model key** — deliberately, since a
+**Backing it with Claude Code** (no API key needed, if the CLI is installed):
+
+```bash
+LLM_PROVIDER=claude-code pnpm --filter @kg/api start
+```
+
+Roughly 3–6 seconds per call, and each call pays for the CLI's own system prompt, so
+cost figures are real spend but are **not** comparable to an API-backed run. Fine for
+exercising the system; switch to a key before concluding anything about cost or latency.
+
+Expansion, grading and chat return **503 without any model configured** — deliberately, since a
 fabricated concept is worse than a clear failure. Set `ANTHROPIC_API_KEY` or
 `OPENAI_API_KEY` and restart.
 

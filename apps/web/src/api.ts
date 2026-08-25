@@ -59,6 +59,14 @@ export const api = {
   proposals: () => get<any[]>("/api/review/proposals"),
   negative: () => get<any>("/api/review/negative"),
   scan: () => post<any>("/api/review/scan"),
+  explain: (learnerId: string, conceptId: string) =>
+    post<any>("/api/lesson/explain", { learnerId, conceptId }),
+  check: (learnerId: string, conceptId: string, level = "functional") =>
+    post<any>("/api/lesson/check", { learnerId, conceptId, level }),
+  ask: (learnerId: string, conceptId: string, question: string) =>
+    post<any>("/api/lesson/ask", { learnerId, conceptId, question }),
+  attempt: (learnerId: string, payload: Record<string, unknown>) =>
+    post<any>(`/api/learners/${learnerId}/attempt`, payload),
   acceptProposal: (id: string, failureMode: string) =>
     post<any>(`/api/review/proposals/${id}/accept`, { failureMode, reviewedBy: "reviewer" }),
   rejectProposal: (id: string) => post<any>(`/api/review/proposals/${id}/reject`, { reviewedBy: "reviewer" }),

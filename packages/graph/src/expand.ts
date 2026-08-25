@@ -74,6 +74,8 @@ export interface ExpandReport {
   /** Below the consensus threshold — the measurable output of the filter. (15) */
   conceptsDroppedByConsensus: string[];
   prerequisitesDroppedByConsensus: string[];
+  /** Concepts written, but whose prerequisite pass failed. Reported, not hidden. */
+  conceptsWithFailedPrerequisites: string[];
 }
 
 async function sample<T>(
@@ -136,6 +138,7 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     edgesRejectedAsCycle: 0,
     conceptsDroppedByConsensus: droppedConcepts.map((d) => d.value.name),
     prerequisitesDroppedByConsensus: [],
+    conceptsWithFailedPrerequisites: [],
   };
 
   const conceptIds = new Map<string, string>();
@@ -157,15 +160,23 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     const targetId = conceptIds.get(normalizeKey(c.value.name));
     if (!targetId) continue;
 
-    const prereqSamples = await sample(
-      opts.llm,
-      k,
-      {
-        system: PREREQ_SYSTEM,
-        user: `Concept: ${c.value.name}\nMeaning: ${c.value.sense}\nStudied within: ${opts.topicName}`,
-      },
-      prereqSchema,
-    );
+    let prereqSamples: z.infer<typeof prereqSchema>[];
+    try {
+      prereqSamples = await sample(
+        opts.llm,
+        k,
+        {
+          system: PREREQ_SYSTEM,
+          user: `Concept: ${c.value.name}\nMeaning: ${c.value.sense}\nStudied within: ${opts.topicName}`,
+        },
+        prereqSchema,
+      );
+    } catch (err) {
+      // The concept itself is already written; losing its prerequisites is a partial
+      // result worth keeping, not a reason to discard the whole expansion.
+      report.conceptsWithFailedPrerequisites.push(c.value.name);
+      continue;
+    }
 
     const { survived, dropped } = consensus(
       prereqSamples.map((s) => s.prerequisites),

@@ -21,9 +21,23 @@ export interface CompletionRequest {
   maxTokens?: number;
 }
 
+/** What a call actually cost, when the provider can tell us. (17) */
+export interface UsageReport {
+  model: string;
+  tier: ModelTier;
+  promptTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  durationMs: number;
+}
+
+export type UsageSink = (usage: UsageReport, req: CompletionRequest) => void;
+
 export interface LLMProvider {
   readonly name: string;
   complete(req: CompletionRequest): Promise<string>;
+  /** Set by the host so cost-per-outcome is measured rather than assumed. */
+  onUsage?: UsageSink | undefined;
 }
 
 export class LLMError extends Error {

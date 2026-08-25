@@ -4,10 +4,12 @@ import type { Mastery } from "../api";
 export interface ConceptNodeData extends Record<string, unknown> {
   name: string;
   mastery: Mastery | null;
-  confidence: number | null;
   inferred: boolean;
-  topics: string[];
   unlocks: number;
+  degree: number;
+  mode: "explore" | "teach";
+  dimmed: boolean;
+  isFocus: boolean;
 }
 
 const COLOR: Record<Mastery, string> = {
@@ -19,19 +21,36 @@ const COLOR: Record<Mastery, string> = {
 
 export function ConceptNode({ data, selected }: NodeProps) {
   const d = data as ConceptNodeData;
+  const fill = d.mastery ? COLOR[d.mastery] : "var(--m-unknown)";
+
+  if (d.mode === "explore") {
+    // Size carries degree, so hubs read as hubs at a glance without a legend.
+    const r = Math.min(34, 15 + d.degree * 2.2);
+    return (
+      <div
+        className={`orb${selected ? " selected" : ""}${d.dimmed ? " dimmed" : ""}${d.isFocus ? " focus" : ""}`}
+        title={d.name}
+      >
+        <Handle type="target" position={Position.Top} style={{ opacity: 0 }} />
+        <span
+          className="orb-dot"
+          style={{ width: r, height: r, background: fill, borderColor: d.isFocus ? "var(--accent)" : undefined }}
+        />
+        <span className="orb-label">{d.name}</span>
+        <Handle type="source" position={Position.Bottom} style={{ opacity: 0 }} />
+      </div>
+    );
+  }
+
   return (
-    <div className={`node${selected ? " selected" : ""}`}>
+    <div className={`node${selected ? " selected" : ""}${d.dimmed ? " dimmed" : ""}`}>
       <Handle type="target" position={Position.Top} style={{ opacity: 0 }} />
       <div className="n-name">{d.name}</div>
       <div className="n-meta">
-        <span
-          className="mdot"
-          style={{ background: d.mastery ? COLOR[d.mastery] : "var(--m-unknown)" }}
-          title={d.mastery ? `${d.mastery}${d.inferred ? " (inferred)" : ""}` : "no learner selected"}
-        />
+        <span className="mdot" style={{ background: fill }} />
         <span>{d.mastery ?? "—"}</span>
-        {d.inferred && <span title="credited by backwards propagation, never demonstrated">inf</span>}
-        {d.unlocks > 0 && <span title="target concepts this unblocks">↓{d.unlocks}</span>}
+        {d.inferred && <span title="credited by inference, never demonstrated">inf</span>}
+        {d.unlocks > 0 && <span title="concepts this unblocks">↓{d.unlocks}</span>}
       </div>
       <Handle type="source" position={Position.Bottom} style={{ opacity: 0 }} />
     </div>

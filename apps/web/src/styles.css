@@ -199,3 +199,83 @@ tr:last-child td { border-bottom: none; }
 }
 .react-flow__controls-button:hover { background: var(--surface-alt); }
 .react-flow__attribution { display: none; }
+
+/* Lesson: a structured flow with chat alongside, not a bare chatbot. (policy B) */
+.lesson { display: flex; min-height: 0; }
+.lesson-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.chat { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 12px; }
+.turn { display: flex; flex-direction: column; max-width: 720px; }
+.turn.learner { align-self: flex-end; align-items: flex-end; }
+.turn .bubble {
+  padding: 10px 14px; border-radius: 8px; white-space: pre-wrap;
+  background: var(--surface); border: 1px solid var(--rule); line-height: 1.6;
+}
+.turn.learner .bubble { background: var(--accent-bg); border-color: var(--accent); }
+.turn.system .bubble {
+  background: transparent; border: none; padding: 4px 0;
+  font-family: "Zilla Slab", Georgia, serif; font-size: 16px; font-weight: 600;
+  border-bottom: 1px solid var(--rule); border-radius: 0; padding-bottom: 8px;
+}
+.turn.question .bubble { border-color: var(--structure); border-left-width: 3px; }
+.q-label {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--structure); margin-bottom: 4px;
+}
+/* Diagnostics are shown, not hidden — what the system believes should be inspectable. */
+.turn.note .bubble {
+  background: transparent; border: none; padding: 2px 0;
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-soft);
+}
+.composer {
+  display: flex; gap: 8px; padding: 12px 24px; flex: none;
+  border-top: 1px solid var(--rule); background: var(--surface);
+}
+.composer input { flex: 1; }
+
+/* Explore mode: an orb whose size is its degree, so hubs read without a legend. */
+.orb { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 130px; }
+.orb-dot {
+  border-radius: 50%; border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--rule-strong); transition: box-shadow 120ms;
+}
+.orb-label {
+  font-size: 11px; line-height: 1.25; text-align: center; color: var(--ink);
+  max-width: 130px; text-shadow: 0 1px 2px var(--ground), 0 -1px 2px var(--ground);
+}
+.orb.selected .orb-dot, .orb.focus .orb-dot { box-shadow: 0 0 0 3px var(--accent); }
+.orb.dimmed, .node.dimmed { opacity: 0.18; }
+.orb:hover .orb-dot { box-shadow: 0 0 0 2px var(--structure); }
+
+.hop-path { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12px; }
+.hop-path button {
+  border: none; background: var(--surface-alt); padding: 3px 8px; border-radius: 3px;
+  font-size: 11.5px;
+}
+.hop-path .sep { color: var(--ink-soft); }
+
+.live {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-soft);
+}
+.live .pulse {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--m-functional);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .live .pulse { animation: none; } }
+
+.edge-detail { border-left: 3px solid var(--structure); padding-left: 10px; }
+.chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.chip {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.04em;
+  padding: 2px 6px; border-radius: 3px; background: var(--surface-alt); color: var(--ink-soft);
+  border: 1px solid var(--rule);
+}
+.chip.hard { border-color: var(--structure); color: var(--structure); }
+.chip.prov { border-color: var(--accent); color: var(--accent); }
+
+button.linkish {
+  border: none; background: none; padding: 0; color: var(--accent);
+  font: inherit; font-weight: 600; cursor: pointer; text-align: left;
+}
+button.linkish:hover { text-decoration: underline; }

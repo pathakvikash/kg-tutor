@@ -1,3 +1,4 @@
+import { ClaudeCodeLLM } from "./claude-code.js";
 import { LLMError, type CompletionRequest, type LLMProvider, type ModelTier } from "./provider.js";
 
 export interface TierModels {
@@ -112,6 +113,22 @@ const OPENAI_DEFAULTS: TierModels = { small: "gpt-4o-mini", strong: "gpt-4o" };
  * plausible-looking graph content. A fabricated concept is worse than a clear failure.
  */
 export function llmFromEnv(env: NodeJS.ProcessEnv = process.env): LLMProvider | null {
+  // Explicit opt-in: a developer machine with Claude Code installed can back the whole
+  // system with no API key. See the caveats on ClaudeCodeLLM before trusting any
+  // latency or cost number produced this way.
+  if (env.LLM_PROVIDER === "claude-code") {
+    return new ClaudeCodeLLM({
+      ...(env.LLM_MODEL_SMALL || env.LLM_MODEL_STRONG
+        ? {
+            models: {
+              small: env.LLM_MODEL_SMALL ?? "haiku",
+              strong: env.LLM_MODEL_STRONG ?? "sonnet",
+            },
+          }
+        : {}),
+    });
+  }
+
   const models = (d: TierModels): TierModels => ({
     small: env.LLM_MODEL_SMALL ?? d.small,
     strong: env.LLM_MODEL_STRONG ?? d.strong,
