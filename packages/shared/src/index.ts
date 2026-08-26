@@ -5,3 +5,4 @@ export * from "./failure-mode.js";
 export * from "./resolver.js";
 export * from "./evidence.js";
 export * from "./milestone.js";
+export * from "./concept-name.js";

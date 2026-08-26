@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { arrayOrWrapped, completeJson, type LLMProvider } from "@kg/llm";
-import { DEFAULT_THRESHOLDS, type Thresholds } from "@kg/shared";
+import { DEFAULT_THRESHOLDS, checkConceptName, type Thresholds } from "@kg/shared";
 import type { PrismaClient } from "@kg/db";
 import { consensus, normalizeKey, type ConsensusItem } from "./consensus.js";
 import { proposeConcept, proposeEdge, type ResolverDeps } from "./resolve.js";
@@ -47,6 +47,12 @@ Rules:
   they actually get wrong. If you cannot name one, the prerequisite is "soft".
 - Prefer few and correct over many and plausible. Three real prerequisites beat eight
   loosely-related ones.
+- "name" is the NAME OF ONE CONCEPT, not a description of what the learner needs. A
+  short noun phrase, at most a few words. Never join two things: "Hash Functions and
+  Hash Tables" is two concepts and belongs as two entries, "Recursion or iterative
+  traversal" is two, "Graph terminology (vertices, edges, weighted)" is a syllabus
+  heading. Never end in "concepts", "basics", "fundamentals" or "terminology" — name the
+  thing itself. Put the description in "sense", which is what it is for.
 
 Respond with JSON: {"prerequisites": [{"name","sense","strength","failureMode"}]}`;
 
@@ -81,6 +87,8 @@ export interface ExpandReport {
   prerequisitesDroppedByConsensus: string[];
   /** Concepts written, but whose prerequisite pass failed. Reported, not hidden. */
   conceptsWithFailedPrerequisites: string[];
+  /** Names that did not denote one concept, and what was proposed instead. (04) */
+  namesRejected: { name: string; reason: string; splitInto: string[] }[];
   /** Survivors of the consensus filter, with how many samples named each. */
   conceptsFound: { name: string; votes: number }[];
   /** An append-only activity log the UI renders live. */
@@ -147,6 +155,7 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     edgesRejectedAsCycle: 0,
     conceptsDroppedByConsensus: droppedConcepts.map((d) => d.value.name),
     prerequisitesDroppedByConsensus: [],
+    namesRejected: [],
     conceptsWithFailedPrerequisites: [],
     conceptsFound: [],
     events: droppedConcepts.map((d) => ({
@@ -223,6 +232,47 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
 
     for (const p of survived) {
       const best = bestVariant(p);
+
+      /**
+       * A compound name is not a concept, and one written here is permanent.
+       *
+       * These arrive as invented prerequisite names — the model describing what a
+       * learner needs rather than naming a node — and every downstream mechanism then
+       * has nothing coherent to work with: an item cannot ask for a demonstration of
+       * "Arrays or Linked Lists", a mastery level cannot say whether they have it, and
+       * it can never merge with either half, so the graph keeps a permanent
+       * near-duplicate of concepts it already holds.
+       *
+       * Split rather than drop when the halves are real, which they usually are: this
+       * arrived as "Hash Functions and Hash Tables" while both already existed.
+       */
+      const nameCheck = checkConceptName(best.name);
+      if (!nameCheck.ok) {
+        const halves = (nameCheck.parts ?? []).filter((h) => checkConceptName(h).ok);
+        report.namesRejected.push({
+          name: best.name, reason: nameCheck.reason ?? "unknown", splitInto: halves,
+        });
+        report.events.push({
+          kind: "name_rejected",
+          name: best.name,
+          detail: halves.length > 0
+            ? `not one concept (${nameCheck.reason}) — proposing ${halves.join(" + ")}`
+            : `not one concept (${nameCheck.reason}) — dropped`,
+        });
+        for (const half of halves) {
+          const split = await proposeConcept(opts.resolver, {
+            name: half,
+            sense: best.sense,
+            context: `prerequisite of "${c.value.name}"`,
+            expectedNeighborIds: [targetId, ...conceptIds.values()],
+          });
+          if (split.outcome === "created") report.conceptsCreated++;
+          else report.conceptsBound++;
+          await link(opts.prisma, topic.id, split.conceptId, false);
+        }
+        continue;
+      }
+
       const pre = await proposeConcept(opts.resolver, {
         name: best.name,
         sense: best.sense,
