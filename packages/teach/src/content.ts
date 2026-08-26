@@ -35,6 +35,13 @@ transfer items, a fluent paraphrase promotes a learner who cannot use the concep
 mustDemonstrate lists what a correct answer has to show. Write it as observable claims,
 not as a model answer.
 
+Write the item in the setting the concept is actually studied in. A concept reached
+through "Asynchronous JavaScript" gets JavaScript, not Python — a learner working through
+JS who is handed a Python traceback has to translate before they can even start, and the
+item stops measuring the concept and starts measuring their Python. When the concept is
+genuinely language-neutral and no setting is given, prefer pseudocode or prose over
+picking a language at random.
+
 If the question is about a snippet, put the snippet in the "code" field with its
 language in "codeLanguage" — NOT inside "prompt". Code embedded in prose loses its line
 breaks when rendered and arrives as one unreadable line. "prompt" is then just the
@@ -60,6 +67,13 @@ export async function generateItems(
     where: { dstId: conceptId, type: "prerequisite_of", strength: "hard", retiredAt: null },
     include: { src: true },
   });
+  // Items are shared across learners, so this cannot come from the learner's goal. It
+  // comes from the topics the concept belongs to, which are shared too — "functions"
+  // under "Asynchronous JavaScript" is a JavaScript item for everyone who reaches it.
+  const topics = await prisma.topicConcept.findMany({
+    where: { conceptId },
+    include: { topic: true },
+  });
 
   const out = await completeJson(
     llm,
@@ -68,6 +82,9 @@ export async function generateItems(
       user: [
         `Concept: ${concept.canonicalName}`,
         `Meaning: ${concept.sense}`,
+        topics.length > 0
+          ? `Studied as part of: ${topics.map((t) => t.topic.name).join(", ")}`
+          : "",
         prereqs.length > 0
           ? `Known failure modes to probe for:\n${prereqs
               .filter((p) => p.failureMode)

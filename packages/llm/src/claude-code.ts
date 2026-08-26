@@ -47,16 +47,32 @@ interface CliResult {
  * conclusion about cost, latency, or throughput.
  */
 /**
- * Claude Code registers its full tool set regardless of the system prompt, so the model
- * can decide to read a file or run a command mid-answer. For text generation that is
- * never wanted and actively harmful: the tool call consumes the single allowed turn and
- * the run fails with stop_reason "tool_use", after thousands of tokens spent deciding
- * to do it. Disabling them cut thinking from ~6,600 tokens to ~400 on a grading call.
+ * Flags that strip the CLI down to text generation.
+ *
+ * This started as a blocklist of built-in tool names, which was close to useless: asking
+ * the CLI to enumerate what it could still reach returned Artifact, Workflow, CronCreate,
+ * SendMessage, the whole Task family, and every MCP server configured on the machine —
+ * including one that can provision and destroy infrastructure. A tutoring prompt must not
+ * have `destroy_cluster` within reach, and a blocklist can only ever exclude the names
+ * someone thought to write down.
+ *
+ * So it is an allowlist of nothing instead. `--tools ""` drops every built-in,
+ * `--strict-mcp-config` with no `--mcp-config` drops every MCP server, and
+ * `--setting-sources ""` stops user or project settings adding any back.
+ *
+ * Measured on one identical call, before and after: 20,910 input tokens to 258, 21.9s to
+ * 4.7s, $0.0227 to $0.0023. Almost every call this system makes was paying twenty
+ * thousand tokens of tool definitions it was never allowed to use.
  */
-const NO_TOOLS = [
-  "Bash", "Read", "Write", "Edit", "Glob", "Grep",
-  "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit",
-].join(",");
+const TEXT_ONLY = [
+  "--tools", "",
+  "--strict-mcp-config",
+  "--setting-sources", "",
+  // Secondary, and deliberately kept after the line that does the real work: if a future
+  // CLI changes what `--tools ""` means, this still catches the tools that can write.
+  "--disallowed-tools",
+  "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite,NotebookEdit",
+];
 
 export class ClaudeCodeLLM implements LLMProvider {
   readonly name: string;
@@ -126,7 +142,7 @@ export class ClaudeCodeLLM implements LLMProvider {
         "--include-partial-messages",
         "--verbose",
         "--max-turns", "1",
-        "--disallowed-tools", NO_TOOLS,
+        ...TEXT_ONLY,
       ],
       { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env } },
     );
@@ -228,8 +244,7 @@ export class ClaudeCodeLLM implements LLMProvider {
         // One response. No tool loop, no follow-up turns.
         "--max-turns",
         "1",
-        "--disallowed-tools",
-        NO_TOOLS,
+        ...TEXT_ONLY,
       ];
 
       const child = spawn(this.bin, args, {
@@ -291,7 +306,7 @@ export class ClaudeCodeLLM implements LLMProvider {
           reject(
             new LLMError(
               "claude CLI stopped to call a tool. Text generation should never do that — " +
-                "check that --disallowed-tools is still being passed.",
+                "check that the TEXT_ONLY flags are still reaching the subprocess.",
             ),
           );
           return;

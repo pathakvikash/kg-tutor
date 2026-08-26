@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { resolveGoal, orderTargetSet, buildPlan, describeDiff, loadMastery } from "../src/index.js";
+import { resolveGoal, orderTargetSet, buildPlan, describeDiff, loadMastery, reconcilePlan } from "../src/index.js";
 import { prisma, reset, concept, hard, contains, setMastery } from "./helpers.js";
 import type { GoalDepth, MasteryLevel } from "@kg/shared";
 
@@ -220,5 +220,78 @@ describe("describeDiff", () => {
     expect(describeDiff(["a", "b"], ["a", "c"])).toBe("1 concept added; 1 no longer needed");
     expect(describeDiff(["a", "b"], ["a", "b"])).toBe("no change");
     expect(describeDiff(["a", "b"], ["b", "a"])).toBe("reordered; no concepts added or removed");
+  });
+});
+
+describe("reconcilePlan", () => {
+  /**
+   * The bug this exists for: a learner finished an intake that established mastery for
+   * four of six concepts, and the roadmap header read "0 of 6" directly above rows that
+   * each said "done". Completion was only ever written at the end of a lesson, so
+   * mastery that arrived any other way never advanced the plan.
+   */
+  it("completes steps whose mastery arrived without a lesson", async () => {
+    const s = await scenario();
+    const plan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
+    expect(plan.steps.length).toBeGreaterThan(1);
+
+    const step = await prisma.planStep.findFirstOrThrow({
+      where: { planId: plan.planId }, orderBy: { position: "asc" },
+    });
+    await setMastery(s.learner.id, step.conceptId, "solid");
+
+    const { steps } = await reconcilePlan(prisma, s.learner.id);
+    expect(steps).toContain(step.conceptId);
+    const after = await prisma.planStep.findUniqueOrThrow({ where: { id: step.id } });
+    expect(after.completedAt).not.toBeNull();
+  });
+
+  it("leaves a step alone when mastery is below what it requires", async () => {
+    const s = await scenario();
+    const plan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
+    const step = await prisma.planStep.findFirstOrThrow({
+      where: { planId: plan.planId, requiredLevel: { not: "familiar" } },
+      orderBy: { position: "asc" },
+    });
+    await setMastery(s.learner.id, step.conceptId, "familiar");
+
+    const { steps } = await reconcilePlan(prisma, s.learner.id);
+    expect(steps).not.toContain(step.conceptId);
+  });
+
+  it("is idempotent, so reconciling on every read cannot double-complete", async () => {
+    const s = await scenario();
+    const plan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
+    const step = await prisma.planStep.findFirstOrThrow({
+      where: { planId: plan.planId }, orderBy: { position: "asc" },
+    });
+    await setMastery(s.learner.id, step.conceptId, "solid");
+
+    const first = await reconcilePlan(prisma, s.learner.id);
+    const stamped = await prisma.planStep.findUniqueOrThrow({ where: { id: step.id } });
+    const second = await reconcilePlan(prisma, s.learner.id);
+
+    expect(second.steps).toEqual([]);
+    // The completion time is when it was earned, not when it was last looked at.
+    const again = await prisma.planStep.findUniqueOrThrow({ where: { id: step.id } });
+    expect(again.completedAt).toEqual(stamped.completedAt);
+    expect(first.steps).toContain(step.conceptId);
+  });
+
+  /** An empty milestone is malformed. Satisfying it would award an unearned claim. */
+  it("never completes a milestone that claims no concepts", async () => {
+    const s = await scenario();
+    const plan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
+    const template = await prisma.milestoneTemplate.create({
+      data: { topicId: s.topic.id, claim: "You can do a thing nobody specified", ordering: 99 },
+    });
+    const instance = await prisma.milestoneInstance.create({
+      data: { planId: plan.planId, templateId: template.id, position: 99 },
+    });
+
+    const { milestones } = await reconcilePlan(prisma, s.learner.id);
+    expect(milestones).not.toContain(template.claim);
+    const after = await prisma.milestoneInstance.findUniqueOrThrow({ where: { id: instance.id } });
+    expect(after.completedAt).toBeNull();
   });
 });

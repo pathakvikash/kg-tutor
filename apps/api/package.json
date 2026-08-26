@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "seed": "tsx src/seed.ts",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "repair:item-language": "tsx src/repair-item-language.ts"
   },
   "dependencies": {
     "@fastify/static": "^7.0.4",

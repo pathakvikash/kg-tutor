@@ -35,6 +35,31 @@ async function saveTurn(
   });
 }
 
+/**
+ * The last few turns of the open session, formatted for a prompt.
+ *
+ * Every CLI call is a brand-new process with no memory of the previous one, so the model
+ * knows only what this string tells it. Turns were being saved and shown in the UI but
+ * never sent back, which meant the transcript on screen was a transcript the tutor could
+ * not read: "give me an example of that" had no referent, and the second question in a
+ * conversation was answered as if it were the first.
+ *
+ * Six turns, oldest first. Enough for "that" and "the second one" to resolve, short
+ * enough that it stays a follow-up rather than a re-explanation of everything so far.
+ */
+async function recentTurns(sessionId: string): Promise<string> {
+  const turns = await prisma.lessonTurn.findMany({
+    where: { sessionId, role: { in: ["learner", "tutor"] } },
+    orderBy: { createdAt: "desc" },
+    take: 6,
+  });
+  if (turns.length === 0) return "";
+  return turns
+    .reverse()
+    .map((t) => `${t.role === "learner" ? "They asked" : "You answered"}: ${t.text.slice(0, 600)}`)
+    .join("\n");
+}
+
 const NO_MODEL = {
   error: "no model configured",
   detail: "Set LLM_PROVIDER=claude-code, or ANTHROPIC_API_KEY / OPENAI_API_KEY, then restart.",
@@ -124,6 +149,11 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     });
     const learner = await prisma.learner.findUniqueOrThrow({ where: { id: body.data.learnerId } });
 
+    const explainTopics = await prisma.topicConcept.findMany({
+      where: { conceptId: concept.id },
+      include: { topic: true },
+    });
+
     const out = await completeJson(
       llm,
       {
@@ -131,6 +161,9 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
         user: [
           `Concept: ${concept.canonicalName}`,
           `Meaning: ${concept.sense}`,
+          explainTopics.length > 0
+            ? `Studied as part of: ${explainTopics.map((t) => t.topic.name).join(", ")}`
+            : "",
           learner.background ? `Learner background: ${learner.background}` : "",
           known.length > 0 ? `Already knows: ${known.map((k) => k.canonicalName).join(", ")}` : "",
           misconceptions.length > 0
@@ -298,9 +331,18 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
        * yet — a tangential answer runs a little longer than ideal, which is a better
        * failure than twenty seconds of blank screen.
        */
+      // Two local queries ahead of a multi-second model call. The stream still starts
+      // first relative to routing, which is where the latency actually was.
+      const sessionId = await openSession(body.data.learnerId);
+      const history = await recentTurns(sessionId);
+
       const answer$ = startStream(llm, {
         system: ANSWER_SYSTEM,
-        user: `They are learning "${concept.canonicalName}" (${concept.sense}).\nThey asked: ${body.data.question}`,
+        user: [
+          `They are learning "${concept.canonicalName}" (${concept.sense}).`,
+          history ? `Earlier in this conversation:\n${history}` : "",
+          `They asked: ${body.data.question}`,
+        ].filter(Boolean).join("\n"),
         tier: "small",
         temperature: 0.4,
       });
@@ -311,7 +353,6 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
         prerequisiteNames: prereqs.map((p) => ({ conceptId: p.srcId, name: p.src.canonicalName })),
       });
 
-      const sessionId = await openSession(body.data.learnerId);
       await saveTurn(sessionId, body.data.learnerId, concept.id, "learner", body.data.question);
 
       if (isActionable(route.intent)) {
@@ -385,6 +426,9 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
       include: { src: true },
     });
 
+    const sessionId = await openSession(body.data.learnerId);
+    const history = await recentTurns(sessionId);
+
     const route = await routeChatQuestion(llm, {
       question: body.data.question,
       currentConceptName: concept.canonicalName,
@@ -395,7 +439,6 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     // paragraph about how one might learn React, when the system can build and assess
     // an actual path through it, is the worst available response.
     if (isActionable(route.intent)) {
-      const sessionId = await openSession(body.data.learnerId);
       await saveTurn(sessionId, body.data.learnerId, body.data.conceptId, "learner", body.data.question);
       return {
         sessionId,
@@ -427,12 +470,15 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
         route.intent === "tangential"
           ? "Answer in two sentences. The learner is mid-lesson on something else, so be brief and offer to come back to this properly later."
           : "Answer the learner's question directly and concretely. Do not restate the whole lesson.",
-      user: `They are learning "${concept.canonicalName}" (${concept.sense}).\nThey asked: ${body.data.question}`,
+      user: [
+        `They are learning "${concept.canonicalName}" (${concept.sense}).`,
+        history ? `Earlier in this conversation:\n${history}` : "",
+        `They asked: ${body.data.question}`,
+      ].filter(Boolean).join("\n"),
       tier: "small",
       temperature: 0.4,
     });
 
-    const sessionId = await openSession(body.data.learnerId);
     await saveTurn(sessionId, body.data.learnerId, body.data.conceptId, "learner", body.data.question);
     await saveTurn(sessionId, body.data.learnerId, body.data.conceptId, "tutor", answer, {
       intent: route.intent,
@@ -483,26 +529,10 @@ export async function progressRoutes(app: import("fastify").FastifyInstance): Pr
       });
     }
 
-    await prisma.planStep.update({ where: { id: step.id }, data: { completedAt: new Date() } });
-
-    // A milestone completes when every concept it claims is at its required level.
-    const mastery = new Map(
-      (await prisma.learnerConceptState.findMany({ where: { learnerId: id } })).map((s) => [
-        s.conceptId, s.mastery,
-      ]),
-    );
-    const completedMilestones: string[] = [];
-    for (const m of plan.milestones) {
-      if (m.completedAt) continue;
-      const satisfied = m.template.concepts.every((c) =>
-        atLeast(mastery.get(c.conceptId) ?? "unknown", c.requiredLevel),
-      );
-      if (!satisfied) continue;
-      await prisma.milestoneInstance.update({
-        where: { id: m.id }, data: { completedAt: new Date() },
-      });
-      completedMilestones.push(m.template.claim);
-    }
+    // One reconciler, so finishing a lesson and finishing an intake advance the plan
+    // the same way. Teaching this concept may also have satisfied others.
+    const { reconcilePlan } = await import("@kg/planner");
+    const { milestones: completedMilestones } = await reconcilePlan(prisma, id);
 
     return { completed: conceptId, completedMilestones };
   });

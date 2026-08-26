@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { completeJson } from "@kg/llm";
+import { reconcilePlan } from "@kg/planner";
+import { atLeast } from "@kg/shared";
 import { prisma, getLlm } from "../context.js";
 
 const resolveSchema = z.object({
@@ -106,6 +108,9 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
    */
   app.get("/api/roadmap/:learnerId", async (req, reply) => {
     const { learnerId } = req.params as { learnerId: string };
+    // Mastery reached outside a lesson still completes a step. Reconciling on read is
+    // what stops the header disagreeing with the rows directly beneath it.
+    await reconcilePlan(prisma, learnerId);
     const plan = await prisma.plan.findFirst({
       where: { learnerId, supersededAt: null },
       include: {
@@ -127,7 +132,10 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
       goal: { topic: plan.goal.topic.name, kind: plan.goal.topic.kind, depth: plan.goal.depth },
       version: plan.version,
       totalConcepts: plan.steps.length,
-      completed: plan.steps.filter((s) => s.completedAt).length,
+      /** What the learner knows, which is what a progress bar is claiming to show. */
+      completed: plan.steps.filter((s) => atLeast(mastery.get(s.conceptId) ?? "unknown", s.requiredLevel)).length,
+      /** Steps that were actually taught, which is a different and smaller number. */
+      taught: plan.steps.filter((s) => s.completedAt).length,
       milestones: plan.milestones.map((m) => ({
         claim: m.template.claim,
         position: m.position,
@@ -147,7 +155,7 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
         position: s.position,
         requiredLevel: s.requiredLevel,
         currentMastery: mastery.get(s.conceptId) ?? "unknown",
-        completed: s.completedAt !== null,
+        completed: atLeast(mastery.get(s.conceptId) ?? "unknown", s.requiredLevel),
         unlockCount: s.unlockCount,
       })),
     };

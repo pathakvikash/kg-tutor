@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { buildPlan } from "@kg/planner";
+import { buildPlan, reconcilePlan } from "@kg/planner";
 import {
   applyAnswer, buildChains, derivedBeliefs, gradeResponse, initialState,
   loadTopicGraph, nextProbe, recordEvidence, selectItem, generateItems,
@@ -93,6 +93,9 @@ async function finish(intakeId: string): Promise<unknown> {
     },
   });
   const plan = await buildPlan({ prisma, learnerId: intake.learnerId, goalId: goal.id });
+  // The intake just established mastery for concepts nobody will teach. Without this the
+  // fresh plan opens at 0% with half its steps already satisfied.
+  await reconcilePlan(prisma, intake.learnerId);
 
   await prisma.intakeSession.update({
     where: { id: intakeId },

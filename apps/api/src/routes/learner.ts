@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { buildPlan, loadMastery } from "@kg/planner";
+import { buildPlan, loadMastery, reconcilePlan } from "@kg/planner";
+import { atLeast } from "@kg/shared";
 import { selectProbes, assignVariant } from "@kg/teach";
 import { prisma } from "../context.js";
 
@@ -109,6 +110,7 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
   /** The learner's path: plan steps, milestones and the probes due before the next step. */
   app.get("/api/learners/:id/plan", async (req, reply) => {
     const { id } = req.params as { id: string };
+    await reconcilePlan(prisma, id);
     const plan = await prisma.plan.findFirst({
       where: { learnerId: id, supersededAt: null },
       include: {
@@ -121,7 +123,11 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
     if (!plan) return reply.code(404).send({ error: "no active plan" });
 
     const mastery = await loadMastery(prisma, id);
-    const nextStep = plan.steps.find((s) => s.completedAt === null);
+    // Not "the first step nobody marked done" — that offered a lesson on a concept the
+    // intake had already established, which is the wasted teaching the metrics measure.
+    const nextStep = plan.steps.find(
+      (s) => !atLeast(mastery.get(s.conceptId) ?? "unknown", s.requiredLevel),
+    );
 
     const probes = nextStep
       ? await selectProbes({
@@ -147,7 +153,7 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
         committed: s.committed,
         unlockCount: s.unlockCount,
         currentMastery: mastery.get(s.conceptId) ?? "unknown",
-        completed: s.completedAt !== null,
+        completed: atLeast(mastery.get(s.conceptId) ?? "unknown", s.requiredLevel),
       })),
       milestones: plan.milestones.map((m) => ({
         id: m.id,
