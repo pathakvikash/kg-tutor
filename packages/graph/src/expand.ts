@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { arrayOrWrapped, completeJson, type LLMProvider } from "@kg/llm";
 import { DEFAULT_THRESHOLDS, checkConceptName, type Thresholds } from "@kg/shared";
+import { generateMilestones } from "./milestones.js";
 import type { PrismaClient } from "@kg/db";
 import { consensus, normalizeKey, type ConsensusItem } from "./consensus.js";
 import { proposeConcept, proposeEdge, type ResolverDeps } from "./resolve.js";
@@ -89,6 +90,9 @@ export interface ExpandReport {
   conceptsWithFailedPrerequisites: string[];
   /** Names that did not denote one concept, and what was proposed instead. (04) */
   namesRejected: { name: string; reason: string; splitInto: string[] }[];
+  /** Capability claims written for the topic, and any rejected. (09) */
+  milestones: { claim: string; concepts: string[] }[];
+  milestonesRejected: { claim: string; reason: string }[];
   /** Survivors of the consensus filter, with how many samples named each. */
   conceptsFound: { name: string; votes: number }[];
   /** An append-only activity log the UI renders live. */
@@ -156,6 +160,8 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     conceptsDroppedByConsensus: droppedConcepts.map((d) => d.value.name),
     prerequisitesDroppedByConsensus: [],
     namesRejected: [],
+    milestones: [],
+    milestonesRejected: [],
     conceptsWithFailedPrerequisites: [],
     conceptsFound: [],
     events: droppedConcepts.map((d) => ({
@@ -316,6 +322,38 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
       // Keep the tail bounded; the UI only shows the most recent activity anyway.
       if (report.events.length > 200) report.events.splice(0, report.events.length - 200);
     }
+  }
+
+  /**
+   * Last, because a capability claim needs the concepts to exist first.
+   *
+   * Without this a self-expanded topic has no milestones at all, and the roadmap
+   * degrades to a flat list of everything — 37 entries for Data Structures. The grouping
+   * is what turns a wall into a sequence of things worth finishing.
+   */
+  // Reported, not fatal. The concepts and edges are already written and are the
+  // expensive part; losing all of that because the last call failed would be absurd,
+  // and the backfill script exists to finish the job later.
+  try {
+    const milestones = await generateMilestones(opts.prisma, opts.llm, topic.id);
+    report.milestones = milestones.written;
+    report.milestonesRejected = milestones.rejected;
+    for (const m of milestones.written) {
+      report.events.push({
+        kind: "milestone_written",
+        name: m.claim,
+        detail: `${m.concepts.length} concepts: ${m.concepts.join(", ")}`,
+      });
+    }
+    for (const m of milestones.rejected) {
+      report.events.push({ kind: "milestone_rejected", name: m.claim, detail: m.reason });
+    }
+  } catch (err) {
+    report.events.push({
+      kind: "milestones_failed",
+      name: topic.name,
+      detail: `${err instanceof Error ? err.message : String(err)} — run backfill:milestones`,
+    });
   }
 
   return report;

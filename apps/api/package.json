@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
     "repair:item-language": "tsx src/repair-item-language.ts",
-    "repair:compound-concepts": "tsx src/repair-compound-concepts.ts"
+    "repair:compound-concepts": "tsx src/repair-compound-concepts.ts",
+    "backfill:milestones": "tsx src/backfill-milestones.ts"
   },
   "dependencies": {
     "@fastify/static": "^7.0.4",

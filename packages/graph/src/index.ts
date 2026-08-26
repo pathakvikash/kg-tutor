@@ -6,3 +6,4 @@ export * from "./consensus.js";
 export * from "./expand.js";
 export * from "./resolve.js";
 export * from "./split.js";
+export * from "./milestones.js";
