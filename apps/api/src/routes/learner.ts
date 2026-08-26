@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { activePlanWhere, buildPlan, loadMastery, reconcilePlan } from "@kg/planner";
 import { atLeast } from "@kg/shared";
-import { selectProbes, assignVariant } from "@kg/teach";
+import { selectProbes, assignVariant, dueForReview } from "@kg/teach";
 import { prisma } from "../context.js";
 
 export async function learnerRoutes(app: FastifyInstance): Promise<void> {
@@ -98,6 +98,28 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
     });
     const plan = await buildPlan({ prisma, learnerId: id, goalId: goal.id });
     return { goal, plan };
+  });
+
+  /**
+   * What this learner owes attention to, plan or no plan.
+   *
+   * Confidence decays on a 45-day half life whether or not they open the next step, and
+   * until now nothing told them anything had gone stale — the decay was computed and
+   * discarded. This is also the only place a recorded misconception gets acted on.
+   */
+  app.get("/api/learners/:id/due", async (req) => {
+    const { id } = req.params as { id: string };
+    const limit = Number((req.query as { limit?: string }).limit ?? 20);
+    const items = await dueForReview(prisma, id, { limit: Math.min(limit, 50) });
+    return {
+      total: items.length,
+      byKind: {
+        misconception: items.filter((i) => i.kind === "misconception").length,
+        inferred: items.filter((i) => i.kind === "inferred").length,
+        decayed: items.filter((i) => i.kind === "decayed").length,
+      },
+      items,
+    };
   });
 
   app.post("/api/learners/:id/plan/rebuild", async (req, reply) => {

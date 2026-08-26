@@ -212,116 +212,21 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     const targetId = conceptIds.get(normalizeKey(c.value.name));
     if (!targetId) continue;
 
-    let prereqSamples: Record<string, { name: string; sense: string; strength: "hard" | "soft"; failureMode: string | null }[]>[];
-    try {
-      prereqSamples = await sample(
-        opts.llm,
-        k,
-        {
-          system: PREREQ_SYSTEM,
-          user: `Concept: ${c.value.name}\nMeaning: ${c.value.sense}\nStudied within: ${opts.topicName}`,
-        },
-        prereqSchema,
-      );
-    } catch (err) {
-      // The concept itself is already written; losing its prerequisites is a partial
-      // result worth keeping, not a reason to discard the whole expansion.
-      report.conceptsWithFailedPrerequisites.push(c.value.name);
-      continue;
-    }
-
-    const { survived, dropped } = consensus(
-      prereqSamples.map((s) => (s.prerequisites ?? []).slice(0, 12)),
-      { key: (p) => normalizeKey(p.name) },
+    await expandPrerequisitesOf(
+      { id: targetId, name: c.value.name, sense: c.value.sense },
+      {
+        prisma: opts.prisma,
+        llm: opts.llm,
+        resolver: opts.resolver,
+        topicId: topic.id,
+        topicName: opts.topicName,
+        neighbourIds: [targetId, ...conceptIds.values()],
+        samples: k,
+      },
+      report,
     );
-    report.prerequisitesDroppedByConsensus.push(...dropped.map((d) => d.value.name));
-
-    for (const p of survived) {
-      const best = bestVariant(p);
-
-      /**
-       * A compound name is not a concept, and one written here is permanent.
-       *
-       * These arrive as invented prerequisite names — the model describing what a
-       * learner needs rather than naming a node — and every downstream mechanism then
-       * has nothing coherent to work with: an item cannot ask for a demonstration of
-       * "Arrays or Linked Lists", a mastery level cannot say whether they have it, and
-       * it can never merge with either half, so the graph keeps a permanent
-       * near-duplicate of concepts it already holds.
-       *
-       * Split rather than drop when the halves are real, which they usually are: this
-       * arrived as "Hash Functions and Hash Tables" while both already existed.
-       */
-      const nameCheck = checkConceptName(best.name);
-      if (!nameCheck.ok) {
-        const halves = (nameCheck.parts ?? []).filter((h) => checkConceptName(h).ok);
-        report.namesRejected.push({
-          name: best.name, reason: nameCheck.reason ?? "unknown", splitInto: halves,
-        });
-        report.events.push({
-          kind: "name_rejected",
-          name: best.name,
-          detail: halves.length > 0
-            ? `not one concept (${nameCheck.reason}) — proposing ${halves.join(" + ")}`
-            : `not one concept (${nameCheck.reason}) — dropped`,
-        });
-        for (const half of halves) {
-          const split = await proposeConcept(opts.resolver, {
-            name: half,
-            sense: best.sense,
-            context: `prerequisite of "${c.value.name}"`,
-            expectedNeighborIds: [targetId, ...conceptIds.values()],
-          });
-          if (split.outcome === "created") report.conceptsCreated++;
-          else report.conceptsBound++;
-          await link(opts.prisma, topic.id, split.conceptId, false);
-        }
-        continue;
-      }
-
-      const pre = await proposeConcept(opts.resolver, {
-        name: best.name,
-        sense: best.sense,
-        context: `prerequisite of "${c.value.name}"`,
-        expectedNeighborIds: [targetId, ...conceptIds.values()],
-      });
-      if (pre.outcome === "created") report.conceptsCreated++;
-      else report.conceptsBound++;
-
-      // Pulled in as a prerequisite, so it belongs to the topic but not directly.
-      await link(opts.prisma, topic.id, pre.conceptId, false);
-
-      if (pre.conceptId === targetId) continue; // a concept is not its own prerequisite
-
-      const edge = await proposeEdge(opts.prisma, {
-        srcId: pre.conceptId,
-        dstId: targetId,
-        type: "prerequisite_of",
-        strength: best.strength,
-        failureMode: best.failureMode,
-        confidence: Math.min(0.9, p.votes / prereqSamples.length),
-      });
-      if (edge.rejected === "cycle") {
-        report.edgesRejectedAsCycle++;
-        report.events.push({
-          kind: "edge_rejected",
-          name: `${best.name} → ${c.value.name}`,
-          detail: "would close a prerequisite cycle",
-        });
-      } else if (edge.edgeId) {
-        report.edgesWritten++;
-        if (edge.demoted) report.edgesDemoted++;
-        report.events.push({
-          kind: edge.demoted ? "edge_demoted" : "edge_written",
-          name: `${best.name} → ${c.value.name}`,
-          detail: edge.demoted
-            ? "proposed hard, but the failure mode said nothing concrete — kept as soft"
-            : (best.failureMode ?? edge.strength),
-        });
-      }
-      // Keep the tail bounded; the UI only shows the most recent activity anyway.
-      if (report.events.length > 200) report.events.splice(0, report.events.length - 200);
-    }
+    // Keep the tail bounded; the UI only shows the most recent activity anyway.
+    if (report.events.length > 200) report.events.splice(0, report.events.length - 200);
   }
 
   /**
@@ -390,4 +295,141 @@ function bestVariant<T extends { strength: "hard" | "soft"; failureMode: string 
     (a, b) => (b.failureMode?.length ?? 0) - (a.failureMode?.length ?? 0),
   )[0];
   return longest ?? item.value;
+}
+
+/**
+ * The prerequisite pass for one concept.
+ *
+ * Extracted so deepening a single concept on demand runs the identical path a full
+ * expansion does — same consensus filter, same name check, same resolver, same cycle
+ * rejection. A second implementation of this would drift, and the parts that matter here
+ * are exactly the parts that are easy to get subtly wrong.
+ */
+export async function expandPrerequisitesOf(
+  target: { id: string; name: string; sense: string },
+  ctx: {
+    prisma: PrismaClient;
+    llm: LLMProvider;
+    resolver: ResolverDeps;
+    topicId: string;
+    topicName: string;
+    /** Concepts the resolver should judge a candidate against. */
+    neighbourIds: string[];
+    samples?: number;
+  },
+  report: ExpandReport,
+): Promise<void> {
+  const { prisma, llm, resolver, topicId, topicName, neighbourIds } = ctx;
+  const k = ctx.samples ?? DEFAULT_THRESHOLDS.expansionSamples;
+  const targetId = target.id;
+  const opts = { prisma, llm, resolver };
+
+  let prereqSamples: Record<string, { name: string; sense: string; strength: "hard" | "soft"; failureMode: string | null }[]>[] = [];
+  try {
+    prereqSamples = await sample(
+      opts.llm,
+      k,
+      {
+        system: PREREQ_SYSTEM,
+        user: `Concept: ${target.name}\nMeaning: ${target.sense}\nStudied within: ${topicName}`,
+      },
+      prereqSchema,
+    );
+  } catch (err) {
+    // The concept itself is already written; losing its prerequisites is a partial
+    // result worth keeping, not a reason to discard the whole expansion.
+    report.conceptsWithFailedPrerequisites.push(target.name);
+    return;
+  }
+
+  const { survived, dropped } = consensus(
+    prereqSamples.map((s) => (s.prerequisites ?? []).slice(0, 12)),
+    { key: (p) => normalizeKey(p.name) },
+  );
+  report.prerequisitesDroppedByConsensus.push(...dropped.map((d) => d.value.name));
+
+  for (const p of survived) {
+    const best = bestVariant(p);
+
+    /**
+     * A compound name is not a concept, and one written here is permanent.
+     *
+     * These arrive as invented prerequisite names — the model describing what a
+     * learner needs rather than naming a node — and every downstream mechanism then
+     * has nothing coherent to work with: an item cannot ask for a demonstration of
+     * "Arrays or Linked Lists", a mastery level cannot say whether they have it, and
+     * it can never merge with either half, so the graph keeps a permanent
+     * near-duplicate of concepts it already holds.
+     *
+     * Split rather than drop when the halves are real, which they usually are: this
+     * arrived as "Hash Functions and Hash Tables" while both already existed.
+     */
+    const nameCheck = checkConceptName(best.name);
+    if (!nameCheck.ok) {
+      const halves = (nameCheck.parts ?? []).filter((h) => checkConceptName(h).ok);
+      report.namesRejected.push({
+        name: best.name, reason: nameCheck.reason ?? "unknown", splitInto: halves,
+      });
+      report.events.push({
+        kind: "name_rejected",
+        name: best.name,
+        detail: halves.length > 0
+          ? `not one concept (${nameCheck.reason}) — proposing ${halves.join(" + ")}`
+          : `not one concept (${nameCheck.reason}) — dropped`,
+      });
+      for (const half of halves) {
+        const split = await proposeConcept(opts.resolver, {
+          name: half,
+          sense: best.sense,
+          context: `prerequisite of "${target.name}"`,
+          expectedNeighborIds: neighbourIds,
+        });
+        if (split.outcome === "created") report.conceptsCreated++;
+        else report.conceptsBound++;
+        await link(opts.prisma, topicId, split.conceptId, false);
+      }
+      continue;
+    }
+
+    const pre = await proposeConcept(opts.resolver, {
+      name: best.name,
+      sense: best.sense,
+      context: `prerequisite of "${target.name}"`,
+      expectedNeighborIds: neighbourIds,
+    });
+    if (pre.outcome === "created") report.conceptsCreated++;
+    else report.conceptsBound++;
+
+    // Pulled in as a prerequisite, so it belongs to the topic but not directly.
+    await link(opts.prisma, topicId, pre.conceptId, false);
+
+    if (pre.conceptId === targetId) continue; // a concept is not its own prerequisite
+
+    const edge = await proposeEdge(opts.prisma, {
+      srcId: pre.conceptId,
+      dstId: targetId,
+      type: "prerequisite_of",
+      strength: best.strength,
+      failureMode: best.failureMode,
+      confidence: Math.min(0.9, p.votes / prereqSamples.length),
+    });
+    if (edge.rejected === "cycle") {
+      report.edgesRejectedAsCycle++;
+      report.events.push({
+        kind: "edge_rejected",
+        name: `${best.name} → ${target.name}`,
+        detail: "would close a prerequisite cycle",
+      });
+    } else if (edge.edgeId) {
+      report.edgesWritten++;
+      if (edge.demoted) report.edgesDemoted++;
+      report.events.push({
+        kind: edge.demoted ? "edge_demoted" : "edge_written",
+        name: `${best.name} → ${target.name}`,
+        detail: edge.demoted
+          ? "proposed hard, but the failure mode said nothing concrete — kept as soft"
+          : (best.failureMode ?? edge.strength),
+      });
+    }
+  }
 }

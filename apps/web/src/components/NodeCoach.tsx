@@ -16,15 +16,27 @@ const RANK: Record<Mastery, number> = { unknown: 0, familiar: 1, functional: 2, 
  * and somewhere to ask about it without that counting as being taught. (19)
  */
 export function NodeCoach({
-  learnerId, conceptId, conceptName, mastery, requiredLevel = "functional", onStateChanged,
+  learnerId, conceptId, conceptName, mastery, requiredLevel = "functional",
+  unmetPrerequisites = [], onStateChanged, onPick,
 }: {
   learnerId: string;
   conceptId: string;
   conceptName: string;
   mastery: Mastery;
   requiredLevel?: Mastery;
+  /**
+   * Hard prerequisites the learner has not reached yet.
+   *
+   * Assessing on top of a gap measures the gap. A binary-search-tree item is built to be
+   * unanswerable without references, so a learner who has not got references fails it and
+   * the failure is recorded against binary search trees — the wrong concept, and
+   * discouraging for no reason. Worth saying out loud before spending a minute on it.
+   */
+  unmetPrerequisites?: { id: string; name: string; mastery: Mastery }[];
   /** The node's colour is derived from mastery, so the graph has to be told. */
   onStateChanged: () => void;
+  /** Jump to a prerequisite instead. */
+  onPick?: (conceptId: string) => void;
 }) {
   const [tab, setTab] = useState<"assess" | "ask">("assess");
   const [question, setQuestion] = useState<any>(null);
@@ -121,6 +133,23 @@ export function NodeCoach({
 
       {tab === "assess" ? (
         <div className="coach-body">
+          {!question && !result && unmetPrerequisites.length > 0 && (
+            <div className="prereq-warn">
+              <strong>{unmetPrerequisites.length === 1 ? "One thing" : `${unmetPrerequisites.length} things`} this builds on {unmetPrerequisites.length === 1 ? "is" : "are"} not solid yet.</strong>
+              <p>
+                Items for {conceptName} are written so they cannot be answered without
+                {unmetPrerequisites.length === 1 ? " it" : " these"} — so a wrong answer here
+                would get recorded against {conceptName} when the gap is elsewhere.
+              </p>
+              <div className="chips">
+                {unmetPrerequisites.map((p) => (
+                  <button key={p.id} className="chip" onClick={() => onPick?.(p.id)}>
+                    {p.name} <em>{p.mastery}</em>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {!question && !result && (
             <>
               <p className="muted" style={{ fontSize: 12.5 }}>
@@ -128,8 +157,14 @@ export function NodeCoach({
                   ? `Nothing recorded for ${conceptName} yet. One question decides where it starts.`
                   : `Currently ${mastery}. A correct answer at ${target} moves it; a wrong one records what went wrong.`}
               </p>
-              <button className="primary" onClick={() => void startCheck()} disabled={busy !== null}>
-                {busy ?? `Test me on ${conceptName}`}
+              <button
+                className={unmetPrerequisites.length > 0 ? "" : "primary"}
+                onClick={() => void startCheck()}
+                disabled={busy !== null}
+              >
+                {busy ?? (unmetPrerequisites.length > 0
+                  ? `Test me anyway`
+                  : `Test me on ${conceptName}`)}
               </button>
             </>
           )}

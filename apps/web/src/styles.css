@@ -704,3 +704,75 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .coach-chat .bubble.tutor > :first-child { margin-top: 0; }
 .coach-chat .bubble.tutor > :last-child { margin-bottom: 0; }
 .coach .verdict { margin-bottom: 0; }
+
+/* Said before an assessment, not after it: a wrong answer caused by a missing
+   prerequisite gets recorded against the wrong concept. */
+.prereq-warn {
+  border: 1px solid var(--accent); border-left-width: 3px; border-radius: 6px;
+  background: var(--accent-bg); padding: 9px 11px; font-size: 12.5px; line-height: 1.5;
+}
+.prereq-warn strong { color: var(--accent); display: block; margin-bottom: 3px; }
+.prereq-warn p { margin: 0 0 7px; color: var(--ink-mid); }
+.prereq-warn .chip { cursor: pointer; }
+.prereq-warn .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Home: the "what now" surface ────────────────────────────────────────────── */
+.home { max-width: 940px; }
+.home-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.home-head h2 { margin-bottom: 2px; }
+.home-cards {
+  display: grid; gap: 12px; margin-top: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.card {
+  border: 1px solid var(--rule); border-radius: 8px; background: var(--surface);
+  padding: 14px; display: flex; flex-direction: column; gap: 6px;
+}
+/* Only what costs something to ignore gets the accent. If everything is urgent,
+   nothing is. */
+.card.urgent { border-left: 3px solid var(--accent); }
+.card h4 {
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--ink-soft); margin: 0;
+}
+.card p { margin: 0; font-size: 13.5px; line-height: 1.55; }
+.btn {
+  display: inline-block; align-self: flex-start; margin-top: 4px;
+  padding: 7px 13px; border-radius: 6px; border: 1px solid var(--rule-strong);
+  font-size: 13px; text-decoration: none; color: var(--ink); cursor: pointer;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+@media (prefers-color-scheme: dark) { .btn.primary { color: #1a1207; } }
+
+.home-list { margin-top: 26px; }
+.due-row {
+  display: grid; grid-template-columns: 128px minmax(120px, 200px) 1fr; gap: 10px;
+  align-items: baseline; width: 100%; text-align: left;
+  padding: 9px 4px; border: none; border-bottom: 1px solid var(--rule);
+  background: none; cursor: pointer; font-size: 13px; color: var(--ink);
+}
+.due-row:hover { background: var(--surface-alt); }
+.due-name { font-weight: 600; }
+.due-why { color: var(--ink-soft); font-size: 12.5px; }
+.due-belief { grid-column: 2 / -1; color: var(--ink-soft); font-size: 12.5px; }
+/* Kind is the ranking, so it reads as a rank: red for a belief being applied, amber
+   for never demonstrated, quiet for ordinary fading. */
+.due-kind {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.07em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 10px;
+  border: 1px solid var(--rule-strong); color: var(--ink-soft); white-space: nowrap;
+}
+.due-kind.misconception { border-color: #b3261e; color: #b3261e; }
+@media (prefers-color-scheme: dark) { .due-kind.misconception { border-color: #f2b8b5; color: #f2b8b5; } }
+.due-kind.inferred { border-color: var(--accent); color: var(--accent); }
+
+.nav a.with-badge { display: inline-flex; align-items: center; gap: 5px; }
+.due-badge {
+  min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+  background: var(--accent); color: #fff; font-size: 10.5px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: "IBM Plex Mono", monospace;
+}
+@media (prefers-color-scheme: dark) { .due-badge { color: #1a1207; } }
+.review-session { max-width: 720px; }
+.review-session textarea { width: 100%; margin: 8px 0; }

@@ -8,6 +8,7 @@ import {
 } from "@kg/shared";
 import type { LLMProvider } from "@kg/llm";
 import { gradeResponse, type GradeResult } from "./grade.js";
+import { resolveMisconceptions } from "./due.js";
 import { propagateBackwards, recordEvidence, type StateChange } from "./state.js";
 
 export type AttemptAction =
@@ -35,6 +36,8 @@ export interface AttemptOutcome {
   evidenceKind: EvidenceKind;
   state: StateChange;
   propagatedTo: string[];
+  /** Recorded beliefs this answer cleared. Worth telling the learner about. */
+  misconceptionsResolved: number;
 }
 
 /**
@@ -175,15 +178,44 @@ export async function runAttempt(input: RunAttemptInput): Promise<AttemptOutcome
   );
 
   if (grade.belief && evidenceKind === "misconception_shown") {
-    await prisma.misconception.create({
-      data: {
-        learnerId: ctx.learnerId,
-        conceptId: ctx.conceptId,
-        belief: grade.belief,
-        matchedFailureMode: matchedEdge?.failureMode ?? null,
-      },
+    // Same belief twice is a stronger signal than two unrelated ones, and the review
+    // queue orders by it. Creating a fresh row every time lost that.
+    const open = await prisma.misconception.findFirst({
+      where: { learnerId: ctx.learnerId, conceptId: ctx.conceptId, resolvedAt: null },
     });
+    if (open) {
+      await prisma.misconception.update({
+        where: { id: open.id },
+        data: {
+          observedCount: { increment: 1 },
+          belief: grade.belief,
+          matchedFailureMode: matchedEdge?.failureMode ?? open.matchedFailureMode,
+        },
+      });
+    } else {
+      await prisma.misconception.create({
+        data: {
+          learnerId: ctx.learnerId,
+          conceptId: ctx.conceptId,
+          belief: grade.belief,
+          matchedFailureMode: matchedEdge?.failureMode ?? null,
+        },
+      });
+    }
   }
+
+  /**
+   * A demonstration clears the recorded belief.
+   *
+   * Nothing had ever set `resolvedAt`, so a misconception recorded once stayed open for
+   * good — which makes it useless as a signal and, now that review is driven off it,
+   * would make the queue grow monotonically. A restatement does not count: repeating the
+   * right words is not evidence the wrong belief is gone. (10, 16)
+   */
+  const misconceptionsResolved =
+    grade.correct && !grade.restatementOnly
+      ? await resolveMisconceptions(prisma, ctx.learnerId, ctx.conceptId)
+      : 0;
 
   // Clean acquisition is the strongest available evidence about the prerequisites,
   // and it costs no extra questions. (10)
@@ -202,7 +234,7 @@ export async function runAttempt(input: RunAttemptInput): Promise<AttemptOutcome
     });
   }
 
-  return { grade, action, evidenceKind, state, propagatedTo };
+  return { grade, action, evidenceKind, state, propagatedTo, misconceptionsResolved };
 }
 
 /** Concepts blocked by a spent detour budget, to revisit in a later session. (10) */

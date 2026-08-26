@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { expandTopicShallow } from "@kg/graph";
+import { expandPrerequisitesOf, expandTopicShallow, type ExpandReport } from "@kg/graph";
 import { executeJs, routeChatQuestion, runAttempt, selectItem, generateItems } from "@kg/teach";
 import { prisma, getLlm, resolverDeps } from "../context.js";
 import { openSession, saveTurn } from "../sessions.js";
@@ -30,6 +30,81 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
       prisma,
       resolver,
     });
+  });
+
+  /**
+   * One more level of prerequisites under a single concept.
+   *
+   * A topic expansion goes one level deep and takes minutes, so the graph's depth is
+   * whatever that first pass happened to produce — there was no way to say "go further
+   * here" short of re-running the whole thing. Runs the identical pass a full expansion
+   * uses, so the consensus filter, the name check and the cycle rejection all still apply.
+   */
+  app.post("/api/concepts/:id/deepen", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const llm = getLlm();
+    const resolver = resolverDeps();
+    if (!llm || !resolver) return reply.code(503).send(NO_MODEL);
+
+    const concept = await prisma.concept.findUnique({
+      where: { id },
+      include: { topics: { include: { topic: true } } },
+    });
+    if (!concept) return reply.code(404).send({ error: "no such concept" });
+    if (concept.deprecatedAt) {
+      return reply.code(422).send({ error: "that concept has been deprecated" });
+    }
+    const home = concept.topics[0]?.topic;
+    if (!home) return reply.code(422).send({ error: "that concept belongs to no topic" });
+
+    const before = await prisma.edge.count({
+      where: { dstId: id, type: "prerequisite_of", retiredAt: null },
+    });
+    // Judged against everything already in the topic, so a prerequisite that exists is
+    // reused rather than duplicated.
+    const siblings = await prisma.topicConcept.findMany({
+      where: { topicId: home.id },
+      select: { conceptId: true },
+    });
+
+    const report: ExpandReport = {
+      topicId: home.id,
+      conceptsCreated: 0, conceptsBound: 0, edgesWritten: 0, edgesDemoted: 0,
+      edgesRejectedAsCycle: 0,
+      conceptsDroppedByConsensus: [], prerequisitesDroppedByConsensus: [],
+      conceptsWithFailedPrerequisites: [], namesRejected: [],
+      milestones: [], milestonesRejected: [],
+      conceptsFound: [], events: [],
+    };
+
+    await expandPrerequisitesOf(
+      { id: concept.id, name: concept.canonicalName, sense: concept.sense },
+      {
+        prisma, llm, resolver,
+        topicId: home.id,
+        topicName: home.name,
+        neighbourIds: siblings.map((s) => s.conceptId),
+      },
+      report,
+    );
+
+    const after = await prisma.edge.count({
+      where: { dstId: id, type: "prerequisite_of", retiredAt: null },
+    });
+    return {
+      concept: { id: concept.id, name: concept.canonicalName },
+      topic: home.name,
+      prerequisitesBefore: before,
+      prerequisitesAfter: after,
+      conceptsCreated: report.conceptsCreated,
+      conceptsReused: report.conceptsBound,
+      edgesWritten: report.edgesWritten,
+      edgesDemoted: report.edgesDemoted,
+      edgesRejectedAsCycle: report.edgesRejectedAsCycle,
+      namesRejected: report.namesRejected,
+      droppedByConsensus: report.prerequisitesDroppedByConsensus,
+      events: report.events,
+    };
   });
 
   app.post("/api/concepts/:id/items/generate", async (req, reply) => {

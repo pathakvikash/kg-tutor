@@ -32,6 +32,13 @@ Set requiresTransfer true when the item deliberately uses a context the learner'
 explanation would not have covered. At least one item per concept must do this — without
 transfer items, a fluent paraphrase promotes a learner who cannot use the concept.
 
+Every item must be ABOUT THE CONCEPT NAMED ABOVE. You may be given the failure modes of
+its prerequisites; those are the bar the item has to clear, not its subject. An item on
+"binary search tree" that turns out to be a question about reference aliasing is testing
+the prerequisite, and a learner who knows binary search trees but slips on aliasing is
+then recorded as not knowing binary search trees. Use the prerequisite failure modes to
+make the item unanswerable by someone who lacks them — never as the thing being asked.
+
 mustDemonstrate lists what a correct answer has to show. Write it as observable claims,
 not as a model answer.
 
@@ -85,10 +92,15 @@ export async function generateItems(
         topics.length > 0
           ? `Studied as part of: ${topics.map((t) => t.topic.name).join(", ")}`
           : "",
+        // Named as the bar, not the subject. Headed "failure modes to probe for", this
+        // list became the topic: a binary-search-tree item came back asking about
+        // shallow-copy aliasing, because that is its prerequisite's failure mode.
         prereqs.length > 0
-          ? `Known failure modes to probe for:\n${prereqs
+          ? `A learner who has NOT mastered the prerequisites fails in these specific ways.\n` +
+            `Write items that such a learner cannot answer — but keep every question about\n` +
+            `${concept.canonicalName} itself:\n${prereqs
               .filter((p) => p.failureMode)
-              .map((p) => `- ${p.failureMode}`)
+              .map((p) => `- (missing ${p.src.canonicalName}) ${p.failureMode}`)
               .join("\n")}`
           : "",
       ].filter(Boolean).join("\n"),

@@ -9,6 +9,44 @@ import { ConceptNode, type ConceptNodeData } from "../components/ConceptNode";
 import { NodeCoach } from "../components/NodeCoach";
 
 const nodeTypes = { concept: ConceptNode };
+
+const RANK: Record<Mastery, number> = { unknown: 0, familiar: 1, functional: 2, solid: 3 };
+
+/** Asks for one more level of prerequisites under a single concept. */
+function DeepenButton({
+  conceptId, conceptName, onDone,
+}: { conceptId: string; conceptName: string; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const run = async () => {
+    setBusy(true); setResult(null);
+    try {
+      const r = await api.deepen(conceptId);
+      const added = r.prerequisitesAfter - r.prerequisitesBefore;
+      setResult(
+        added === 0
+          ? `Nothing new — the model named ${r.conceptsReused} concept(s) already here.`
+          : `${added} new prerequisite${added === 1 ? "" : "s"} · ` +
+            `${r.conceptsCreated} new concept(s), ${r.conceptsReused} reused` +
+            (r.edgesRejectedAsCycle > 0 ? `, ${r.edgesRejectedAsCycle} rejected as a cycle` : ""),
+      );
+      onDone();
+    } catch (e) {
+      setResult(e instanceof Error ? e.message : String(e));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button onClick={() => void run()} disabled={busy} title={`Find what ${conceptName} builds on`}>
+        {busy ? "asking the model…" : "Go one level deeper"}
+      </button>
+      {result && <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>{result}</p>}
+    </div>
+  );
+}
+const met = (m: Mastery, need: Mastery) => RANK[m] >= RANK[need];
 type Mode = "explore" | "teach";
 
 interface Selection {
@@ -140,7 +178,17 @@ function Inspector({
           conceptId={node.id}
           conceptName={node.name}
           mastery={(node.state?.mastery ?? "unknown") as Mastery}
+          // Hard prerequisites only: a soft edge adds depth, it does not gate.
+          unmetPrerequisites={incoming
+            .filter((e) => e.strength === "hard")
+            .map((e) => graph.nodes.find((n) => n.id === e.source))
+            .filter((n): n is NonNullable<typeof n> => Boolean(n))
+            .filter((n) => !met((n.state?.mastery ?? "unknown") as Mastery, "functional"))
+            .map((n) => ({
+              id: n.id, name: n.name, mastery: (n.state?.mastery ?? "unknown") as Mastery,
+            }))}
           onStateChanged={onStateChanged}
+          onPick={onHop}
         />
       ) : (
         <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>
@@ -151,6 +199,9 @@ function Inspector({
       <section>
         <h4>Requires ({incoming.length})</h4>
         {incoming.length === 0 && <p className="muted">Nothing — a starting point here.</p>}
+        {/* A topic expansion goes one level deep, so the graph's depth is whatever that
+            first pass produced. This asks for one more level under this concept only. */}
+        <DeepenButton conceptId={node.id} conceptName={node.name} onDone={onStateChanged} />
         {incoming.map((e) => (
           <div className="rel" key={e.id}>
             <button className="linkish" onClick={() => onHop(e.source)}>{name(e.source)}</button>{" "}

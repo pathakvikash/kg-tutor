@@ -132,6 +132,10 @@ export const api = {
   learners: () => get<any[]>("/api/learners"),
   learnerState: (id: string) => get<any>(`/api/learners/${id}/state`),
   plan: (id: string) => get<any>(`/api/learners/${id}/plan`),
+  /** What has decayed, was never demonstrated, or has an unresolved misconception. */
+  due: (id: string, limit = 20) => get<any>(`/api/learners/${id}/due?limit=${limit}`),
+  /** One more level of prerequisites under a single concept. */
+  deepen: (conceptId: string) => post<any>(`/api/concepts/${conceptId}/deepen`, {}),
   setGoal: (id: string, topicId: string, depth: string) =>
     post<any>(`/api/learners/${id}/goals`, { topicId, depth }),
   rebuildPlan: (id: string) => post<any>(`/api/learners/${id}/plan/rebuild`),
