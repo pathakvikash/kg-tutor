@@ -3,37 +3,9 @@ import { z } from "zod";
 import { completeJson, startStream } from "@kg/llm";
 import { loadMastery } from "@kg/planner";
 import { generateItems, selectItem, routeChatQuestion, recordEvidence } from "@kg/teach";
-import { assignVariant, isActionable } from "@kg/teach";
+import { isActionable } from "@kg/teach";
 import { prisma, getLlm } from "../context.js";
-
-/**
- * One open session per learner. Sessions were never being created, which quietly killed
- * the arm comparison — `compareArms` reads variants off sessions, and there were none.
- */
-async function openSession(learnerId: string): Promise<string> {
-  const existing = await prisma.session.findFirst({
-    where: { learnerId, endedAt: null },
-    orderBy: { startedAt: "desc" },
-  });
-  if (existing) return existing.id;
-  const created = await prisma.session.create({
-    data: { learnerId, variant: assignVariant(learnerId) },
-  });
-  return created.id;
-}
-
-async function saveTurn(
-  sessionId: string,
-  learnerId: string,
-  conceptId: string | null,
-  role: string,
-  text: string,
-  meta?: unknown,
-): Promise<void> {
-  await prisma.lessonTurn.create({
-    data: { sessionId, learnerId, conceptId, role, text, meta: (meta ?? null) as never },
-  });
-}
+import { openSession, saveTurn } from "../sessions.js";
 
 /**
  * The last few turns of the open session, formatted for a prompt.

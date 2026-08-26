@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import {
   LLMAuthError, LLMError, defaultEffort,
-  type CompletionRequest, type LLMProvider, type ModelTier, type UsageSink,
+  type CompletionRequest, type Effort, type LLMProvider, type ModelTier, type UsageSink,
 } from "./provider.js";
 
 export interface ClaudeCodeOptions {
@@ -75,6 +75,31 @@ interface CliResult {
  */
 function effortFlags(req: CompletionRequest): string[] {
   return ["--effort", req.effort ?? defaultEffort(req.tier)];
+}
+
+/**
+ * A hard ceiling on thinking, which `--effort` alone does not give.
+ *
+ * Even at `--effort low` a grading call spent around 2,900 tokens thinking to produce a
+ * 30-token verdict, and 33 of its 35 seconds went on that. `low` is the floor the flag
+ * offers; this goes below it. Measured on one grading call: 33s to 3.6s, $0.0167 to
+ * $0.0017, same verdict.
+ *
+ * Zero is right for rubric-bound work — grading against stored failure modes, routing a
+ * question into one of five intents. It is not right for judgement calls, so `medium`
+ * keeps a real budget and `high` leaves the model's own default alone.
+ */
+const THINKING_BUDGET: Record<Effort, string | null> = {
+  low: "0",
+  medium: "4096",
+  high: null,
+};
+
+function envFor(req: CompletionRequest): NodeJS.ProcessEnv {
+  const budget = THINKING_BUDGET[req.effort ?? defaultEffort(req.tier)];
+  return budget === null
+    ? { ...process.env }
+    : { ...process.env, MAX_THINKING_TOKENS: budget };
 }
 
 const TEXT_ONLY = [
@@ -158,7 +183,7 @@ export class ClaudeCodeLLM implements LLMProvider {
         ...TEXT_ONLY,
         ...effortFlags(req),
       ],
-      { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env } },
+      { stdio: ["ignore", "pipe", "pipe"], env: envFor(req) },
     );
 
     const timer = setTimeout(() => child.kill("SIGKILL"), this.timeoutMs);
@@ -264,7 +289,7 @@ export class ClaudeCodeLLM implements LLMProvider {
 
       const child = spawn(this.bin, args, {
         stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env },
+        env: envFor(req),
       });
 
       let stdout = "";

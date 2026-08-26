@@ -3,6 +3,7 @@ import { z } from "zod";
 import { expandTopicShallow } from "@kg/graph";
 import { executeJs, routeChatQuestion, runAttempt, selectItem, generateItems } from "@kg/teach";
 import { prisma, getLlm, resolverDeps } from "../context.js";
+import { openSession, saveTurn } from "../sessions.js";
 
 const NO_MODEL = {
   error: "no model configured",
@@ -69,7 +70,9 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
     const llm = getLlm();
     if (!llm) return reply.code(503).send(NO_MODEL);
 
-    return runAttempt({
+    const sessionId = body.data.sessionId ?? (await openSession(id));
+
+    const result = await runAttempt({
       prisma,
       llm,
       prompt: body.data.prompt,
@@ -79,12 +82,27 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
         learnerId: id,
         conceptId: body.data.conceptId,
         itemId: body.data.itemId,
-        sessionId: body.data.sessionId,
+        sessionId,
         reexplanationsUsed: body.data.reexplanationsUsed,
         detoursUsedInChain: body.data.detoursUsedInChain,
         detourDepth: body.data.detourDepth,
       },
     });
+
+    // The answer and the verdict are turns like any other. Without these the transcript
+    // held the question and then jumped to the next one, so refreshing after grading
+    // erased what the learner had just written and the feedback they had just been
+    // given — the work disappeared and the screen went back a step.
+    await saveTurn(sessionId, id, body.data.conceptId, "learner", body.data.response, {
+      itemId: body.data.itemId ?? null,
+    });
+    await saveTurn(
+      sessionId, id, body.data.conceptId, "tutor",
+      `${result.grade.correct ? "**Correct.**" : "**Not quite.**"} ${result.grade.reasoning}`,
+      { kind: "grade", correct: result.grade.correct },
+    );
+
+    return { ...result, sessionId };
   });
 
   app.post("/api/learners/:id/chat", async (req, reply) => {

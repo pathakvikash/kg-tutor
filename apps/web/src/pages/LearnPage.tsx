@@ -71,6 +71,16 @@ export function LearnPage() {
   useEffect(() => { void load(learnerId); setViewingSession(null); }, [learnerId, load]);
 
   /**
+   * Progress only. `load` also replaces the transcript, which is right when switching
+   * learner or opening a past session and wrong in the middle of one: it discarded every
+   * turn the page was holding and redrew the conversation as the server last saw it.
+   */
+  const refreshPlan = useCallback(async (id: string) => {
+    if (!id) return;
+    try { setPlan(await api.plan(id)); } catch { /* keep the plan we have */ }
+  }, []);
+
+  /**
    * An interrupted assessment should present itself, not wait behind a button. It was
    * resumable but invisible, which for the learner is the same as being lost.
    */
@@ -221,7 +231,7 @@ export function LearnPage() {
             push({ role: "note", text: `could not advance the plan: ${message}` });
           }
         }
-        await load(learnerId);
+        await refreshPlan(learnerId);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally { setBusy(null); }

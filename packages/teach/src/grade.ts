@@ -71,6 +71,11 @@ Decide:
   - "cannot_apply": understands the idea but cannot use it
   - "careless": essentially right, with a slip
 
+reasoning: this is shown to the learner, so write it TO them in the second person —
+"you traced the microtask queue correctly, but the timer fires after it drains", not
+"the learner correctly traced". One or two sentences. Name the specific thing they got
+right or wrong; do not summarise their answer back to them, and do not pad it.
+
 Do not be generous. An answer that sounds fluent but does not answer the question is
 incorrect.
 
