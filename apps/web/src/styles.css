@@ -656,3 +656,10 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .hljs-comment, .hljs-quote { color: var(--ink-soft); font-style: italic; }
 .hljs-attr, .hljs-property, .hljs-variable { color: var(--ink); }
 .hljs-punctuation, .hljs-operator { color: var(--ink-mid); }
+
+/* The grader's rationale is markdown, so it arrives as block elements. Keep it flowing
+   inline with the verdict rather than starting a new paragraph under it. */
+.verdict-why > :first-child { margin-top: 0; }
+.verdict-why > :last-child { margin-bottom: 0; }
+.verdict-why p { display: inline; }
+.verdict-why code { font-size: 12px; }

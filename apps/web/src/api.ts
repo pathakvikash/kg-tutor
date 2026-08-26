@@ -54,6 +54,8 @@ const post = <T>(url: string, body?: unknown) => send<T>("POST", url, body);
 const del = <T>(url: string) => send<T>("DELETE", url);
 
 export interface AskStreamHandlers {
+  /** The answer is starting. Fires before routing lands, so deltas have somewhere to go. */
+  onOpen?: (d: any) => void;
   onRouted?: (info: any) => void;
   onDelta?: (text: string) => void;
   onDone?: (answer: string | null) => void;
@@ -106,7 +108,8 @@ export async function askStream(
       if (!event || !raw) continue;
       let data: any;
       try { data = JSON.parse(raw); } catch { continue; }
-      if (event === "routed") handlers.onRouted?.(data);
+      if (event === "open") handlers.onOpen?.(data);
+      else if (event === "routed") handlers.onRouted?.(data);
       else if (event === "delta") handlers.onDelta?.(data.text ?? "");
       else if (event === "done") handlers.onDone?.(data.answer ?? null);
       else if (event === "failed") {

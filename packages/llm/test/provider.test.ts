@@ -171,3 +171,123 @@ describe("startStream", () => {
     expect(out).toEqual(["whole answer"]);
   });
 });
+
+describe("extractJson tolerance", () => {
+  /**
+   * The real failure this exists for. `example.code` is specified as multi-line plain
+   * code inside a JSON string, so a model that forgets to escape one newline destroys a
+   * document whose prose fields were correct — and the learner sees "failed schema
+   * validation twice" for a lesson that was written properly.
+   */
+  it("recovers a document whose code field has raw newlines", () => {
+    const raw = '{"hook":"You already use them.","explanation":"A **higher-order function** takes a function.","example":{"language":"javascript","code":"const nums = [1, 2, 3];\nconst doubled = nums.map(n => n * 2);\nconsole.log(doubled);","walkthrough":"map is higher-order."}}';
+    expect(() => JSON.parse(raw)).toThrow(); // genuinely invalid JSON
+    const out = extractJson(raw) as any;
+    expect(out.example.code).toContain("\n");
+    expect(out.example.code.split("\n")).toHaveLength(3);
+    expect(out.hook).toBe("You already use them.");
+  });
+
+  it("handles raw tabs and carriage returns the same way", () => {
+    const out = extractJson('{"code":"if (x) {\r\n\tdoThing();\r\n}"}') as any;
+    expect(out.code).toBe("if (x) {\r\n\tdoThing();\r\n}");
+  });
+
+  it("leaves an already-escaped document exactly as it is", () => {
+    const out = extractJson('{"code":"line one\\nline two","n":1}') as any;
+    expect(out.code).toBe("line one\nline two");
+    expect(out.n).toBe(1);
+  });
+
+  it("does not mangle a brace or quote that lives inside a string", () => {
+    const out = extractJson('{"code":"const s = \\"}\\";\nreturn s;"}') as any;
+    expect(out.code).toBe('const s = "}";\nreturn s;');
+  });
+
+  it("still recovers a fenced document with the same defect", () => {
+    const out = extractJson('```json\n{"code":"a\nb"}\n```') as any;
+    expect(out.code).toBe("a\nb");
+  });
+
+  it("points at the character that broke the parse", () => {
+    // An unescaped quote mid-prose: complete document, invalid JSON, and the position
+    // is the only thing that makes it diagnosable.
+    const broken = '{"a":"he said "hi" to me","b":2}';
+    expect(() => extractJson(broken)).toThrow(/⟪HERE⟫/);
+    expect(() => extractJson(broken)).toThrow(/\d+-char response/);
+  });
+
+  it("says how long a response was when there is no JSON in it at all", () => {
+    expect(() => extractJson("I cannot answer that.")).toThrow(/21-char response/);
+  });
+});
+
+describe("completeJson local repairs", () => {
+  const obj = z.object({ hook: z.string(), n: z.number() });
+
+  /** Observed on the explanation call: the whole object wrapped in a one-element array. */
+  it("unwraps a single-element array when an object was asked for", async () => {
+    let calls = 0;
+    const llm = {
+      name: "t",
+      complete: async () => { calls++; return '[{"hook":"hi","n":1}]'; },
+    } as any;
+    await expect(completeJson(llm, { system: "s", user: "u", tier: "small" }, obj))
+      .resolves.toEqual({ hook: "hi", n: 1 });
+    // The point is that it did not spend a second model call to find this out.
+    expect(calls).toBe(1);
+  });
+
+  it("does not unwrap a two-element array — that is a real mismatch", async () => {
+    const llm = {
+      name: "t",
+      complete: async () => '[{"hook":"a","n":1},{"hook":"b","n":2}]',
+    } as any;
+    await expect(completeJson(llm, { system: "s", user: "u", tier: "small" }, obj)).rejects.toThrow();
+  });
+
+  it("recovers a raw newline in one call rather than retrying", async () => {
+    let calls = 0;
+    const withCode = z.object({ code: z.string() });
+    const llm = {
+      name: "t",
+      complete: async () => { calls++; return '{"code":"a\nb"}'; },
+    } as any;
+    await expect(completeJson(llm, { system: "s", user: "u", tier: "small" }, withCode))
+      .resolves.toEqual({ code: "a\nb" });
+    expect(calls).toBe(1);
+  });
+});
+
+describe("extractJson fence handling", () => {
+  /**
+   * The observed failure: an explanation that bridges from Python opens with a ```python
+   * block, and the old fence regex claimed it as the document and discarded the JSON
+   * that followed. Two in ten explanation calls died this way.
+   */
+  it("ignores a code fence that is not the JSON", () => {
+    const raw = [
+      "Here is the bridge from what they know:",
+      "```python",
+      "sorted(names, key=len)   # takes a function",
+      "```",
+      "",
+      '{"hook":"You already do this.","n":1}',
+    ].join("\n");
+    expect(extractJson(raw)).toEqual({ hook: "You already do this.", n: 1 });
+  });
+
+  it("prefers a json-tagged fence over an earlier one in another language", () => {
+    const raw = '```js\nconst a = 1;\n```\n```json\n{"pick":"me"}\n```';
+    expect(extractJson(raw)).toEqual({ pick: "me" });
+  });
+
+  it("still reads an untagged fence that does hold the JSON", () => {
+    expect(extractJson('```\n{"ok":true}\n```')).toEqual({ ok: true });
+  });
+
+  it("handles a non-JSON fence and a defective JSON payload together", () => {
+    const raw = '```python\nx = 1\n```\n{"code":"a\nb"}';
+    expect(extractJson(raw)).toEqual({ code: "a\nb" });
+  });
+});

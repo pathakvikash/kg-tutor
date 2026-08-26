@@ -347,51 +347,62 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
         temperature: 0.4,
       });
 
-      const route = await routeChatQuestion(llm, {
+      await saveTurn(sessionId, body.data.learnerId, concept.id, "learner", body.data.question);
+
+      // Tells the client to open the bubble now. Without it there is nowhere to put a
+      // delta, and every delta that arrives before routing finishes is dropped —
+      // which is why a "streaming" answer appeared all at once after a long blank
+      // pause. Routing takes longer than answering does, so gating the text on it
+      // meant nothing could ever be shown early.
+      send("open", { sessionId });
+
+      /**
+       * Routing runs alongside the answer and reports whenever it lands, rather than
+       * holding the text back until it does.
+       *
+       * The previous order discarded the answer when the question turned out to be a
+       * request to learn something else. That saved nothing: routing finishes *after*
+       * the answer is already generated, so the only thing being withheld was the
+       * display. An actionable intent now arrives as an action offered alongside the
+       * answer — which is still acting on it, and beats several seconds of blank
+       * screen on every ordinary question to buy it.
+       */
+      const routing = routeChatQuestion(llm, {
         question: body.data.question,
         currentConceptName: concept.canonicalName,
         prerequisiteNames: prereqs.map((p) => ({ conceptId: p.srcId, name: p.src.canonicalName })),
-      });
-
-      await saveTurn(sessionId, body.data.learnerId, concept.id, "learner", body.data.question);
-
-      if (isActionable(route.intent)) {
-        // The speculative answer is no longer wanted. Draining it lets the provider
-        // release its slot and kill the subprocess rather than leaking one per question.
-        answer$.cancel();
+      }).then(async (route) => {
+        if (route.intent === "prerequisite_gap") {
+          await recordEvidence(prisma, {
+            learnerId: body.data.learnerId,
+            conceptId: body.data.conceptId,
+            kind: "spontaneous_prerequisite_request",
+            referencedConceptId: route.prerequisiteConceptId ?? undefined,
+            response: body.data.question,
+            detail: { namedConcept: route.namedConcept },
+          });
+        }
         send("routed", {
-          sessionId, intent: route.intent, action: "start_roadmap",
-          goalText: route.namedConcept ?? body.data.question,
+          sessionId,
+          intent: route.intent,
+          action: isActionable(route.intent) ? "start_roadmap" : null,
+          goalText: isActionable(route.intent) ? route.namedConcept ?? body.data.question : null,
+          suggestVisual: route.wantsVisual,
+          detourTo: route.intent === "prerequisite_gap" ? route.prerequisiteConceptId : null,
+          namedConcept: route.namedConcept,
         });
-        send("done", { answer: null });
-        reply.raw.end();
-        return;
-      }
-
-      if (route.intent === "prerequisite_gap") {
-        await recordEvidence(prisma, {
-          learnerId: body.data.learnerId,
-          conceptId: body.data.conceptId,
-          kind: "spontaneous_prerequisite_request",
-          referencedConceptId: route.prerequisiteConceptId ?? undefined,
-          response: body.data.question,
-          detail: { namedConcept: route.namedConcept },
-        });
-      }
-
-      send("routed", {
-        sessionId,
-        intent: route.intent,
-        suggestVisual: route.wantsVisual,
-        detourTo: route.intent === "prerequisite_gap" ? route.prerequisiteConceptId : null,
-        namedConcept: route.namedConcept,
+        return route;
       });
 
       let answer = "";
-      for await (const chunk of answer$.chunks) {
-        answer += chunk;
-        send("delta", { text: chunk });
-      }
+      const pump = (async () => {
+        for await (const chunk of answer$.chunks) {
+          answer += chunk;
+          send("delta", { text: chunk });
+        }
+      })();
+
+      const [route] = await Promise.all([routing, pump]);
 
       // Saved only once complete: a half-written answer is not a turn worth resuming.
       await saveTurn(sessionId, body.data.learnerId, concept.id, "tutor", answer, {

@@ -39,10 +39,13 @@ export function LearnPage() {
     void api.topics().then(setTopics);
   }, []);
 
-  const load = useCallback(async (id: string) => {
-    if (!id) return;
+  const load = useCallback(async (id: string): Promise<any> => {
+    if (!id) return null;
     void api.sessions(id).then(setSessions).catch(() => undefined);
-    try { setPlan(await api.plan(id)); } catch { setPlan(null); }
+    // Returned as well as stored: a caller that needs to act on the fresh plan cannot
+    // read it out of state yet, and reading the stale one starts the wrong lesson.
+    let loaded: any = null;
+    try { loaded = await api.plan(id); setPlan(loaded); } catch { setPlan(null); }
     // Resume the open session rather than starting blank on every reload.
     try {
       const t = await api.transcript(id);
@@ -62,6 +65,7 @@ export function LearnPage() {
           : null,
       );
     } catch { setTurns([]); }
+    return loaded;
   }, []);
 
   useEffect(() => { void load(learnerId); setViewingSession(null); }, [learnerId, load]);
@@ -229,26 +233,40 @@ export function LearnPage() {
     let visualFor: string | null = null;
 
     await askStream(learnerId, current.conceptId, text, {
-      onRouted: (r) => {
+      // The bubble opens before routing lands, so tokens have somewhere to land as
+      // they arrive. Creating it in onRouted meant every delta before that was dropped.
+      onOpen: () => {
         setBusy(null);
-        if (r.action === "start_roadmap") {
-          push({ role: "goal-offer", text: r.goalText ?? text, meta: { goalText: r.goalText } });
-          return;
-        }
-        // The empty bubble is appended once, up front; deltas fill it in place rather
-        // than pushing a new turn per token.
         setTurns((prev) => {
           streamIndex = prev.length;
-          return [...prev, { role: "tutor", text: "", meta: { intent: r.intent, streaming: true } }];
+          return [...prev, { role: "tutor", text: "", meta: { streaming: true } }];
         });
-        push({
-          role: "note",
-          text:
-            `routed as ${String(r.intent).replace(/_/g, " ")}` +
-            (r.intent === "prerequisite_gap"
-              ? " · recorded as a spontaneous prerequisite request"
-              : r.intent === "tangential" ? " · not taught, no mastery recorded" : ""),
+      },
+      onRouted: (r) => {
+        setBusy(null);
+        // Annotates the answer already on screen rather than deciding whether to show
+        // one. An actionable intent adds the offer next to it.
+        setTurns((prev) => {
+          if (streamIndex < 0 || !prev[streamIndex]) return prev;
+          const next = [...prev];
+          next[streamIndex] = {
+            ...next[streamIndex]!,
+            meta: { ...next[streamIndex]!.meta, intent: r.intent },
+          };
+          return next;
         });
+        if (r.action === "start_roadmap") {
+          push({ role: "goal-offer", text: r.goalText ?? text, meta: { goalText: r.goalText } });
+        } else {
+          push({
+            role: "note",
+            text:
+              `routed as ${String(r.intent).replace(/_/g, " ")}` +
+              (r.intent === "prerequisite_gap"
+                ? " · recorded as a spontaneous prerequisite request"
+                : r.intent === "tangential" ? " · not taught, no mastery recorded" : ""),
+          });
+        }
         if (r.detourTo && r.namedConcept) setDetour({ conceptId: r.detourTo, name: r.namedConcept });
         if (r.suggestVisual) visualFor = text;
       },
@@ -317,7 +335,14 @@ export function LearnPage() {
           onComplete={() => {
             setShowIntake(false);
             setIntakeGoal(null);
-            void load(learnerId).then(() => push({ role: "roadmap", text: "" }));
+            // The summary says "Starting with X", and then nothing started: the learner
+            // landed on the lesson page with a roadmap card and no lesson. Deliver the
+            // thing that was just promised.
+            void load(learnerId).then((fresh) => {
+              push({ role: "roadmap", text: "" });
+              const first = fresh?.steps?.find((st: any) => !st.completed);
+              if (first) void teach(first.conceptId, first.name);
+            });
           }}
         />
       </div>

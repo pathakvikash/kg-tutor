@@ -355,7 +355,9 @@ export function Intake({
                 ? `${session.lastAnswer.conceptName} — solid.`
                 : `${session.lastAnswer.conceptName} — not yet.`}
             </strong>{" "}
-            <span className="muted">{session.lastAnswer.reasoning}</span>
+            {/* The grader writes markdown — backticked identifiers, bold, sometimes a
+                list. Rendered as plain text it arrived with the punctuation showing. */}
+            <span className="verdict-why"><Markdown text={session.lastAnswer.reasoning} /></span>
           </div>
         )}
         <div className="intake-progress">

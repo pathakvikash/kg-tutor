@@ -167,17 +167,43 @@ export class LLMAuthError extends LLMError {
  * Models wrap JSON in prose and fences no matter how firmly asked not to. Pull the
  * first balanced object or array out rather than failing the whole call.
  */
-export function extractJson(text: string): unknown {
-  const trimmed = text.trim();
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(trimmed);
-  const body = fenced?.[1]?.trim() ?? trimmed;
-
-  try {
-    return JSON.parse(body);
-  } catch {
-    // fall through to balance scanning
+/**
+ * Escapes raw control characters that appear inside string literals.
+ *
+ * We ask models for multi-line plain code inside a JSON string field, which is a shape
+ * that is easy to get subtly wrong: one unescaped newline and `JSON.parse` rejects the
+ * whole document, including the prose fields that were perfect. That was surfacing to
+ * learners as "response failed schema validation twice" on a lesson that had actually
+ * been written correctly — and the retry costs another twenty seconds to fail the same
+ * way, because the instruction that produced it has not changed.
+ *
+ * Repairing is safe here in a way it usually is not: a literal newline inside a JSON
+ * string is never valid, so there is no correct document this could corrupt.
+ */
+function escapeControlCharsInStrings(body: string): string {
+  const out: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (const ch of body) {
+    if (inString) {
+      if (escaped) { escaped = false; out.push(ch); continue; }
+      if (ch === "\\") { escaped = true; out.push(ch); continue; }
+      if (ch === '"') { inString = false; out.push(ch); continue; }
+      if (ch === "\n") { out.push("\\n"); continue; }
+      if (ch === "\r") { out.push("\\r"); continue; }
+      if (ch === "\t") { out.push("\\t"); continue; }
+      if (ch < " ") { out.push(`\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`); continue; }
+      out.push(ch);
+      continue;
+    }
+    if (ch === '"') inString = true;
+    out.push(ch);
   }
+  return out.join("");
+}
 
+/** The first balanced {...} or [...] in the text, or null. */
+function balancedSpan(body: string): string | null {
   for (const [open, close] of [["{", "}"], ["[", "]"]] as const) {
     const start = body.indexOf(open);
     if (start === -1) continue;
@@ -196,18 +222,81 @@ export function extractJson(text: string): unknown {
       else if (ch === open) depth++;
       else if (ch === close) {
         depth--;
-        if (depth === 0) {
-          try {
-            return JSON.parse(body.slice(start, i + 1));
-          } catch {
-            break;
-          }
-        }
+        if (depth === 0) return body.slice(start, i + 1);
       }
     }
   }
-  throw new LLMError(`no parseable JSON in response: ${text.slice(0, 300)}`);
+  return null;
 }
+
+/** The parse error plus the ~120 characters surrounding the offending position. */
+function describeJsonFailure(candidate: string, err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  const at = /at position (\d+)/.exec(message)?.[1];
+  if (at === undefined) return `${message} — starts: ${candidate.slice(0, 200)}`;
+  const pos = Number(at);
+  const from = Math.max(0, pos - 60);
+  return (
+    `${message}\n` +
+    `…${candidate.slice(from, pos)}` +
+    `⟪HERE⟫${candidate.slice(pos, pos + 60)}…`
+  );
+}
+
+export function extractJson(text: string): unknown {
+  const trimmed = text.trim();
+
+  /**
+   * Candidate substrings, most likely first. The raw text is always among them.
+   *
+   * This used to take the first fenced block it found and throw the rest of the response
+   * away. `(?:json)?` is optional, so a ```python block — which an explanation about
+   * higher-order functions naturally opens with when bridging from Python — was treated
+   * as the document, and a response containing perfectly good JSON right below it was
+   * reported as having none. Two failures in ten runs, and the error pointed at Python
+   * source, which made it look like the model had ignored the format entirely.
+   */
+  const candidates: string[] = [];
+  const push = (v: string | null | undefined) => {
+    const t = v?.trim();
+    if (t && !candidates.includes(t)) candidates.push(t);
+  };
+
+  // A fence that says json is the strongest signal there is.
+  push(/```json\s*([\s\S]*?)```/.exec(trimmed)?.[1]);
+  // Then the response as it stands, and the first balanced object or array in it.
+  push(trimmed);
+  push(balancedSpan(trimmed));
+  // Only then other fenced blocks, in order, in case the model tagged JSON as something
+  // else or left the tag off.
+  for (const m of trimmed.matchAll(/```(?:[a-zA-Z0-9_-]*)\s*([\s\S]*?)```/g)) {
+    push(m[1]);
+    push(balancedSpan(m[1] ?? ""));
+  }
+
+  let lastError: unknown;
+  let lastTried = trimmed;
+  for (const candidate of candidates) {
+    // Strict first; the repair only ever alters text that could not have been valid.
+    for (const attempt of [candidate, escapeControlCharsInStrings(candidate)]) {
+      try {
+        return JSON.parse(attempt);
+      } catch (err) {
+        lastError = err;
+        lastTried = attempt;
+      }
+    }
+  }
+
+  // Point at the character that broke it. A head-and-tail excerpt proves the document is
+  // not truncated but says nothing about what is wrong with it, which cost a diagnosis
+  // cycle on the very first failure this message was written for.
+  throw new LLMError(
+    `no parseable JSON in a ${text.length}-char response: ${describeJsonFailure(lastTried, lastError)}`,
+  );
+}
+
+
 
 /**
  * Accepts either `{key: [...]}` or a bare `[...]`.
@@ -228,6 +317,23 @@ export function arrayOrWrapped<T>(key: string, item: z.ZodType<T>) {
  * One retry on a schema mismatch, with the validation error fed back. Beyond that the
  * caller decides — silently accepting malformed structure is how bad data gets in.
  */
+/**
+ * Local repairs, tried before spending another model call.
+ *
+ * A retry costs twenty to forty seconds on the CLI backend and can fail the same way,
+ * so it is the wrong first response to a payload that is nearly right. Each entry here
+ * is a mis-shaping observed in practice, not a hypothetical: the explanation call failed
+ * for a different reason on different runs — once a raw newline inside the code field,
+ * once the whole object wrapped in a single-element array — and both are recoverable
+ * without asking again.
+ */
+function repairs(value: unknown): unknown[] {
+  const out = [value];
+  // `[{...}]` where an object was asked for. Unwrapped only when it is unambiguous.
+  if (Array.isArray(value) && value.length === 1) out.push(value[0]);
+  return out;
+}
+
 export async function completeJson<T>(
   provider: LLMProvider,
   req: CompletionRequest,
@@ -235,7 +341,14 @@ export async function completeJson<T>(
 ): Promise<T> {
   const first = await provider.complete(req);
   try {
-    return schema.parse(extractJson(first));
+    const extracted = extractJson(first);
+    let lastErr: unknown;
+    for (const candidate of repairs(extracted)) {
+      try {
+        return schema.parse(candidate);
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr;
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     const retry = await provider.complete({
@@ -243,7 +356,14 @@ export async function completeJson<T>(
       user: `${req.user}\n\nYour previous response could not be used:\n${detail}\n\nReturn only valid JSON matching the required shape.`,
     });
     try {
-      return schema.parse(extractJson(retry));
+      const extracted = extractJson(retry);
+      let lastErr: unknown;
+      for (const candidate of repairs(extracted)) {
+        try {
+          return schema.parse(candidate);
+        } catch (e) { lastErr = e; }
+      }
+      throw lastErr;
     } catch (err2) {
       throw new LLMError(
         `response failed schema validation twice: ${err2 instanceof Error ? err2.message : String(err2)}`,
