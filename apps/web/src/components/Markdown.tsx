@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from "react";
+import { highlight, resolveLanguage } from "./highlight";
 
 /**
  * A small markdown renderer for tutor output.
@@ -67,9 +68,15 @@ export function Markdown({ text }: { text: string }) {
         i++;
       }
       i++; // closing fence
+      const source = body.join("\n");
+      const html = highlight(source, lang);
       blocks.push(
-        <pre key={key++} className="code-block" data-lang={lang || undefined}>
-          <code>{body.join("\n")}</code>
+        <pre key={key++} className="code-block" data-lang={resolveLanguage(lang) ?? lang ?? undefined}>
+          {/* Highlighting is a readability improvement, never a correctness one: an
+              unknown language falls back to plain text rather than risking mangled code. */}
+          {html
+            ? <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
+            : <code>{source}</code>}
         </pre>,
       );
       continue;
@@ -83,6 +90,61 @@ export function Markdown({ text }: { text: string }) {
         </div>,
       );
       i++;
+      continue;
+    }
+
+    // A pipe table. Without this the rows fall through to the paragraph branch and get
+    // joined with spaces into one unreadable line — which is exactly what happened.
+    const nextLine = lines[i + 1] ?? "";
+    if (line.includes("|") && /^\s*\|?[\s:-]*-[\s:|-]*\|?\s*$/.test(nextLine) && nextLine.includes("-")) {
+      const cells = (row: string) =>
+        row.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
+      const header = cells(line);
+      const align = cells(nextLine).map((spec) =>
+        spec.startsWith(":") && spec.endsWith(":") ? "center" : spec.endsWith(":") ? "right" : "left",
+      );
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && (lines[i] ?? "").includes("|")) {
+        rows.push(cells(lines[i] ?? ""));
+        i++;
+      }
+      blocks.push(
+        <div className="md-table-wrap" key={key++}>
+          <table className="md-table">
+            <thead>
+              <tr>
+                {header.map((h, n) => (
+                  <th key={n} style={{ textAlign: align[n] ?? "left" }}>{inline(h, `th${key}-${n}`)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, rn) => (
+                <tr key={rn}>
+                  {r.map((cell, cn) => (
+                    <td key={cn} style={{ textAlign: align[cn] ?? "left" }}>
+                      {inline(cell, `td${key}-${rn}-${cn}`)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
+
+    if (/^\s*>\s?/.test(line)) {
+      const quoted: string[] = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i] ?? "")) {
+        quoted.push((lines[i] ?? "").replace(/^\s*>\s?/, ""));
+        i++;
+      }
+      blocks.push(
+        <blockquote key={key++} className="md-quote">{inline(quoted.join(" "), `q${key}`)}</blockquote>,
+      );
       continue;
     }
 
@@ -113,6 +175,8 @@ export function Markdown({ text }: { text: string }) {
       (lines[i] ?? "").trim() !== "" &&
       !(lines[i] ?? "").trimStart().startsWith("```") &&
       !/^#{1,4}\s/.test(lines[i] ?? "") &&
+      !/^\s*>\s?/.test(lines[i] ?? "") &&
+      !(lines[i] ?? "").includes("|") &&
       !/^\s*([-*+]|\d+\.)\s+/.test(lines[i] ?? "")
     ) {
       para.push(lines[i] ?? "");

@@ -615,3 +615,30 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 }
 @keyframes blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .caret { animation: none; opacity: 0.6; } }
+
+/* Tables. The model produces them, so they have to render as tables rather than
+   falling through to a paragraph and being joined into one line. */
+.md-table-wrap { overflow-x: auto; margin: 0 0 12px; }
+.md-table { border-collapse: collapse; width: 100%; font-size: 12.5px; min-width: 320px; }
+.md-table th {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--ink-soft); font-weight: 500;
+  padding: 0 12px 6px 0; border-bottom: 1px solid var(--rule-strong); white-space: nowrap;
+}
+.md-table td {
+  padding: 7px 12px 7px 0; border-bottom: 1px solid var(--rule); vertical-align: top;
+}
+.md-table tr:last-child td { border-bottom: none; }
+.md-quote {
+  margin: 0 0 12px; padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--rule-strong); color: var(--ink-mid);
+}
+
+/* Syntax highlighting, themed off our own tokens rather than a stock hljs stylesheet. */
+.hljs-keyword, .hljs-built_in, .hljs-literal { color: var(--accent); }
+.hljs-string, .hljs-regexp { color: var(--m-functional); }
+.hljs-title, .hljs-title.function_, .hljs-section { color: var(--structure); }
+.hljs-number { color: var(--m-familiar); }
+.hljs-comment, .hljs-quote { color: var(--ink-soft); font-style: italic; }
+.hljs-attr, .hljs-property, .hljs-variable { color: var(--ink); }
+.hljs-punctuation, .hljs-operator { color: var(--ink-mid); }

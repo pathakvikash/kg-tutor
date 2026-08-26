@@ -67,11 +67,43 @@ is the single most valuable thing you can do here.
 
 Keep it to one sitting. Be concrete. No filler, no encouragement padding.
 
+FORMAT — the explanation field is rendered as markdown, so write markdown:
+
+- Short paragraphs. Three or four sentences, then a break. A wall of prose is the most
+  common way a good explanation goes unread.
+- Use "## " subheadings when the explanation has more than one distinct part.
+- Use a bulleted or numbered list whenever you are enumerating things. Never bury a
+  list inside a sentence.
+- ANY code — an expression, a method call, a signature — goes in a fenced block with a
+  language tag, or in \`backticks\` if it is a single identifier mid-sentence. Never
+  write code as prose. "You attach with promise.then(onSuccess)" is wrong; show it.
+- Bold the two or three phrases that carry the idea. Not more.
+- Never draw ASCII or box-drawing diagrams. If something needs a picture, say so in one
+  sentence — the system renders a real interactive one separately.
+
 Put runnable code in example.code as PLAIN CODE — no markdown fences, no backticks.
 example.language is its language. example.walkthrough explains what the code shows, in
 prose. Prose fields may use markdown (bold, inline code, lists); the code field may not.
 
 Respond with JSON: {"hook","explanation","example":{"language","code","walkthrough"}}`;
+
+/**
+ * Shared by both answer paths. Without it models default to undifferentiated prose,
+ * and the single most common failure was code written as a sentence — "you attach with
+ * promise.then(onSuccess)" — which is unreadable and uncopyable.
+ */
+const ANSWER_SYSTEM = `Answer the learner's question directly and concretely. Do not restate the whole lesson.
+
+Your answer is rendered as markdown. Write markdown:
+
+- Lead with the answer. No preamble, no restating the question back.
+- Short paragraphs, three or four sentences at most.
+- Enumerating things? Use a list. Comparing things? Use a table.
+- ANY code goes in a fenced block with a language tag (\`\`\`javascript), or in
+  \`backticks\` for a single identifier mid-sentence. Never write code as prose.
+- Bold only the phrase that carries the point.
+- Never draw ASCII or box-drawing diagrams. If the answer wants a picture, say so in
+  one sentence — an interactive one is rendered separately.`;
 
 export async function lessonRoutes(app: FastifyInstance): Promise<void> {
   /** Explanation for the concept about to be taught. Delivery is generated; the
@@ -199,11 +231,15 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     await saveTurn(sessionId, body.data.learnerId, body.data.conceptId, "question", item.prompt, {
       itemId: item.id,
       requiresTransfer: item.requiresTransfer,
+      code: item.code,
+      codeLanguage: item.codeLanguage,
     });
 
     return {
       itemId: item.id,
       prompt: item.prompt,
+      code: item.code,
+      codeLanguage: item.codeLanguage,
       requiresTransfer: item.requiresTransfer,
       targetsLevel: item.targetsLevel,
       sessionId,
@@ -263,8 +299,7 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
        * failure than twenty seconds of blank screen.
        */
       const answer$ = startStream(llm, {
-        system:
-          "Answer the learner's question directly and concretely. Do not restate the whole lesson.",
+        system: ANSWER_SYSTEM,
         user: `They are learning "${concept.canonicalName}" (${concept.sense}).\nThey asked: ${body.data.question}`,
         tier: "small",
         temperature: 0.4,

@@ -8,6 +8,9 @@ const itemSchema = arrayOrWrapped(
   "items",
   z.object({
     prompt: z.string().min(1),
+    /** Kept out of `prompt` so newlines survive rendering. */
+    code: z.string().nullable().default(null),
+    codeLanguage: z.string().nullable().default(null),
     targetsLevel: z.enum(["familiar", "functional", "solid"]),
     requiresTransfer: z.boolean(),
     /** What a correct answer must demonstrate — not a model answer to match against. */
@@ -32,7 +35,13 @@ transfer items, a fluent paraphrase promotes a learner who cannot use the concep
 mustDemonstrate lists what a correct answer has to show. Write it as observable claims,
 not as a model answer.
 
-Respond with JSON: {"items": [{"prompt","targetsLevel","requiresTransfer","mustDemonstrate"}]}`;
+If the question is about a snippet, put the snippet in the "code" field with its
+language in "codeLanguage" — NOT inside "prompt". Code embedded in prose loses its line
+breaks when rendered and arrives as one unreadable line. "prompt" is then just the
+question about it: "Predict the output order." Any short identifier that must appear
+mid-sentence goes in backticks.
+
+Respond with JSON: {"items":[{"prompt","code","codeLanguage","targetsLevel","requiresTransfer","mustDemonstrate"}]}`;
 
 /**
  * Items are stored, versioned objects on the Concept — not regenerated per learner. (07)
@@ -82,6 +91,8 @@ export async function generateItems(
       data: {
         conceptId,
         prompt: item.prompt,
+        code: item.code ?? null,
+        codeLanguage: item.codeLanguage ?? null,
         rubric: { mustDemonstrate: item.mustDemonstrate } as Prisma.InputJsonValue,
         targetsLevel: item.targetsLevel as MasteryLevel,
         requiresTransfer: item.requiresTransfer,

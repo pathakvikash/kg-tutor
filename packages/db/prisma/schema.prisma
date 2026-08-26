@@ -255,6 +255,10 @@ model AssessmentItem {
   concept    Concept       @relation(fields: [conceptId], references: [id], onDelete: Cascade)
   version    Int           @default(1)
   prompt     String        @db.Text
+  /// Code the question is about, kept out of `prompt`. Embedded in prose it loses its
+  /// newlines to markdown paragraph joining and arrives as one unreadable line.
+  code       String?       @db.Text
+  codeLanguage String?
   /// Rubric is expressed as failure modes to detect, not open-ended answer quality. (07)
   rubric     Json
   /// Level this item discriminates at — gates which promotion it can justify. (10)

@@ -12,7 +12,7 @@ interface Turn {
   meta?: {
     kind?: string; itemId?: string; requiresTransfer?: boolean;
     intent?: string; language?: string; spec?: unknown; goalText?: string;
-    streaming?: boolean;
+    streaming?: boolean; code?: string | null; codeLanguage?: string | null;
   } | null;
 }
 
@@ -145,7 +145,10 @@ export function LearnPage() {
       setPending({ itemId: c.itemId, prompt: c.prompt, requiresTransfer: c.requiresTransfer });
       push({
         role: "question", text: c.prompt,
-        meta: { itemId: c.itemId, requiresTransfer: c.requiresTransfer },
+        meta: {
+          itemId: c.itemId, requiresTransfer: c.requiresTransfer,
+          code: c.code, codeLanguage: c.codeLanguage,
+        },
       });
       if (name) setOverride({ conceptId: target, name });
     } catch (err) {
@@ -373,6 +376,13 @@ export function LearnPage() {
                 ) : (
                   <>
                     <Markdown text={t.text} />
+                    {/* A question's snippet is a separate field, so its line breaks
+                        survive instead of being collapsed by paragraph joining. */}
+                    {t.meta?.code && (
+                      <Markdown
+                        text={`\`\`\`${t.meta.codeLanguage ?? ""}\n${t.meta.code}\n\`\`\``}
+                      />
+                    )}
                     {t.meta?.streaming && <span className="caret" aria-hidden="true" />}
                   </>
                 )}
