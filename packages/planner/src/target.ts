@@ -48,8 +48,11 @@ export async function resolveGoal(input: ResolveGoalInput): Promise<TargetConcep
   const { prisma, topicId, depth, mastery } = input;
   const bar = REQUIRED[depth];
 
+  // A deprecated concept is one the graph has decided is not a concept — usually a
+  // compound that has since been split. The resolver and the graph view already exclude
+  // them; the planner did not, so deprecating one changed nothing about what got taught.
   const links = await prisma.topicConcept.findMany({
-    where: { topicId, relation: "contains" },
+    where: { topicId, relation: "contains", concept: { deprecatedAt: null } },
   });
 
   const target = new Map<string, TargetConcept>();

@@ -5,3 +5,4 @@ export * from "./adjudicate-llm.js";
 export * from "./consensus.js";
 export * from "./expand.js";
 export * from "./resolve.js";
+export * from "./split.js";

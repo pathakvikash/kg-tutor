@@ -207,7 +207,7 @@ export async function loadTopicGraph(
   topicId: string,
 ): Promise<{ conceptIds: string[]; edges: { srcId: string; dstId: string }[] }> {
   const links = await prisma.topicConcept.findMany({
-    where: { topicId, relation: "contains" },
+    where: { topicId, relation: "contains", concept: { deprecatedAt: null } },
   });
   const conceptIds = links.map((l) => l.conceptId);
   const edges = await prisma.edge.findMany({
