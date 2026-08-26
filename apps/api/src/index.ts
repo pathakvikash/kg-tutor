@@ -9,7 +9,7 @@ import { reviewRoutes } from "./routes/review.js";
 import { metricsRoutes } from "./routes/metrics.js";
 import { teachRoutes } from "./routes/teach.js";
 import { lessonRoutes, progressRoutes } from "./routes/lesson.js";
-import { expandJobRoutes } from "./routes/expand-job.js";
+import { expandJobRoutes, failStrandedJobs } from "./routes/expand-job.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { intakeRoutes } from "./routes/intake.js";
 import { roadmapRoutes } from "./routes/roadmap.js";
@@ -67,6 +67,12 @@ if (existsSync(join(webDist, "index.html"))) {
 }
 
 await refreshLlm();
+
+// Jobs are in-process promises; a restart strands them mid-flight.
+const stranded = await failStrandedJobs();
+if (stranded > 0) {
+  app.log.warn({ stranded }, "marked expansion jobs stranded by a restart as failed");
+}
 const status = providerStatus();
 app.log.info(
   { llm: status.llm ?? "none", embedding: status.embedding },

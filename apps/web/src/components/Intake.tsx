@@ -21,6 +21,7 @@ export function Intake({
   const [resolved, setResolved] = useState<any>(null);
   const [job, setJob] = useState<any>(null);
   const [buildQueue, setBuildQueue] = useState<string[]>([]);
+  const [resumedFrom, setResumed] = useState<{ topic: string | null; depth: string } | null>(null);
   const [topicId, setTopicId] = useState("");
   const [depth, setDepth] = useState("use");
   const [goalText, setGoalText] = useState("");
@@ -31,6 +32,24 @@ export function Intake({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => { if (!topicId && topics[0]) setTopicId(topics[0].id); }, [topics, topicId]);
+
+  /**
+   * Pick up an assessment that was interrupted. The rows survived a refresh all along;
+   * without this the UI silently restarted a half-finished assessment from question one.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .openIntake(learnerId)
+      .then((r) => {
+        if (cancelled || !r?.intake) return;
+        setSession(r);
+        setStage(r.status === "complete" ? "done" : "probing");
+        setResumed(r.intake);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [learnerId]);
 
   /**
    * Free text in, a plan out. A goal is resolved to a topic, anything missing is built,
@@ -304,6 +323,22 @@ export function Intake({
   if (stage === "probing" && session?.question) {
     return (
       <div className="intake">
+        {resumedFrom && (
+          <div className="banner" style={{ fontSize: 12.5 }}>
+            Picking up where you left off — {resumedFrom.topic ?? "your assessment"} (
+            {resumedFrom.depth}).{" "}
+            <button
+              className="linkish"
+              onClick={() => {
+                void api.abandonIntake(session.intakeId).then(() => {
+                  setResumed(null); setSession(null); setStage("ask");
+                });
+              }}
+            >
+              start something else instead
+            </button>
+          </div>
+        )}
         <div className="intake-progress">
           Question {session.asked + 1} of at most {session.budget}
           <div className="progress" style={{ marginTop: 6 }}>

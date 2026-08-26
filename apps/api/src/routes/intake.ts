@@ -209,6 +209,35 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     return advance(id);
   });
 
+  /**
+   * Resumes an assessment that was interrupted.
+   *
+   * The IntakeSession row survived a refresh all along; the UI just never looked for
+   * it, so a reload silently restarted a half-finished assessment from the first
+   * question. Progress that is stored but unreachable is not persisted in any sense
+   * the user cares about.
+   */
+  app.get("/api/intake/open/:learnerId", async (req) => {
+    const { learnerId } = req.params as { learnerId: string };
+    const intake = await prisma.intakeSession.findFirst({
+      where: { learnerId, status: "asking" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!intake) return { intake: null };
+
+    const topic = await prisma.topic.findUnique({ where: { id: intake.topicId } });
+    // Re-derive the current question rather than trusting a stored one: the item may
+    // have been retired since.
+    const resumed = await advance(intake.id);
+    return { intake: { id: intake.id, topic: topic?.name ?? null, depth: intake.depth }, ...(resumed as object) };
+  });
+
+  app.post("/api/intake/:id/abandon", async (req) => {
+    const { id } = req.params as { id: string };
+    await prisma.intakeSession.update({ where: { id }, data: { status: "abandoned" } });
+    return { ok: true };
+  });
+
   app.get("/api/intake/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const intake = await prisma.intakeSession.findUnique({ where: { id } });

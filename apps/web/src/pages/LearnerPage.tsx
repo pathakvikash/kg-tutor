@@ -73,7 +73,17 @@ function NewTopic({ onDone }: { onDone: () => void }) {
           . Pick it as a topic below.
         </div>
       )}
-      {job?.status === "failed" && <div className="sub err" style={{ marginTop: 8 }}>{job.error}</div>}
+      {job?.status === "failed" && (
+        <div style={{ marginTop: 8 }}>
+          <div className="sub err">{job.error}</div>
+          <button
+            style={{ marginTop: 6 }}
+            onClick={() => { void api.retryExpansion(job.id).then(setJob); }}
+          >
+            Try again
+          </button>
+        </div>
+      )}
       {error && <div className="sub err" style={{ marginTop: 8 }}>{error}</div>}
     </div>
   );

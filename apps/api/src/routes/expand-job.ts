@@ -64,6 +64,29 @@ async function runJob(jobId: string): Promise<void> {
   }
 }
 
+/**
+ * A job runs as an in-process promise, so a restart strands it in `running` forever.
+ *
+ * These are marked failed on boot rather than silently retried: expansion IS idempotent
+ * — every concept goes back through the resolver and binds to what already exists — so
+ * re-running is safe and cheap, but auto-retrying a job that might have crashed the
+ * process would loop. Better to say plainly what happened and let the user click again.
+ */
+export async function failStrandedJobs(): Promise<number> {
+  const { count } = await prisma.expansionJob.updateMany({
+    where: { status: { in: ["queued", "running"] } },
+    data: {
+      status: "failed",
+      error:
+        "Interrupted by a server restart. Nothing was lost — concepts already written " +
+        "are kept, and starting this topic again picks up from there rather than " +
+        "duplicating them.",
+      finishedAt: new Date(),
+    },
+  });
+  return count;
+}
+
 export async function expandJobRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/expansions", async (req, reply) => {
     const body = z
@@ -86,6 +109,18 @@ export async function expandJobRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/expansions", async () =>
     prisma.expansionJob.findMany({ orderBy: { createdAt: "desc" }, take: 20 }));
+
+  /** Re-runs a failed or interrupted job. Safe: the resolver dedups everything. */
+  app.post("/api/expansions/:id/retry", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const old = await prisma.expansionJob.findUnique({ where: { id } });
+    if (!old) return reply.code(404).send({ error: "job not found" });
+    const job = await prisma.expansionJob.create({
+      data: { topicName: old.topicName, description: old.description },
+    });
+    void runJob(job.id);
+    return job;
+  });
 
   app.get("/api/expansions/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
