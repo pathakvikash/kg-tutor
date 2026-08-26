@@ -175,3 +175,46 @@ describe("runAttempt", () => {
     expect(after.correctCount).toBe(0);
   });
 });
+
+describe("grading a correct answer", () => {
+  it("accepts a null diagnosis, because the prompt asks for null when correct", async () => {
+    // The schema demanded a diagnosis unconditionally while the prompt said "only when
+    // incorrect". A model that followed the instructions failed validation twice and
+    // 500'd — the schema broke the path that was working.
+    const f = await (async () => {
+      const l = await learner();
+      const c = await concept("promises");
+      return { l, c };
+    })();
+    const llm = new ScriptedLLM(() => JSON.stringify({
+      correct: true, diagnosis: null, matchedFailureModeIndex: null,
+      belief: null, restatementOnly: false, reasoning: "right, with the ordering explained",
+    }));
+
+    const out = await runAttempt({
+      prisma, llm, prompt: "Predict the order.", response: "loop 0,1,2 then the timeouts",
+      requiresTransfer: true, ctx: ctx({ learnerId: f.l, conceptId: f.c }),
+    });
+
+    expect(out.grade.correct).toBe(true);
+    expect(out.evidenceKind).toBe("transferred");
+    expect(out.action.kind).toBe("advance");
+    // One model call — no retry was needed, which is the point.
+    expect(llm.calls).toHaveLength(1);
+  });
+
+  it("still requires a diagnosis when the answer is wrong", async () => {
+    const l = await learner();
+    const c = await concept("promises");
+    const llm = new ScriptedLLM(() => JSON.stringify({
+      correct: false, diagnosis: "cannot_apply", matchedFailureModeIndex: null,
+      belief: null, restatementOnly: false, reasoning: "",
+    }));
+    const out = await runAttempt({
+      prisma, llm, prompt: "q", response: "no", requiresTransfer: false,
+      ctx: ctx({ learnerId: l, conceptId: c }),
+    });
+    expect(out.grade.diagnosis).toBe("cannot_apply");
+    expect(out.action.kind).toBe("reexplain");
+  });
+});

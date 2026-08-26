@@ -14,6 +14,7 @@ export interface ClaudeCodeOptions {
 
 interface CliResult {
   is_error?: boolean;
+  stop_reason?: string;
   result?: string;
   total_cost_usd?: number;
   duration_ms?: number;
@@ -45,6 +46,18 @@ interface CliResult {
  * Use it to exercise the system end to end. Switch to `AnthropicLLM` before drawing any
  * conclusion about cost, latency, or throughput.
  */
+/**
+ * Claude Code registers its full tool set regardless of the system prompt, so the model
+ * can decide to read a file or run a command mid-answer. For text generation that is
+ * never wanted and actively harmful: the tool call consumes the single allowed turn and
+ * the run fails with stop_reason "tool_use", after thousands of tokens spent deciding
+ * to do it. Disabling them cut thinking from ~6,600 tokens to ~400 on a grading call.
+ */
+const NO_TOOLS = [
+  "Bash", "Read", "Write", "Edit", "Glob", "Grep",
+  "WebFetch", "WebSearch", "Task", "TodoWrite", "NotebookEdit",
+].join(",");
+
 export class ClaudeCodeLLM implements LLMProvider {
   readonly name: string;
   onUsage?: UsageSink | undefined;
@@ -113,6 +126,7 @@ export class ClaudeCodeLLM implements LLMProvider {
         "--include-partial-messages",
         "--verbose",
         "--max-turns", "1",
+        "--disallowed-tools", NO_TOOLS,
       ],
       { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env } },
     );
@@ -214,6 +228,8 @@ export class ClaudeCodeLLM implements LLMProvider {
         // One response. No tool loop, no follow-up turns.
         "--max-turns",
         "1",
+        "--disallowed-tools",
+        NO_TOOLS,
       ];
 
       const child = spawn(this.bin, args, {
@@ -267,6 +283,15 @@ export class ClaudeCodeLLM implements LLMProvider {
               `Claude Code is not authenticated: ${message}`,
               "Run `claude` once in a terminal to sign in again, then retry. " +
                 "Alternatively set ANTHROPIC_API_KEY and switch the provider in Settings.",
+            ),
+          );
+          return;
+        }
+        if (parsed?.stop_reason === "tool_use") {
+          reject(
+            new LLMError(
+              "claude CLI stopped to call a tool. Text generation should never do that — " +
+                "check that --disallowed-tools is still being passed.",
             ),
           );
           return;

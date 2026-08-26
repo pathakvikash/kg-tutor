@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { Markdown } from "./Markdown";
 
 /**
  * The initial assessment, conversational. (07)
@@ -349,7 +350,16 @@ export function Intake({
         </div>
         <h2>{session.question.conceptName}</h2>
         <p className="muted">{session.question.why}</p>
-        <div className="bubble" style={{ margin: "12px 0" }}>{session.question.prompt}</div>
+        <div className="bubble" style={{ margin: "12px 0" }}>
+          <Markdown text={session.question.prompt} />
+          {/* Rendered as raw text before, so a question about a snippet arrived as one
+              unreadable line — the same paragraph-joining problem as the lesson. */}
+          {session.question.code && (
+            <Markdown
+              text={`\`\`\`${session.question.codeLanguage ?? ""}\n${session.question.code}\n\`\`\``}
+            />
+          )}
+        </div>
         <textarea
           rows={4} value={answer} onChange={(e) => setAnswer(e.target.value)}
           placeholder="In your own words. A rough answer is more useful than a guess."

@@ -66,6 +66,20 @@ export function LearnPage() {
 
   useEffect(() => { void load(learnerId); setViewingSession(null); }, [learnerId, load]);
 
+  /**
+   * An interrupted assessment should present itself, not wait behind a button. It was
+   * resumable but invisible, which for the learner is the same as being lost.
+   */
+  useEffect(() => {
+    if (!learnerId) return;
+    let cancelled = false;
+    void api
+      .openIntake(learnerId)
+      .then((r) => { if (!cancelled && r?.intake) setShowIntake(true); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [learnerId]);
+
   /** Switching to a past session shows it read-only until it is resumed. */
   const openSession = async (id: string) => {
     setViewingSession(id);

@@ -29,7 +29,15 @@ export interface GradeResult {
 
 const schema = z.object({
   correct: z.boolean(),
-  diagnosis: failureDiagnosis,
+  /**
+   * Null on a correct answer.
+   *
+   * The prompt has always said "diagnosis (when incorrect)", but the schema demanded it
+   * unconditionally — so a model that correctly omitted it on a right answer failed
+   * validation twice and took the whole request down with it. A schema that contradicts
+   * its own instructions fails on exactly the path that was working.
+   */
+  diagnosis: failureDiagnosis.nullable().default(null),
   matchedFailureModeIndex: z.number().int().nullable(),
   belief: z.string().nullable(),
   restatementOnly: z.boolean(),
@@ -57,7 +65,7 @@ Decide:
   its index. Otherwise null. Only match when the answer really shows that belief.
 - belief: if the answer reveals a specific wrong belief, state it in one sentence as
   the learner would hold it. Otherwise null.
-- diagnosis (when incorrect):
+- diagnosis: ONLY when incorrect. Use null when the answer is correct.
   - "misconception": exhibits a specific wrong belief
   - "missing_prerequisite": confused about something the concept builds on
   - "cannot_apply": understands the idea but cannot use it
@@ -107,7 +115,9 @@ export async function gradeResponse(
 
   return {
     correct: raw.correct,
-    diagnosis: raw.diagnosis,
+    // Irrelevant when correct; "careless" is the harmless placeholder since nothing
+    // downstream reads a diagnosis off a passing answer.
+    diagnosis: raw.diagnosis ?? "careless",
     matchedEdgeId: matched?.edgeId ?? null,
     belief: raw.belief,
     restatementOnly: raw.restatementOnly,

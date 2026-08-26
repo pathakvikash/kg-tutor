@@ -11,14 +11,18 @@ import { prisma, getLlm } from "../context.js";
 const NO_MODEL = { error: "no model configured", detail: "Choose one in Settings." };
 
 /** Picks or generates the question for a probe. */
-async function questionFor(conceptId: string): Promise<{ itemId: string; prompt: string } | null> {
+async function questionFor(
+  conceptId: string,
+): Promise<{ itemId: string; prompt: string; code: string | null; codeLanguage: string | null } | null> {
   const llm = getLlm();
   let item = await selectItem(prisma, conceptId, "functional");
   if (!item && llm) {
     await generateItems(prisma, llm, conceptId);
     item = await selectItem(prisma, conceptId, "functional");
   }
-  return item ? { itemId: item.id, prompt: item.prompt } : null;
+  return item
+    ? { itemId: item.id, prompt: item.prompt, code: item.code, codeLanguage: item.codeLanguage }
+    : null;
 }
 
 async function advance(intakeId: string): Promise<unknown> {
@@ -54,6 +58,8 @@ async function advance(intakeId: string): Promise<unknown> {
       conceptName: concept.canonicalName,
       itemId: q.itemId,
       prompt: q.prompt,
+      code: q.code,
+      codeLanguage: q.codeLanguage,
       // Shown to the learner so a question about something unfamiliar does not feel
       // arbitrary — the point is to find where knowledge stops, not to catch anyone out.
       why: `Finding where your knowledge stops — this is step ${probe.position + 1} of ${probe.chainLength} in this chain.`,
