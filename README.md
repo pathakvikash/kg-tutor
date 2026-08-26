@@ -18,37 +18,55 @@ v0 complete: engine, HTTP API and web UI. See `context/progress.md`.
 
 ## Running it
 
+First time:
+
 ```bash
-docker compose up -d                      # Postgres 16 + pgvector on :5433
-pnpm install
-pnpm --filter @kg/db exec prisma migrate deploy
-pnpm --filter @kg/api seed                # a small real JS graph to look at
-pnpm --filter @kg/web build
-pnpm --filter @kg/api start               # http://localhost:4000
+pnpm setup
 ```
 
-For UI work, `pnpm --filter @kg/web dev` runs Vite on **:5173** proxying `/api` to :4000.
+That installs, starts Postgres, migrates both the dev and test databases, and seeds a
+small JavaScript graph so the UI has something in it.
 
-Five views: **Learn** (the lesson: explanation, check, and chat that routes rather than
-teaches), **Graph** (two modes — *explore* clusters by connection to find hubs and gaps,
-*teach* layers by dependency to read the order; click any node or edge, focus a
-neighbourhood, hop through the breadcrumb), **Learner** (path, milestones, probes due, known concepts,
-misconceptions), **Review** (proposals, negative evidence, traversal-ordered queue),
-**Metrics** (reuse rate, wasted teaching, cost per verified outcome, arms).
+Then, day to day:
+
+```bash
+pnpm dev
+```
+
+API on **:4000**, UI on **:5173** with hot reload, `/api` proxied. Use `pnpm start`
+instead to build the UI and serve everything from :4000 on its own — closer to how it
+would actually run.
+
+**It has to be `pnpm`, not `npm`.** The workspace uses `workspace:*` dependencies and a
+`pnpm-workspace.yaml`, neither of which npm understands — `npm install` fails outright
+rather than degrading. If you do not have it: `corepack enable && corepack prepare pnpm@9 --activate`.
+
+| Command | |
+| --- | --- |
+| `pnpm setup` | install, database up, migrate, seed |
+| `pnpm dev` | both apps, hot reload (:4000 API, :5173 UI) |
+| `pnpm start` | build the UI, serve everything from :4000 |
+| `pnpm test` | integration tests against `kg_tutor_test` |
+| `pnpm typecheck` | every package |
+| `pnpm db:reset` | drop the volume and rebuild from scratch |
+| `pnpm db:studio` | Prisma Studio |
+| `pnpm eval:adjudicator` | score the resolver against the labelled pairs (needs a model) |
+
+Requires Docker, and Node 20+.
 
 **Backing it with Claude Code** (no API key needed, if the CLI is installed):
 
 ```bash
-LLM_PROVIDER=claude-code pnpm --filter @kg/api start
+LLM_PROVIDER=claude-code pnpm dev
 ```
 
+Or change it at runtime on the **Settings** tab, which takes effect without a restart.
 Roughly 3–6 seconds per call, and each call pays for the CLI's own system prompt, so
 cost figures are real spend but are **not** comparable to an API-backed run. Fine for
 exercising the system; switch to a key before concluding anything about cost or latency.
 
-Expansion, grading and chat return **503 without any model configured** — deliberately, since a
-fabricated concept is worse than a clear failure. Set `ANTHROPIC_API_KEY` or
-`OPENAI_API_KEY` and restart.
+Expansion, grading and chat return **503 without any model configured** — deliberately,
+since a fabricated concept is worse than a clear failure.
 
 ## Design
 

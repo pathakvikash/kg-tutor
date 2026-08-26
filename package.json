@@ -6,12 +6,22 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "dev": "turbo run dev",
+    "dev:api": "pnpm --filter @kg/api dev",
+    "dev:web": "pnpm --filter @kg/web dev",
+    "start": "pnpm --filter @kg/web build && pnpm --filter @kg/api start",
+    "setup": "pnpm install && pnpm db:up && pnpm db:wait && pnpm db:migrate && pnpm db:seed",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:wait": "until docker exec kg-tutor-pg pg_isready -U postgres -d kg_tutor >/dev/null 2>&1; do sleep 1; done",
+    "db:migrate": "pnpm --filter @kg/db exec prisma migrate deploy && DATABASE_URL=postgresql://postgres:postgres@localhost:5433/kg_tutor_test pnpm --filter @kg/db exec prisma migrate deploy && pnpm --filter @kg/db db:generate",
+    "db:seed": "pnpm --filter @kg/api seed",
+    "db:studio": "pnpm --filter @kg/db db:studio",
+    "db:reset": "docker compose down -v && pnpm db:up && pnpm db:wait && pnpm db:migrate && pnpm db:seed",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test --concurrency=1",
-    "db:generate": "pnpm --filter @kg/db db:generate",
-    "db:migrate": "pnpm --filter @kg/db db:migrate",
-    "db:studio": "pnpm --filter @kg/db db:studio",
+    "eval:adjudicator": "pnpm --filter @kg/graph eval",
     "format": "prettier --write \"**/*.{ts,tsx,json,md,prisma}\""
   },
   "devDependencies": {
