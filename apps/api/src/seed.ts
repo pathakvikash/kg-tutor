@@ -124,15 +124,30 @@ async function main(): Promise<void> {
 
   for (const [topicName, claim, concepts] of MILESTONES) {
     const topic = await prisma.topic.findUniqueOrThrow({ where: { name: topicName } });
-    const existing = await prisma.milestoneTemplate.findFirst({ where: { topicId: topic.id, claim } });
-    if (existing) continue;
-    const ordering = await prisma.milestoneTemplate.count({ where: { topicId: topic.id } });
-    const t = await prisma.milestoneTemplate.create({
-      data: { topicId: topic.id, claim, ordering, status: "canonical" },
+    const existing = await prisma.milestoneTemplate.findFirst({
+      where: { topicId: topic.id, claim },
+      include: { concepts: true },
     });
+    // Re-seeding used to skip an existing template entirely, so a template whose
+    // concepts had been cascaded away by a Concept delete stayed permanently empty.
+    const t =
+      existing ??
+      (await prisma.milestoneTemplate.create({
+        data: {
+          topicId: topic.id,
+          claim,
+          ordering: await prisma.milestoneTemplate.count({ where: { topicId: topic.id } }),
+          status: "canonical",
+        },
+      }));
+    if (existing && existing.concepts.length === concepts.length) continue;
+
+    await prisma.milestoneConcept.deleteMany({ where: { templateId: t.id } });
     for (const c of concepts) {
+      const conceptId = ids.get(c);
+      if (!conceptId) continue;
       await prisma.milestoneConcept.create({
-        data: { templateId: t.id, conceptId: ids.get(c)!, requiredLevel: "functional" },
+        data: { templateId: t.id, conceptId, requiredLevel: "functional" },
       });
     }
   }

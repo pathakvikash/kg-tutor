@@ -3,7 +3,7 @@ import { z } from "zod";
 import { completeJson } from "@kg/llm";
 import { loadMastery } from "@kg/planner";
 import { generateItems, selectItem, routeChatQuestion, recordEvidence } from "@kg/teach";
-import { assignVariant } from "@kg/teach";
+import { assignVariant, isActionable } from "@kg/teach";
 import { prisma, getLlm } from "../context.js";
 
 /**
@@ -233,6 +233,24 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
       currentConceptName: concept.canonicalName,
       prerequisiteNames: prereqs.map((p) => ({ conceptId: p.srcId, name: p.src.canonicalName })),
     });
+
+    // A request to learn something else is acted on, not answered. Returning a
+    // paragraph about how one might learn React, when the system can build and assess
+    // an actual path through it, is the worst available response.
+    if (isActionable(route.intent)) {
+      const sessionId = await openSession(body.data.learnerId);
+      await saveTurn(sessionId, body.data.learnerId, body.data.conceptId, "learner", body.data.question);
+      return {
+        sessionId,
+        intent: route.intent,
+        action: "start_roadmap",
+        goalText: route.namedConcept ?? body.data.question,
+        answer: null,
+        detourTo: null,
+        namedConcept: route.namedConcept,
+        reasoning: route.reasoning,
+      };
+    }
 
     // The learner named their own gap while attempting the target: the cleanest
     // missing-edge signal there is, and free of the usual selection confound. (19)

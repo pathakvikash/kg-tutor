@@ -4,13 +4,14 @@ import { Elapsed } from "../components/Elapsed";
 import { Markdown } from "../components/Markdown";
 import { Intake } from "../components/Intake";
 import { Widget } from "../widget/Widget";
+import { Roadmap } from "../components/Roadmap";
 
 interface Turn {
   role: string;
   text: string;
   meta?: {
     kind?: string; itemId?: string; requiresTransfer?: boolean;
-    intent?: string; language?: string; spec?: unknown;
+    intent?: string; language?: string; spec?: unknown; goalText?: string;
   } | null;
 }
 
@@ -28,6 +29,7 @@ export function LearnPage() {
   const [viewingSession, setViewingSession] = useState<string | null>(null);
   const [topics, setTopics] = useState<any[]>([]);
   const [showIntake, setShowIntake] = useState(false);
+  const [intakeGoal, setIntakeGoal] = useState<string | null>(null);
   const [override, setOverride] = useState<{ conceptId: string; name: string } | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -207,6 +209,14 @@ export function LearnPage() {
     setBusy("thinking");
     try {
       const r = await api.ask(learnerId, current.conceptId, text);
+
+      // A request to learn something else is offered as an action, not answered in
+      // prose. The system can build the actual thing being asked for.
+      if (r.action === "start_roadmap") {
+        push({ role: "goal-offer", text: r.goalText ?? text, meta: { goalText: r.goalText } });
+        return;
+      }
+
       push({ role: "tutor", text: r.answer, meta: { intent: r.intent } });
       push({
         role: "note",
@@ -257,7 +267,12 @@ export function LearnPage() {
         <Intake
           learnerId={learnerId}
           topics={topics}
-          onComplete={() => { setShowIntake(false); void load(learnerId); }}
+          initialGoal={intakeGoal}
+          onComplete={() => {
+            setShowIntake(false);
+            setIntakeGoal(null);
+            void load(learnerId).then(() => push({ role: "roadmap", text: "" }));
+          }}
         />
       </div>
     );
@@ -291,6 +306,27 @@ export function LearnPage() {
               <div className="bubble">
                 {t.role === "note" ? (
                   t.text
+                ) : t.role === "roadmap" ? (
+                  <Roadmap learnerId={learnerId} />
+                ) : t.role === "goal-offer" ? (
+                  <div className="goal-offer">
+                    <div>
+                      That is a different subject from what you are on. I can build you a
+                      real roadmap for <strong>{t.text}</strong> — assess where you
+                      already are, then order it — rather than describing one.
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        className="primary"
+                        onClick={() => { setIntakeGoal(t.text); setShowIntake(true); }}
+                      >
+                        Build it
+                      </button>
+                      <button onClick={() => void showMe(t.text)}>
+                        Just explain it here
+                      </button>
+                    </div>
+                  </div>
                 ) : t.role === "widget" ? (
                   <Widget spec={t.meta?.spec} />
                 ) : t.role === "code" ? (
@@ -445,7 +481,12 @@ export function LearnPage() {
         {plan ? (
           <>
             <section>
-              <h4>Goal</h4>
+              <div className="section-head">
+                <h4>Goal</h4>
+                <button className="linkish" onClick={() => push({ role: "roadmap", text: "" })}>
+                  show roadmap
+                </button>
+              </div>
               <div className="rel">{plan.goal.topic} <span className="muted mono">({plan.goal.depth})</span></div>
             </section>
             <section>

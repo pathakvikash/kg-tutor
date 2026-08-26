@@ -67,5 +67,11 @@ export const chatIntent = z.enum([
   "prerequisite_gap",
   "tangential",
   "meta",
+  /**
+   * The learner is asking to learn something new rather than about the current lesson.
+   * Answering this in prose is the wrong move: the system can build them an actual
+   * roadmap, and a paragraph describing one is strictly worse than the thing itself.
+   */
+  "new_goal",
 ]);
 export type ChatIntent = z.infer<typeof chatIntent>;

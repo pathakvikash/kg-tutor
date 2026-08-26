@@ -67,3 +67,28 @@ describe("touchesLearnerModel", () => {
     expect(touchesLearnerModel("meta")).toBe(false);
   });
 });
+
+describe("new_goal", () => {
+  it("classifies a roadmap request as something to act on, not answer", async () => {
+    const r = await route({
+      intent: "new_goal", prerequisiteIndex: null,
+      namedConcept: "JavaScript", reasoning: "asked for a roadmap",
+    });
+    expect(r.intent).toBe("new_goal");
+    // The subject, extracted as a topic name — this is what seeds the roadmap.
+    expect(r.namedConcept).toBe("JavaScript");
+    expect(r.prerequisiteConceptId).toBeNull();
+  });
+
+  it("is actionable, while every other intent is answered", async () => {
+    const { isActionable } = await import("../src/chat.js");
+    expect(isActionable("new_goal")).toBe(true);
+    for (const other of ["clarifies_current", "prerequisite_gap", "tangential", "meta"] as const) {
+      expect(isActionable(other)).toBe(false);
+    }
+  });
+
+  it("does not touch the learner model — wanting to learn X is not evidence about X", async () => {
+    expect(touchesLearnerModel("new_goal")).toBe(false);
+  });
+});

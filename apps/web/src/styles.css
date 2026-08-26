@@ -518,3 +518,55 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   .page { padding: 14px; }
   .toolbar { gap: 8px; padding: 8px 10px; }
 }
+
+/* Roadmap. Grouped by milestone: a flat list of nineteen concepts reads as a wall. */
+.rm {
+  border: 1px solid var(--rule); border-radius: 8px; background: var(--surface);
+  padding: 16px; max-width: 640px;
+}
+.rm.compact { border: none; padding: 0; background: none; }
+.rm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.rm-goal { font-family: "Zilla Slab", Georgia, serif; font-size: 17px; font-weight: 600; }
+.rm-sub { font-size: 12px; color: var(--ink-soft); }
+.rm-pct {
+  font-family: "Zilla Slab", Georgia, serif; font-size: 24px; color: var(--accent);
+  line-height: 1;
+}
+.rm .progress { margin: 10px 0 4px; }
+.rm-count {
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-soft);
+  margin-bottom: 12px;
+}
+.rm-ms { border-top: 1px solid var(--rule); }
+.rm-ms.complete .rm-claim { opacity: 0.55; text-decoration: line-through; }
+.rm-ms-head {
+  display: flex; align-items: center; gap: 9px; width: 100%; padding: 10px 2px;
+  border: none; background: none; text-align: left; cursor: pointer;
+}
+.rm-ms-head:hover { color: inherit; }
+.rm-ms-head:hover .rm-claim { color: var(--accent); }
+.rm-caret { color: var(--ink-soft); font-size: 10px; width: 10px; }
+.rm-claim { flex: 1; font-weight: 600; font-size: 13.5px; }
+.rm-ms-count {
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-soft);
+}
+.rm-note {
+  font-size: 12px; color: var(--ink-soft); padding: 0 0 8px 19px; max-width: 52ch;
+}
+.rm-steps { padding: 0 0 10px 19px; display: flex; flex-direction: column; gap: 1px; }
+.rm-step { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+.rm-step.met .rm-name { opacity: 0.5; }
+.rm-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.rm-name { flex: 1; }
+.rm-level {
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--ink-soft);
+}
+
+.goal-offer {
+  display: flex; flex-direction: column; gap: 10px; padding: 13px 15px;
+  border-radius: 8px; background: var(--accent-bg); border: 1px solid var(--accent);
+  max-width: 640px; line-height: 1.55;
+}
+.turn.roadmap .bubble, .turn.goal-offer .bubble {
+  padding: 0; background: none; border: none;
+}

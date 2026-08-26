@@ -15,6 +15,12 @@ export interface TrimResult {
    * hollow completion, so it folds into the next one instead. (18)
    */
   foldForward: boolean;
+  /**
+   * A milestone claiming no concepts at all. It is not satisfied — it is broken, and
+   * treating "nothing required" as "everything done" silently awards a capability
+   * nobody demonstrated.
+   */
+  malformed: boolean;
 }
 
 /**
@@ -31,6 +37,14 @@ export function trimMilestone(
   for (const r of requirements) {
     (atLeast(current(r.conceptId), r.requiredLevel) ? satisfied : remaining).push(r);
   }
-  const ratio = requirements.length === 0 ? 1 : satisfied.length / requirements.length;
-  return { remaining, satisfied, foldForward: ratio > t.milestoneFoldForwardRatio };
+  if (requirements.length === 0) {
+    return { remaining, satisfied, foldForward: false, malformed: true };
+  }
+  const ratio = satisfied.length / requirements.length;
+  return {
+    remaining,
+    satisfied,
+    foldForward: ratio > t.milestoneFoldForwardRatio,
+    malformed: false,
+  };
 }

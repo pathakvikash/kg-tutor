@@ -159,7 +159,7 @@ async function attachMilestones(
   const out: { templateId: string; position: number; foldedForward: boolean }[] = [];
   let position = 0;
   for (const template of templates) {
-    const { foldForward } = trimMilestone(
+    const { foldForward, malformed } = trimMilestone(
       template.concepts.map((c) => ({
         conceptId: c.conceptId,
         requiredLevel: c.requiredLevel,
@@ -167,6 +167,9 @@ async function attachMilestones(
       (id) => mastery.get(id) ?? "unknown",
       t,
     );
+    // A malformed template is skipped rather than attached: an empty milestone on a
+    // plan is a completion waiting to be handed out for nothing.
+    if (malformed) continue;
     await tx.milestoneInstance.create({
       data: { planId, templateId: template.id, position, foldedForward: foldForward },
     });

@@ -10,14 +10,16 @@ import { api } from "../api";
  * model of the learner.
  */
 export function Intake({
-  learnerId, topics, onComplete,
+  learnerId, topics, onComplete, initialGoal = null,
 }: {
   learnerId: string;
   topics: any[];
   onComplete: () => void;
+  /** Pre-filled when the learner asked for this in chat rather than via the button. */
+  initialGoal?: string | null;
 }) {
   const [stage, setStage] = useState<"ask" | "building" | "goal" | "probing" | "done">("ask");
-  const [goalInput, setGoalInput] = useState("");
+  const [goalInput, setGoalInput] = useState(initialGoal ?? "");
   const [resolved, setResolved] = useState<any>(null);
   const [job, setJob] = useState<any>(null);
   const [buildQueue, setBuildQueue] = useState<string[]>([]);
