@@ -185,6 +185,20 @@ tr:last-child td { border-bottom: none; }
 .err { color: #b3261e; }
 @media (prefers-color-scheme: dark) { .err { color: #f2b8b5; } }
 
+/* The verdict on the previous probe, shown above the next question. Deliberately quiet:
+   in a binary search a wrong answer is the signal being looked for, not a failure, and
+   styling it like an error would make a diagnostic feel like a test being failed. */
+.verdict {
+  padding: 9px 12px; border-radius: 6px; margin-bottom: 14px;
+  font-size: 13px; line-height: 1.5;
+  background: var(--surface-alt); border: 1px solid var(--rule);
+}
+.verdict strong { font-weight: 600; }
+.verdict.ok { border-left: 3px solid var(--m-solid); }
+.verdict.ok strong { color: var(--m-solid); }
+.verdict.gap { border-left: 3px solid var(--accent); }
+.verdict.gap strong { color: var(--accent); }
+
 /* React Flow ships light-mode chrome; it does not follow the page theme on its own. */
 .react-flow__minimap {
   background: var(--surface) !important;

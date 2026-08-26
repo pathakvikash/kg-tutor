@@ -43,7 +43,7 @@ export function Intake({
   useEffect(() => {
     let cancelled = false;
     void api
-      .openIntake(learnerId)
+      .resumeIntake(learnerId)
       .then((r) => {
         if (cancelled || !r?.intake) return;
         setSession(r);
@@ -127,7 +127,6 @@ export function Intake({
       const r = await api.startIntake({ learnerId, topicId, depth, goalText, alreadyKnow });
       setSession(r);
       setStage(r.status === "complete" ? "done" : "probing");
-      if (r.status === "complete") onComplete();
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   };
@@ -140,7 +139,11 @@ export function Intake({
     try {
       const r = await api.answerIntake(session.intakeId, text);
       setSession(r);
-      if (r.status === "complete") { setStage("done"); onComplete(); }
+      // Deliberately NOT calling onComplete() here. The parent hides this component when
+      // it fires, so doing both in one tick unmounted the summary before it rendered:
+      // the learner submitted a final answer and landed back on the lesson page having
+      // been told nothing. "Start learning" is what finishes the assessment now.
+      if (r.status === "complete") setStage("done");
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   };
@@ -152,7 +155,7 @@ export function Intake({
     try {
       const r = await api.answerIntake(session.intakeId, "I don't know");
       setSession(r);
-      if (r.status === "complete") { setStage("done"); onComplete(); }
+      if (r.status === "complete") setStage("done");
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); setAnswer(""); }
   };
@@ -342,6 +345,19 @@ export function Intake({
             </button>
           </div>
         )}
+        {session.lastAnswer && (
+          /* An assessment that never says what it made of an answer reads as a form,
+             not a diagnosis. Framed as a finding rather than a mark: being wrong here
+             is the signal the binary search is looking for, not a failure. */
+          <div className={session.lastAnswer.correct ? "verdict ok" : "verdict gap"}>
+            <strong>
+              {session.lastAnswer.correct
+                ? `${session.lastAnswer.conceptName} — solid.`
+                : `${session.lastAnswer.conceptName} — not yet.`}
+            </strong>{" "}
+            <span className="muted">{session.lastAnswer.reasoning}</span>
+          </div>
+        )}
         <div className="intake-progress">
           Question {session.asked + 1} of at most {session.budget}
           <div className="progress" style={{ marginTop: 6 }}>
@@ -376,14 +392,37 @@ export function Intake({
     );
   }
 
+  const known: string[] = session?.knownConcepts ?? [];
   return (
     <div className="intake">
-      <h2>Ready</h2>
+      <h2>Assessment done</h2>
       <p>
-        {session?.asked ?? 0} questions asked. Found {session?.known ?? 0} concepts you already
-        have, and built a plan of {session?.plan?.steps ?? 0} concepts across{" "}
-        {session?.plan?.milestones ?? 0} milestones.
+        {session?.asked ?? 0} question{session?.asked === 1 ? "" : "s"} asked, and a plan of{" "}
+        <b>{session?.plan?.steps ?? 0}</b> concepts across{" "}
+        <b>{session?.plan?.milestones ?? 0}</b> milestone
+        {session?.plan?.milestones === 1 ? "" : "s"}.
       </p>
+
+      {known.length > 0 ? (
+        <div className="intake-field">
+          <span>Already yours, so nothing here gets taught again</span>
+          <div className="chips">
+            {known.map((n) => <span className="chip" key={n}>{n}</span>)}
+          </div>
+        </div>
+      ) : (
+        <p className="muted">
+          Nothing came back as already solid, so the plan starts from the ground up.
+          That is a starting point, not a verdict — the teaching keeps assessing.
+        </p>
+      )}
+
+      {session?.startsWith && (
+        <p>
+          Starting with <b>{session.startsWith}</b>.
+        </p>
+      )}
+
       <p className="muted">
         Everything else gets sorted out while teaching — if the plan turns out wrong, it
         gets revised and you'll be told what changed.

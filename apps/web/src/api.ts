@@ -153,7 +153,11 @@ export const api = {
     post<any>("/api/expansions", { topicName, description }),
   expansion: (id: string) => get<any>(`/api/expansions/${id}`),
   expansions: () => get<any[]>("/api/expansions"),
+  /** Cheap: does an assessment exist to resume? Does not derive the question. */
   openIntake: (learnerId: string) => get<any>(`/api/intake/open/${learnerId}`),
+  /** The full form, including the question to render. */
+  resumeIntake: (learnerId: string) =>
+    get<any>(`/api/intake/open/${learnerId}?withQuestion=1`),
   abandonIntake: (id: string) => post<any>(`/api/intake/${id}/abandon`),
   retryExpansion: (id: string) => post<any>(`/api/expansions/${id}/retry`),
   startIntake: (payload: Record<string, unknown>) => post<any>("/api/intake/start", payload),

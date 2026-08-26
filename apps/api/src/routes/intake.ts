@@ -25,12 +25,25 @@ async function questionFor(
     : null;
 }
 
-async function advance(intakeId: string): Promise<unknown> {
+/**
+ * What the last answer was judged to be, carried into the next response.
+ *
+ * The grader produces this on every answer and it was being dropped on the floor, so a
+ * learner submitted four answers and was told nothing about any of them. Three of the
+ * four were wrong, which is exactly the information an assessment exists to surface.
+ */
+export interface AnswerVerdict {
+  conceptName: string;
+  correct: boolean;
+  reasoning: string;
+}
+
+async function advance(intakeId: string, lastAnswer?: AnswerVerdict): Promise<unknown> {
   const intake = await prisma.intakeSession.findUniqueOrThrow({ where: { id: intakeId } });
   const state = intake.state as unknown as IntakeState;
   const probe = nextProbe(state);
 
-  if (!probe) return finish(intakeId);
+  if (!probe) return { ...(await finish(intakeId) as object), lastAnswer: lastAnswer ?? null };
 
   const q = await questionFor(probe.conceptId);
   if (!q) {
@@ -39,13 +52,18 @@ async function advance(intakeId: string): Promise<unknown> {
     await prisma.intakeSession.update({
       where: { id: intakeId }, data: { state: skipped as never },
     });
-    return advance(intakeId);
+    return advance(intakeId, lastAnswer);
   }
 
   const concept = await prisma.concept.findUniqueOrThrow({ where: { id: probe.conceptId } });
+  // Deliberately not writing `state` here. `nextProbe` does not modify it, so this was a
+  // read-modify-write of unchanged data — and `advance` runs on the resume GET as well as
+  // after an answer. A GET that read the state before an answer landed would write that
+  // stale copy back on top of it, and the answer vanished: graded, recorded, erased. The
+  // question pointer below is the only thing this path legitimately changes.
   await prisma.intakeSession.update({
     where: { id: intakeId },
-    data: { currentConceptId: probe.conceptId, currentItemId: q.itemId, state: state as never },
+    data: { currentConceptId: probe.conceptId, currentItemId: q.itemId },
   });
 
   return {
@@ -53,6 +71,7 @@ async function advance(intakeId: string): Promise<unknown> {
     status: "asking",
     asked: state.asked.length,
     budget: 8,
+    lastAnswer: lastAnswer ?? null,
     question: {
       conceptId: probe.conceptId,
       conceptName: concept.canonicalName,
@@ -102,11 +121,27 @@ async function finish(intakeId: string): Promise<unknown> {
     data: { status: "complete", currentConceptId: null, currentItemId: null },
   });
 
+  // Named, not counted. "Found 3 concepts you already have" is not a result a learner
+  // can check; "closures, scope, callbacks" is.
+  const knownIds = beliefs.filter((b) => b.mastery !== "unknown").map((b) => b.conceptId);
+  const knownConcepts = await prisma.concept.findMany({
+    where: { id: { in: knownIds } },
+    select: { id: true, canonicalName: true },
+  });
+  const firstStep = plan.steps[0]
+    ? await prisma.concept.findUnique({
+        where: { id: plan.steps[0].conceptId },
+        select: { canonicalName: true },
+      })
+    : null;
+
   return {
     intakeId,
     status: "complete",
     asked: state.asked.length,
-    known: beliefs.filter((b) => b.mastery !== "unknown").length,
+    known: knownIds.length,
+    knownConcepts: knownConcepts.map((c) => c.canonicalName),
+    startsWith: firstStep?.canonicalName ?? null,
     plan: { version: plan.version, steps: plan.steps.length, milestones: plan.milestones.length },
   };
 }
@@ -215,7 +250,11 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
       where: { id },
       data: { state: applyAnswer(state, probe, grade.correct) as never },
     });
-    return advance(id);
+    return advance(id, {
+      conceptName: concept.canonicalName,
+      correct: grade.correct,
+      reasoning: grade.reasoning,
+    });
   });
 
   /**
@@ -226,8 +265,18 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
    * question. Progress that is stored but unreachable is not persisted in any sense
    * the user cares about.
    */
+  /**
+   * Is there an assessment to pick up, and if so, what is it asking?
+   *
+   * `withQuestion` is off by default because deriving the question is not free: it runs
+   * the probe selection and, when a concept has no usable item, generates a fresh bank
+   * on the strong tier. Two separate components ask this on mount purely to decide
+   * whether to show the assessment at all, and each was paying for a question neither
+   * of them read.
+   */
   app.get("/api/intake/open/:learnerId", async (req) => {
     const { learnerId } = req.params as { learnerId: string };
+    const withQuestion = (req.query as { withQuestion?: string }).withQuestion === "1";
     const intake = await prisma.intakeSession.findFirst({
       where: { learnerId, status: "asking" },
       orderBy: { createdAt: "desc" },
@@ -235,10 +284,13 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     if (!intake) return { intake: null };
 
     const topic = await prisma.topic.findUnique({ where: { id: intake.topicId } });
+    const head = { intake: { id: intake.id, topic: topic?.name ?? null, depth: intake.depth } };
+    if (!withQuestion) return { ...head, intakeId: intake.id, status: intake.status };
+
     // Re-derive the current question rather than trusting a stored one: the item may
     // have been retired since.
     const resumed = await advance(intake.id);
-    return { intake: { id: intake.id, topic: topic?.name ?? null, depth: intake.depth }, ...(resumed as object) };
+    return { ...head, ...(resumed as object) };
   });
 
   app.post("/api/intake/:id/abandon", async (req) => {
