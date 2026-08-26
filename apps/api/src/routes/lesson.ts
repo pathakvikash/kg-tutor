@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { completeJson } from "@kg/llm";
+import { completeJson, startStream } from "@kg/llm";
 import { loadMastery } from "@kg/planner";
 import { generateItems, selectItem, routeChatQuestion, recordEvidence } from "@kg/teach";
 import { assignVariant, isActionable } from "@kg/teach";
@@ -208,6 +208,128 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
       targetsLevel: item.targetsLevel,
       sessionId,
     };
+  });
+
+  /**
+   * The streaming answer path.
+   *
+   * Routing has to finish before a word can be written — the classification decides
+   * whether this is even a question to answer — so the client gets a `routed` event
+   * first, then text as it arrives. That first event is also what lets the UI stop
+   * showing a spinner and start showing a reply.
+   */
+  app.post("/api/lesson/ask/stream", async (req, reply) => {
+    const body = z
+      .object({ learnerId: z.string(), conceptId: z.string(), question: z.string().min(1) })
+      .safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+    const llm = getLlm();
+    if (!llm) return reply.code(503).send(NO_MODEL);
+
+    reply.raw.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+    });
+    const send = (event: string, data: unknown) => {
+      reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      const concept = await prisma.concept.findUniqueOrThrow({
+        where: { id: body.data.conceptId },
+      });
+      const prereqs = await prisma.edge.findMany({
+        where: {
+          dstId: body.data.conceptId, type: "prerequisite_of",
+          strength: "hard", retiredAt: null,
+        },
+        include: { src: true },
+      });
+
+      /**
+       * Routing and answering start together.
+       *
+       * Run in sequence, classification alone cost ~16s of a ~26s response before a
+       * single word could appear — streaming fixed the tail of the wait and left the
+       * head untouched. Both are model calls with no data dependency between them, so
+       * they overlap: text starts arriving in about four seconds.
+       *
+       * The cost is one wasted answer when the question turns out to be a request to
+       * learn something else, which is rare and cheap on the small tier. The prompt is
+       * the general one rather than the tangential variant, since intent is not known
+       * yet — a tangential answer runs a little longer than ideal, which is a better
+       * failure than twenty seconds of blank screen.
+       */
+      const answer$ = startStream(llm, {
+        system:
+          "Answer the learner's question directly and concretely. Do not restate the whole lesson.",
+        user: `They are learning "${concept.canonicalName}" (${concept.sense}).\nThey asked: ${body.data.question}`,
+        tier: "small",
+        temperature: 0.4,
+      });
+
+      const route = await routeChatQuestion(llm, {
+        question: body.data.question,
+        currentConceptName: concept.canonicalName,
+        prerequisiteNames: prereqs.map((p) => ({ conceptId: p.srcId, name: p.src.canonicalName })),
+      });
+
+      const sessionId = await openSession(body.data.learnerId);
+      await saveTurn(sessionId, body.data.learnerId, concept.id, "learner", body.data.question);
+
+      if (isActionable(route.intent)) {
+        // The speculative answer is no longer wanted. Draining it lets the provider
+        // release its slot and kill the subprocess rather than leaking one per question.
+        answer$.cancel();
+        send("routed", {
+          sessionId, intent: route.intent, action: "start_roadmap",
+          goalText: route.namedConcept ?? body.data.question,
+        });
+        send("done", { answer: null });
+        reply.raw.end();
+        return;
+      }
+
+      if (route.intent === "prerequisite_gap") {
+        await recordEvidence(prisma, {
+          learnerId: body.data.learnerId,
+          conceptId: body.data.conceptId,
+          kind: "spontaneous_prerequisite_request",
+          referencedConceptId: route.prerequisiteConceptId ?? undefined,
+          response: body.data.question,
+          detail: { namedConcept: route.namedConcept },
+        });
+      }
+
+      send("routed", {
+        sessionId,
+        intent: route.intent,
+        suggestVisual: route.wantsVisual,
+        detourTo: route.intent === "prerequisite_gap" ? route.prerequisiteConceptId : null,
+        namedConcept: route.namedConcept,
+      });
+
+      let answer = "";
+      for await (const chunk of answer$.chunks) {
+        answer += chunk;
+        send("delta", { text: chunk });
+      }
+
+      // Saved only once complete: a half-written answer is not a turn worth resuming.
+      await saveTurn(sessionId, body.data.learnerId, concept.id, "tutor", answer, {
+        intent: route.intent,
+      });
+      send("done", { answer });
+    } catch (err) {
+      send("failed", {
+        error: err instanceof Error ? err.message : String(err),
+        remedy: (err as { remedy?: string }).remedy ?? null,
+      });
+    } finally {
+      reply.raw.end();
+    }
   });
 
   /**

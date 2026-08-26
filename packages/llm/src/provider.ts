@@ -36,8 +36,84 @@ export type UsageSink = (usage: UsageReport, req: CompletionRequest) => void;
 export interface LLMProvider {
   readonly name: string;
   complete(req: CompletionRequest): Promise<string>;
+  /**
+   * Incremental text, where the provider supports it.
+   *
+   * Optional on purpose: a provider without it still works, callers just wait. Anything
+   * that must be schema-validated has to wait anyway — you cannot check a shape against
+   * half a document — so this is for prose, where the wait is the whole problem.
+   */
+  stream?(req: CompletionRequest): AsyncIterable<string>;
   /** Set by the host so cost-per-outcome is measured rather than assumed. */
   onUsage?: UsageSink | undefined;
+}
+
+/** Streams when the provider can, falls back to one chunk when it cannot. */
+export async function* streamOrComplete(
+  provider: LLMProvider,
+  req: CompletionRequest,
+): AsyncIterable<string> {
+  if (provider.stream) {
+    yield* provider.stream(req);
+    return;
+  }
+  yield await provider.complete(req);
+}
+
+/**
+ * Starts a stream NOW and buffers what arrives until someone reads it.
+ *
+ * Async generators are lazy: building the iterator does nothing, and the underlying
+ * call does not begin until the first `next()`. So kicking off a stream "in parallel"
+ * with another await does not overlap them at all — the stream simply starts late,
+ * which is exactly the bug this exists to prevent. Wrapping it in an eager pump makes
+ * the concurrency real.
+ */
+export function startStream(
+  provider: LLMProvider,
+  req: CompletionRequest,
+): { chunks: AsyncIterable<string>; cancel: () => void } {
+  const buffered: string[] = [];
+  let waiting: (() => void) | null = null;
+  let finished = false;
+  let failure: unknown = null;
+  let cancelled = false;
+
+  const wake = () => {
+    const w = waiting;
+    waiting = null;
+    w?.();
+  };
+
+  void (async () => {
+    try {
+      for await (const chunk of streamOrComplete(provider, req)) {
+        if (cancelled) break;
+        buffered.push(chunk);
+        wake();
+      }
+    } catch (err) {
+      failure = err;
+    } finally {
+      finished = true;
+      wake();
+    }
+  })();
+
+  async function* drain(): AsyncIterable<string> {
+    for (;;) {
+      while (buffered.length > 0) yield buffered.shift()!;
+      if (failure) throw failure;
+      if (finished) return;
+      await new Promise<void>((resolve) => { waiting = resolve; });
+    }
+  }
+
+  return {
+    chunks: drain(),
+    // Lets an abandoned speculative answer stop consuming rather than run to completion.
+    cancel: () => { cancelled = true; wake(); },
+  };
 }
 
 export class LLMError extends Error {

@@ -607,3 +607,11 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   font-family: "IBM Plex Mono", monospace; font-size: 10px; color: var(--accent);
   opacity: 0; transition: opacity 120ms;
 }
+
+/* A caret while text is still arriving, so a pause reads as thinking rather than done. */
+.caret {
+  display: inline-block; width: 7px; height: 1em; vertical-align: -2px;
+  margin-left: 2px; background: var(--accent); animation: blink 1s step-end infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .caret { animation: none; opacity: 0.6; } }

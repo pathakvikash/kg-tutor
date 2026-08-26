@@ -53,6 +53,69 @@ async function send<T>(method: "POST" | "PUT" | "DELETE", url: string, body?: un
 const post = <T>(url: string, body?: unknown) => send<T>("POST", url, body);
 const del = <T>(url: string) => send<T>("DELETE", url);
 
+export interface AskStreamHandlers {
+  onRouted?: (info: any) => void;
+  onDelta?: (text: string) => void;
+  onDone?: (answer: string | null) => void;
+  onFailed?: (error: string) => void;
+}
+
+/**
+ * Server-sent events over POST, so the request can carry a body.
+ *
+ * EventSource would be simpler but is GET-only, which would mean putting the learner's
+ * question in a query string. A fetch reader costs a few more lines and keeps it in the
+ * body where it belongs.
+ */
+export async function askStream(
+  learnerId: string,
+  conceptId: string,
+  question: string,
+  handlers: AskStreamHandlers,
+): Promise<void> {
+  const res = await fetch("/api/lesson/ask/stream", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ learnerId, conceptId, question }),
+  });
+  if (!res.ok || !res.body) {
+    let detail = await res.text();
+    try {
+      const b = JSON.parse(detail);
+      detail = [b.error, b.remedy].filter(Boolean).join(" — ") || detail;
+    } catch { /* keep raw */ }
+    handlers.onFailed?.(detail || `HTTP ${res.status}`);
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // Events are separated by a blank line; a partial trailing event stays buffered.
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const event = /^event: (.+)$/m.exec(part)?.[1];
+      const raw = /^data: (.+)$/m.exec(part)?.[1];
+      if (!event || !raw) continue;
+      let data: any;
+      try { data = JSON.parse(raw); } catch { continue; }
+      if (event === "routed") handlers.onRouted?.(data);
+      else if (event === "delta") handlers.onDelta?.(data.text ?? "");
+      else if (event === "done") handlers.onDone?.(data.answer ?? null);
+      else if (event === "failed") {
+        handlers.onFailed?.([data.error, data.remedy].filter(Boolean).join(" — "));
+      }
+    }
+  }
+}
+
 export const api = {
   graph: (params: { topicId?: string; learnerId?: string } = {}) => {
     const q = new URLSearchParams();

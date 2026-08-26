@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../api";
+import { api, askStream } from "../api";
 import { Elapsed } from "../components/Elapsed";
 import { Markdown } from "../components/Markdown";
 import { Intake } from "../components/Intake";
@@ -12,6 +12,7 @@ interface Turn {
   meta?: {
     kind?: string; itemId?: string; requiresTransfer?: boolean;
     intent?: string; language?: string; spec?: unknown; goalText?: string;
+    streaming?: boolean;
   } | null;
 }
 
@@ -206,35 +207,58 @@ export function LearnPage() {
       return;
     }
 
-    setBusy("thinking");
-    try {
-      const r = await api.ask(learnerId, current.conceptId, text);
+    setBusy("routing your question");
+    let streamIndex = -1;
+    let visualFor: string | null = null;
 
-      // A request to learn something else is offered as an action, not answered in
-      // prose. The system can build the actual thing being asked for.
-      if (r.action === "start_roadmap") {
-        push({ role: "goal-offer", text: r.goalText ?? text, meta: { goalText: r.goalText } });
-        return;
-      }
-
-      push({ role: "tutor", text: r.answer, meta: { intent: r.intent } });
-      if (r.suggestVisual) {
-        // Answer first, picture second: two model calls back to back would double the
-        // wait before anything appeared.
-        void showMe(text);
-      }
-      push({
-        role: "note",
-        text:
-          `routed as ${r.intent.replace(/_/g, " ")}` +
-          (r.intent === "prerequisite_gap"
-            ? " · recorded as a spontaneous prerequisite request"
-            : r.intent === "tangential" ? " · not taught, no mastery recorded" : ""),
-      });
-      if (r.detourTo && r.namedConcept) setDetour({ conceptId: r.detourTo, name: r.namedConcept });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally { setBusy(null); }
+    await askStream(learnerId, current.conceptId, text, {
+      onRouted: (r) => {
+        setBusy(null);
+        if (r.action === "start_roadmap") {
+          push({ role: "goal-offer", text: r.goalText ?? text, meta: { goalText: r.goalText } });
+          return;
+        }
+        // The empty bubble is appended once, up front; deltas fill it in place rather
+        // than pushing a new turn per token.
+        setTurns((prev) => {
+          streamIndex = prev.length;
+          return [...prev, { role: "tutor", text: "", meta: { intent: r.intent, streaming: true } }];
+        });
+        push({
+          role: "note",
+          text:
+            `routed as ${String(r.intent).replace(/_/g, " ")}` +
+            (r.intent === "prerequisite_gap"
+              ? " · recorded as a spontaneous prerequisite request"
+              : r.intent === "tangential" ? " · not taught, no mastery recorded" : ""),
+        });
+        if (r.detourTo && r.namedConcept) setDetour({ conceptId: r.detourTo, name: r.namedConcept });
+        if (r.suggestVisual) visualFor = text;
+      },
+      onDelta: (chunk) => {
+        setTurns((prev) => {
+          if (streamIndex < 0 || !prev[streamIndex]) return prev;
+          const next = [...prev];
+          next[streamIndex] = { ...next[streamIndex]!, text: next[streamIndex]!.text + chunk };
+          return next;
+        });
+      },
+      onDone: () => {
+        setTurns((prev) => {
+          if (streamIndex < 0 || !prev[streamIndex]) return prev;
+          const next = [...prev];
+          next[streamIndex] = {
+            ...next[streamIndex]!,
+            meta: { ...next[streamIndex]!.meta, streaming: false },
+          };
+          return next;
+        });
+        // Only after the text has landed, so the simulation is not competing with it.
+        if (visualFor) void showMe(visualFor);
+      },
+      onFailed: (message) => { setError(message); setBusy(null); },
+    });
+    setBusy(null);
   };
 
   /**
@@ -347,7 +371,10 @@ export function LearnPage() {
                     <code>{t.text}</code>
                   </pre>
                 ) : (
-                  <Markdown text={t.text} />
+                  <>
+                    <Markdown text={t.text} />
+                    {t.meta?.streaming && <span className="caret" aria-hidden="true" />}
+                  </>
                 )}
               </div>
             </div>

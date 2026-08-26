@@ -91,6 +91,96 @@ export class ClaudeCodeLLM implements LLMProvider {
     throw lastError;
   }
 
+  /**
+   * Incremental text from the CLI's stream-json mode.
+   *
+   * Only `text_delta` is yielded. The stream also carries `thinking_delta`, which is the
+   * model reasoning about the request — showing that to a learner as if it were the
+   * answer would be actively confusing, so it is dropped.
+   */
+  async *stream(req: CompletionRequest): AsyncIterable<string> {
+    await this.acquire();
+    const started = Date.now();
+    const model = this.models[req.tier];
+
+    const child = spawn(
+      this.bin,
+      [
+        "-p", req.user,
+        "--system-prompt", req.system,
+        "--model", model,
+        "--output-format", "stream-json",
+        "--include-partial-messages",
+        "--verbose",
+        "--max-turns", "1",
+      ],
+      { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env } },
+    );
+
+    const timer = setTimeout(() => child.kill("SIGKILL"), this.timeoutMs);
+    let stderr = "";
+    child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+
+    // NDJSON: one JSON document per line, so a partial trailing line must be held back
+    // until its newline arrives or it will fail to parse and drop real output.
+    let buffer = "";
+    let sawText = false;
+    try {
+      for await (const chunk of child.stdout) {
+        buffer += (chunk as Buffer).toString();
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          let event: any;
+          try { event = JSON.parse(trimmed); } catch { continue; }
+
+          if (event.type === "stream_event" && event.event?.type === "content_block_delta") {
+            const delta = event.event.delta;
+            if (delta?.type === "text_delta" && typeof delta.text === "string") {
+              sawText = true;
+              yield delta.text as string;
+            }
+            continue;
+          }
+
+          if (event.type === "result") {
+            const message = typeof event.result === "string" ? event.result : "";
+            if (event.is_error) {
+              if (/authenticat|oauth|session expired|log ?in/i.test(message)) {
+                throw new LLMAuthError(
+                  `Claude Code is not authenticated: ${message}`,
+                  "Run `claude` once in a terminal to sign in again, then retry.",
+                );
+              }
+              throw new LLMError(`claude CLI failed: ${message.slice(0, 300)}`);
+            }
+            const usage = event.usage ?? {};
+            this.onUsage?.(
+              {
+                model,
+                tier: req.tier,
+                promptTokens: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
+                outputTokens: usage.output_tokens ?? 0,
+                costUsd: event.total_cost_usd ?? 0,
+                durationMs: event.duration_ms ?? Date.now() - started,
+              },
+              req,
+            );
+            // A run that produced no text at all is a failure the caller must see,
+            // not an empty answer to render.
+            if (!sawText) throw new LLMError(`claude CLI produced no text: ${stderr.slice(0, 200)}`);
+          }
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+      child.kill();
+      this.release();
+    }
+  }
+
   private async acquire(): Promise<void> {
     if (this.active < this.maxConcurrent) {
       this.active++;

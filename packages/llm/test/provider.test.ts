@@ -93,3 +93,81 @@ describe("arrayOrWrapped", () => {
     expect(() => schema.parse({ wrong: [] })).toThrow();
   });
 });
+
+describe("startStream", () => {
+  it("begins immediately rather than waiting to be read", async () => {
+    const { startStream } = await import("../src/provider.js");
+    let started = false;
+    const provider = {
+      name: "eager-probe",
+      complete: async () => "",
+      async *stream() { started = true; yield "a"; yield "b"; },
+    };
+
+    const s = startStream(provider, { system: "s", user: "u", tier: "small" });
+    // The whole point. An async generator is lazy: kicking one off "in parallel" with
+    // another await does not overlap anything, it just starts the call late.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(started).toBe(true);
+
+    const out: string[] = [];
+    for await (const c of s.chunks) out.push(c);
+    expect(out).toEqual(["a", "b"]);
+  });
+
+  it("buffers what arrives before anyone reads", async () => {
+    const { startStream } = await import("../src/provider.js");
+    const provider = {
+      name: "p", complete: async () => "",
+      async *stream() { yield "one"; yield "two"; yield "three"; },
+    };
+    const s = startStream(provider, { system: "s", user: "u", tier: "small" });
+    await new Promise((r) => setTimeout(r, 5));
+    const out: string[] = [];
+    for await (const c of s.chunks) out.push(c);
+    expect(out).toEqual(["one", "two", "three"]);
+  });
+
+  it("surfaces a failure to the reader", async () => {
+    const { startStream } = await import("../src/provider.js");
+    const provider = {
+      name: "p", complete: async () => "",
+      // eslint-disable-next-line require-yield
+      async *stream(): AsyncIterable<string> { throw new Error("upstream died"); },
+    };
+    const s = startStream(provider, { system: "s", user: "u", tier: "small" });
+    await expect((async () => { for await (const _ of s.chunks) { /* drain */ } })())
+      .rejects.toThrow("upstream died");
+  });
+
+  it("stops consuming once cancelled, so an abandoned answer is not paid for in full", async () => {
+    const { startStream } = await import("../src/provider.js");
+    let produced = 0;
+    const provider = {
+      name: "p", complete: async () => "",
+      async *stream() {
+        for (let i = 0; i < 50; i++) {
+          produced++;
+          yield String(i);
+          await new Promise((r) => setTimeout(r, 1));
+        }
+      },
+    };
+    const s = startStream(provider, { system: "s", user: "u", tier: "small" });
+    await new Promise((r) => setTimeout(r, 8));
+    s.cancel();
+    const atCancel = produced;
+    await new Promise((r) => setTimeout(r, 25));
+    expect(produced).toBeLessThan(atCancel + 3);
+    expect(produced).toBeLessThan(50);
+  });
+
+  it("falls back to one chunk when the provider cannot stream", async () => {
+    const { startStream } = await import("../src/provider.js");
+    const provider = { name: "p", complete: async () => "whole answer" };
+    const s = startStream(provider, { system: "s", user: "u", tier: "small" });
+    const out: string[] = [];
+    for await (const c of s.chunks) out.push(c);
+    expect(out).toEqual(["whole answer"]);
+  });
+});
