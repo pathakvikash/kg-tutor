@@ -96,9 +96,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .graph-wrap { flex: 1; display: flex; min-width: 0; min-height: 0; }
 .canvas { flex: 1; min-width: 0; }
 .inspector {
-  width: 320px; flex: none; border-left: 1px solid var(--rule);
+  /* Wider than it was: it now holds a code snippet and a conversation, and 320px
+     wrapped a two-token line of JavaScript into three. */
+  width: 400px; flex: none; border-left: 1px solid var(--rule);
   background: var(--surface); padding: 16px; overflow: auto;
 }
+@media (max-width: 1100px) { .inspector { width: 320px; } }
 .inspector h3 { font-size: 16px; margin-bottom: 4px; }
 .inspector .sense { color: var(--ink-mid); margin: 6px 0 14px; }
 .inspector section { margin-bottom: 16px; }
@@ -663,3 +666,38 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .verdict-why > :last-child { margin-bottom: 0; }
 .verdict-why p { display: inline; }
 .verdict-why code { font-size: 12px; }
+
+/* ── Assess / Ask, on the selected node ───────────────────────────────────────
+   The graph could show that a concept was unknown and do nothing about it. These
+   two panels are what let a node change state without leaving the page. */
+.coach {
+  margin: 14px 0 18px; border: 1px solid var(--rule); border-radius: 8px;
+  background: var(--ground); overflow: hidden;
+}
+.coach-tabs { display: flex; border-bottom: 1px solid var(--rule); }
+.coach-tabs button {
+  flex: 1; border: none; border-radius: 0; background: transparent;
+  padding: 8px 0; font-size: 12px; letter-spacing: 0.04em;
+  font-family: "IBM Plex Mono", monospace; text-transform: uppercase;
+  color: var(--ink-soft); cursor: pointer;
+}
+.coach-tabs button.on { color: var(--accent); background: var(--surface); font-weight: 600; }
+.coach-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.coach-body textarea { width: 100%; font-size: 13px; }
+.coach-q { font-size: 13px; line-height: 1.55; }
+.coach-q pre { font-size: 12px; }
+/* Bounded, so a long exchange scrolls inside the panel instead of pushing
+   Requires/Unlocks off the bottom of the sidebar. */
+.coach-chat {
+  max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+}
+.coach-chat .bubble {
+  font-size: 13px; line-height: 1.55; padding: 8px 10px; border-radius: 7px;
+}
+.coach-chat .bubble.learner {
+  background: var(--accent-bg); color: var(--ink); align-self: flex-end; max-width: 88%;
+}
+.coach-chat .bubble.tutor { background: var(--surface); border: 1px solid var(--rule); }
+.coach-chat .bubble.tutor > :first-child { margin-top: 0; }
+.coach-chat .bubble.tutor > :last-child { margin-bottom: 0; }
+.coach .verdict { margin-bottom: 0; }

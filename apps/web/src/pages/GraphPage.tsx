@@ -4,6 +4,7 @@ import { api, type GraphEdge, type GraphPayload, type Mastery } from "../api";
 import { layoutGraph } from "../layout";
 import { neighborhood, runForceLayout } from "../force";
 import { ConceptNode, type ConceptNodeData } from "../components/ConceptNode";
+import { NodeCoach } from "../components/NodeCoach";
 
 const nodeTypes = { concept: ConceptNode };
 type Mode = "explore" | "teach";
@@ -14,7 +15,7 @@ interface Selection {
 }
 
 function Inspector({
-  graph, selection, trail, onHop, onFocus, focusId, hops, onHops,
+  graph, selection, trail, onHop, onFocus, focusId, hops, onHops, learnerId, onStateChanged,
 }: {
   graph: GraphPayload;
   selection: Selection | null;
@@ -24,6 +25,9 @@ function Inspector({
   focusId: string | null;
   hops: number;
   onHops: (n: number) => void;
+  /** Empty when no learner is chosen: assessing needs someone to assess. */
+  learnerId: string;
+  onStateChanged: () => void;
 }) {
   const name = (id: string) => graph.nodes.find((n) => n.id === id)?.name ?? id;
 
@@ -126,6 +130,20 @@ function Inspector({
             <span className="muted">({node.state.source})</span>
           </div>
         </section>
+      )}
+
+      {learnerId ? (
+        <NodeCoach
+          learnerId={learnerId}
+          conceptId={node.id}
+          conceptName={node.name}
+          mastery={(node.state?.mastery ?? "unknown") as Mastery}
+          onStateChanged={onStateChanged}
+        />
+      ) : (
+        <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>
+          Pick a learner above to be assessed on this, or to ask about it.
+        </p>
       )}
 
       <section>
@@ -385,6 +403,8 @@ export function GraphPage() {
               focusId={focusId}
               hops={hops}
               onHops={setHops}
+              learnerId={learnerId}
+              onStateChanged={load}
             />
           )}
         </div>
