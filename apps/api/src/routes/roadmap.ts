@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { completeJson } from "@kg/llm";
-import { reconcilePlan } from "@kg/planner";
+import { activePlanWhere, reconcilePlan } from "@kg/planner";
 import { atLeast } from "@kg/shared";
 import { prisma, getLlm } from "../context.js";
 
@@ -112,7 +112,7 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
     // what stops the header disagreeing with the rows directly beneath it.
     await reconcilePlan(prisma, learnerId);
     const plan = await prisma.plan.findFirst({
-      where: { learnerId, supersededAt: null },
+      where: activePlanWhere(learnerId),
       include: {
         goal: { include: { topic: true } },
         steps: { include: { concept: true }, orderBy: { position: "asc" } },

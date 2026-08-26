@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { buildPlan, loadMastery, reconcilePlan } from "@kg/planner";
+import { activePlanWhere, buildPlan, loadMastery, reconcilePlan } from "@kg/planner";
 import { atLeast } from "@kg/shared";
 import { selectProbes, assignVariant } from "@kg/teach";
 import { prisma } from "../context.js";
@@ -112,7 +112,7 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string };
     await reconcilePlan(prisma, id);
     const plan = await prisma.plan.findFirst({
-      where: { learnerId: id, supersededAt: null },
+      where: activePlanWhere(id),
       include: {
         goal: { include: { topic: true } },
         steps: { include: { concept: true }, orderBy: { position: "asc" } },

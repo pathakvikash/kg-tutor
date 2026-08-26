@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { completeJson, startStream } from "@kg/llm";
-import { loadMastery } from "@kg/planner";
+import { activePlanWhere, loadMastery } from "@kg/planner";
 import { generateItems, selectItem, routeChatQuestion, recordEvidence } from "@kg/teach";
 import { isActionable } from "@kg/teach";
 import { prisma, getLlm } from "../context.js";
@@ -502,7 +502,7 @@ export async function progressRoutes(app: import("fastify").FastifyInstance): Pr
   app.post("/api/learners/:id/steps/:conceptId/complete", async (req, reply) => {
     const { id, conceptId } = req.params as { id: string; conceptId: string };
     const plan = await prisma.plan.findFirst({
-      where: { learnerId: id, supersededAt: null },
+      where: activePlanWhere(id),
       include: { steps: true, milestones: { include: { template: { include: { concepts: true } } } } },
       orderBy: { version: "desc" },
     });

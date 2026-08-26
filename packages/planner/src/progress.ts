@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@kg/db";
 import { atLeast, type MasteryLevel } from "@kg/shared";
-import { loadMastery } from "./plan.js";
+import { activePlanWhere, loadMastery } from "./plan.js";
 
 /**
  * Reconciles the plan against what the learner actually knows.
@@ -22,7 +22,7 @@ export async function reconcilePlan(
   learnerId: string,
 ): Promise<{ steps: string[]; milestones: string[] }> {
   const plan = await prisma.plan.findFirst({
-    where: { learnerId, supersededAt: null },
+    where: activePlanWhere(learnerId),
     include: {
       steps: true,
       milestones: { include: { template: { include: { concepts: true } } } },

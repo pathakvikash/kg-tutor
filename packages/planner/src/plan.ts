@@ -200,3 +200,22 @@ export function describeDiff(before: string[], after: string[]): string {
   }
   return parts.join("; ");
 }
+
+/**
+ * Where-clause for "the plan this learner is currently working through".
+ *
+ * `supersededAt: null` alone is not that plan, and reading it as such taught the wrong
+ * subject. Superseding only happens between versions of the SAME goal, so every goal a
+ * learner ever abandons leaves its last plan un-superseded forever. One learner had eight
+ * such plans and `orderBy: { version: "desc" }` picked the highest version among them —
+ * an abandoned Asynchronous JavaScript goal at v3 — over the Data Structures plan at v1
+ * they had just built. They finished a 36-concept assessment and were taught
+ * higher-order functions.
+ *
+ * The active goal is what disambiguates, and `activeGoalFor` keeps exactly one. Spread
+ * this rather than rewriting the clause, so the next reader inherits the constraint
+ * instead of rediscovering it.
+ */
+export function activePlanWhere(learnerId: string) {
+  return { learnerId, supersededAt: null, goal: { active: true } };
+}

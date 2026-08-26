@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { resolveGoal, orderTargetSet, buildPlan, describeDiff, loadMastery, reconcilePlan } from "../src/index.js";
+import {
+  resolveGoal, orderTargetSet, buildPlan, describeDiff, loadMastery, reconcilePlan,
+  activePlanWhere,
+} from "../src/index.js";
 import { prisma, reset, concept, hard, contains, setMastery } from "./helpers.js";
 import type { GoalDepth, MasteryLevel } from "@kg/shared";
 
@@ -293,5 +296,68 @@ describe("reconcilePlan", () => {
     expect(milestones).not.toContain(template.claim);
     const after = await prisma.milestoneInstance.findUniqueOrThrow({ where: { id: instance.id } });
     expect(after.completedAt).toBeNull();
+  });
+});
+
+describe("activePlanWhere", () => {
+  /**
+   * The bug: superseding only happens between versions of one goal, so an abandoned goal
+   * keeps its last plan un-superseded forever. Ordering by version then picks the highest
+   * version across ALL of them. A learner finished a 36-concept Data Structures
+   * assessment and was taught higher-order functions from an old JavaScript goal.
+   */
+  it("ignores an un-superseded plan whose goal is no longer active", async () => {
+    const s = await scenario();
+
+    // An old goal that reached a higher version than the new one ever will.
+    const oldTopic = await prisma.topic.create({ data: { name: "Old subject", description: "" } });
+    const oldConcept = await concept("something else");
+    await contains(oldTopic.id, oldConcept, true, 0.9);
+    const oldGoal = await prisma.goal.create({
+      data: { learnerId: s.learner.id, topicId: oldTopic.id, depth: "use", active: false },
+    });
+    let oldPlan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: oldGoal.id });
+    oldPlan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: oldGoal.id });
+    oldPlan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: oldGoal.id });
+    expect(oldPlan.version).toBe(3);
+
+    const current = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
+    expect(current.version).toBe(1);
+
+    // Both are un-superseded, so the naive query has two candidates and takes v3.
+    const naive = await prisma.plan.findFirst({
+      where: { learnerId: s.learner.id, supersededAt: null },
+      orderBy: { version: "desc" },
+    });
+    expect(naive?.id).toBe(oldPlan.planId);
+
+    const scoped = await prisma.plan.findFirst({
+      where: activePlanWhere(s.learner.id),
+      orderBy: { version: "desc" },
+    });
+    expect(scoped?.id).toBe(current.planId);
+  });
+
+  it("reconciles the active goal's plan, not an abandoned one", async () => {
+    const s = await scenario();
+    const oldTopic = await prisma.topic.create({ data: { name: "Abandoned", description: "" } });
+    const oldConcept = await concept("stale concept");
+    await contains(oldTopic.id, oldConcept, true, 0.9);
+    const oldGoal = await prisma.goal.create({
+      data: { learnerId: s.learner.id, topicId: oldTopic.id, depth: "use", active: false },
+    });
+    const oldPlan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: oldGoal.id });
+    const current = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
+
+    // Mastery on both, so reconciling either would have something to complete.
+    await setMastery(s.learner.id, oldConcept, "solid");
+    for (const st of current.steps) await setMastery(s.learner.id, st.conceptId, "solid");
+
+    const { steps } = await reconcilePlan(prisma, s.learner.id);
+    expect(steps).not.toContain(oldConcept);
+    expect(steps.length).toBe(current.steps.length);
+
+    const stale = await prisma.planStep.findFirst({ where: { planId: oldPlan.planId } });
+    expect(stale?.completedAt).toBeNull();
   });
 });
