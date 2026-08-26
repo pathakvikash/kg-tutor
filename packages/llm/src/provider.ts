@@ -48,6 +48,23 @@ export class LLMError extends Error {
 }
 
 /**
+ * The provider is reachable but will not serve us — an expired login, a revoked key, a
+ * hit quota. Distinct from LLMError because the response is different in every way:
+ * retrying is pointless, and the fix is a specific action by a human, so it needs to be
+ * said plainly rather than buried in a stack trace.
+ */
+export class LLMAuthError extends LLMError {
+  constructor(
+    message: string,
+    /** What the person running this should actually do about it. */
+    readonly remedy: string,
+  ) {
+    super(message);
+    this.name = "LLMAuthError";
+  }
+}
+
+/**
  * Models wrap JSON in prose and fences no matter how firmly asked not to. Pull the
  * first balanced object or array out rather than failing the whole call.
  */

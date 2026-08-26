@@ -15,6 +15,7 @@ import { intakeRoutes } from "./routes/intake.js";
 import { roadmapRoutes } from "./routes/roadmap.js";
 import { widgetRoutes } from "./routes/widget.js";
 import { providerStatus, refreshLlm } from "./context.js";
+import { installErrorHandler } from "./errors.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webDist = resolve(here, "../../web/dist");
@@ -38,6 +39,8 @@ app.addContentTypeParser(
     }
   },
 );
+
+installErrorHandler(app);
 
 await app.register(graphRoutes);
 await app.register(learnerRoutes);

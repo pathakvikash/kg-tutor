@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { LLMError, type CompletionRequest, type LLMProvider, type ModelTier, type UsageSink } from "./provider.js";
+import { LLMAuthError, LLMError, type CompletionRequest, type LLMProvider, type ModelTier, type UsageSink } from "./provider.js";
 
 export interface ClaudeCodeOptions {
   /** Path to the CLI. Defaults to whatever `claude` resolves to on PATH. */
@@ -77,7 +77,9 @@ export class ClaudeCodeLLM implements LLMProvider {
         return await this.run(req);
       } catch (err) {
         lastError = err;
-        // A missing binary will not fix itself; retrying just wastes time.
+        // Neither a missing binary nor an expired login fixes itself, and retrying an
+        // expired session just makes the failure slower to report.
+        if (err instanceof LLMAuthError) throw err;
         if (err instanceof LLMError && err.message.includes("could not run")) throw err;
       } finally {
         this.release();
@@ -157,23 +159,41 @@ export class ClaudeCodeLLM implements LLMProvider {
           reject(new LLMError(`claude CLI timed out after ${this.timeoutMs}ms`));
           return;
         }
-        if (code !== 0) {
-          // stderr is often empty on CLI failures, so stdout has to be reported too or
-          // the error says nothing at all.
-          const detail = [stderr.trim(), stdout.trim()].filter(Boolean).join(" | ");
-          reject(new LLMError(`claude CLI exited ${code}: ${detail.slice(0, 600) || "(no output)"}`));
-          return;
-        }
-
-        let parsed: CliResult;
+        // The CLI exits non-zero for real failures but still prints a JSON body with a
+        // usable message in `result`. Rejecting on the exit code before parsing threw
+        // away the one part a human could act on.
+        let parsed: CliResult | null = null;
         try {
           parsed = JSON.parse(stdout) as CliResult;
         } catch {
-          reject(new LLMError(`claude CLI returned unparseable output: ${stdout.slice(0, 300)}`));
+          /* not JSON; fall through to the raw-output path below */
+        }
+
+        const message = typeof parsed?.result === "string" ? parsed.result : "";
+
+        if (/authenticat|oauth|session expired|log ?in/i.test(message)) {
+          reject(
+            new LLMAuthError(
+              `Claude Code is not authenticated: ${message}`,
+              "Run `claude` once in a terminal to sign in again, then retry. " +
+                "Alternatively set ANTHROPIC_API_KEY and switch the provider in Settings.",
+            ),
+          );
           return;
         }
-        if (parsed.is_error || typeof parsed.result !== "string") {
-          reject(new LLMError(`claude CLI reported an error: ${JSON.stringify(parsed).slice(0, 400)}`));
+        if (/rate.?limit|quota|usage limit/i.test(message)) {
+          reject(
+            new LLMAuthError(
+              `Claude Code refused the request: ${message}`,
+              "Wait for the limit to reset, or switch to an API key in Settings.",
+            ),
+          );
+          return;
+        }
+
+        if (code !== 0 || parsed?.is_error || typeof parsed?.result !== "string") {
+          const detail = message || [stderr.trim(), stdout.trim()].filter(Boolean).join(" | ");
+          reject(new LLMError(`claude CLI failed (exit ${code}): ${detail.slice(0, 400) || "(no output)"}`));
           return;
         }
 

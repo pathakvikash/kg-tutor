@@ -39,7 +39,12 @@ async function send<T>(method: "POST" | "PUT" | "DELETE", url: string, body?: un
   });
   if (!res.ok) {
     let detail = await res.text();
-    try { detail = JSON.parse(detail).error ?? detail; } catch { /* keep the raw text */ }
+    try {
+      const body = JSON.parse(detail);
+      // The remedy is the whole point of an auth failure; dropping it leaves the user
+      // with a problem statement and no next step.
+      detail = [body.error, body.remedy].filter(Boolean).join(" — ") || detail;
+    } catch { /* keep the raw text */ }
     throw new Error(detail || `HTTP ${res.status}`);
   }
   return res.status === 204 ? (undefined as T) : (res.json() as Promise<T>);
