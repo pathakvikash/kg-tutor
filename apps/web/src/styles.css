@@ -278,6 +278,9 @@ tr:last-child td { border-bottom: none; }
   width: 7px; height: 7px; border-radius: 50%; background: var(--m-functional);
   animation: pulse 2.4s ease-in-out infinite;
 }
+/* Paused has to look paused. The animation ran regardless of state before — only the
+   colour changed — so a stopped watcher still blinked at you. */
+.live.off .pulse { background: var(--rule-strong); animation: none; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .live .pulse { animation: none; } }
 

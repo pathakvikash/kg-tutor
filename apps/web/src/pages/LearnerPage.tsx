@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { resolveLearner, useStickyLearner } from "../useLearner";
 import { api, type Mastery } from "../api";
 
 const DOT: Record<Mastery, string> = {
@@ -92,7 +93,7 @@ function NewTopic({ onDone }: { onDone: () => void }) {
 export function LearnerPage() {
   const [learners, setLearners] = useState<any[]>([]);
   const [topics, setTopics] = useState<any[]>([]);
-  const [id, setId] = useState("");
+  const [id, setId] = useStickyLearner();
   const [state, setState] = useState<any>(null);
   const [plan, setPlan] = useState<any>(null);
   const [depth, setDepth] = useState("use");
@@ -101,7 +102,7 @@ export function LearnerPage() {
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
-    void api.learners().then((l) => { setLearners(l); if (l[0]) setId(l[0].id); });
+    void api.learners().then((l) => { setLearners(l); setId(resolveLearner(id, l)); });
     void api.topics().then((t) => { setTopics(t); if (t[0]) setTopicId(t[0].id); });
   }, []);
 

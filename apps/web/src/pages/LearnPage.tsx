@@ -4,6 +4,7 @@ import { Elapsed } from "../components/Elapsed";
 import { Markdown } from "../components/Markdown";
 import { Intake } from "../components/Intake";
 import { Widget } from "../widget/Widget";
+import { resolveLearner, useStickyLearner } from "../useLearner";
 import { Roadmap } from "../components/Roadmap";
 
 interface Turn {
@@ -18,7 +19,7 @@ interface Turn {
 
 export function LearnPage() {
   const [learners, setLearners] = useState<any[]>([]);
-  const [learnerId, setLearnerId] = useState("");
+  const [learnerId, setLearnerId] = useStickyLearner();
   const [plan, setPlan] = useState<any>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
@@ -35,7 +36,11 @@ export function LearnPage() {
   const bottom = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    void api.learners().then((l) => { setLearners(l); if (l[0]) setLearnerId(l[0].id); });
+    void api.learners().then((l) => {
+      setLearners(l);
+      // Whoever this session was already working on, not just whoever came back first.
+      setLearnerId(resolveLearner(learnerId, l));
+    });
     void api.topics().then(setTopics);
   }, []);
 

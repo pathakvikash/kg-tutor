@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useStickyLearner } from "../useLearner";
 import { Background, Controls, MarkerType, MiniMap, ReactFlow, type Edge, type Node } from "@xyflow/react";
 import { api, type GraphEdge, type GraphPayload, type Mastery } from "../api";
 import { layoutGraph } from "../layout";
@@ -184,21 +186,81 @@ function Inspector({
 }
 
 export function GraphPage() {
+  /**
+   * The view lives in the URL.
+   *
+   * Picking a topic, a learner and a node is several deliberate choices, and a refresh
+   * threw all of them away and came back showing every concept in the graph for nobody.
+   * The URL is the right place for it rather than localStorage: refresh keeps the view,
+   * the back button undoes a hop, and the address bar is now something you can send to
+   * someone — "look at this node" was previously impossible to say.
+   */
+  const [params, setParams] = useSearchParams();
   const [graph, setGraph] = useState<GraphPayload | null>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
-  const [mode, setMode] = useState<Mode>("explore");
-  const [topicId, setTopicId] = useState("");
-  const [learnerId, setLearnerId] = useState("");
+  const mode = (params.get("view") === "teach" ? "teach" : "explore") as Mode;
+  const topicId = params.get("topic") ?? "";
+  const [stickyLearner, setStickyLearner] = useStickyLearner();
   const [learners, setLearners] = useState<any[]>([]);
-  const [selection, setSelection] = useState<Selection | null>(null);
+  // A link that names a learner wins; otherwise whoever this session was last using.
+  // Trusted optimistically before the roster arrives, then dropped if they no longer
+  // exist — unlike the other pages, "nobody" is a legitimate state for the graph.
+  const stickyKnown = learners.length === 0 || learners.some((l) => l.id === stickyLearner);
+  const learnerId = params.get("learner") ?? (stickyKnown ? stickyLearner : "");
+  const selection: Selection | null = params.get("node")
+    ? { kind: "node", id: params.get("node")! }
+    : params.get("edge")
+      ? { kind: "edge", id: params.get("edge")! }
+      : null;
+  const focusId = params.get("focus");
+  const hops = Number(params.get("hops") ?? 1) || 1;
+  // Off is the deliberate choice, so it is the one that has to be written down.
+  const live = params.get("live") !== "off";
   const [trail, setTrail] = useState<string[]>([]);
-  const [focusId, setFocusId] = useState<string | null>(null);
-  const [hops, setHops] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [live, setLive] = useState(true);
   const stamp = useRef<string>("");
+  /** When a poll last found a real change. Names the feature better than any label. */
+  const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
+
+  /**
+   * `replace` rather than `push` for everything except a node hop: filters are
+   * adjustments to one view, while hopping between concepts is navigation and the back
+   * button should undo it.
+   */
+  const patch = useCallback(
+    (next: Record<string, string | null>, opts: { push?: boolean } = {}) => {
+      setParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          for (const [k, v] of Object.entries(next)) {
+            if (v === null || v === "") out.delete(k);
+            else out.set(k, v);
+          }
+          return out;
+        },
+        { replace: !opts.push },
+      );
+    },
+    [setParams],
+  );
+
+  const setMode = (m: Mode) => patch({ view: m === "explore" ? null : m });
+  const setTopicId = (id: string) => patch({ topic: id || null, node: null, edge: null, focus: null });
+  const setLearnerId = (id: string) => { setStickyLearner(id); patch({ learner: id || null }); };
+  const setFocusId = (id: string | null) => patch({ focus: id });
+  const setHops = (n: number) => patch({ hops: n === 1 ? null : String(n) });
+  const setLive = (fn: (v: boolean) => boolean) => patch({ live: fn(live) ? null : "off" });
+  const setSelection = (sel: Selection | null, opts: { push?: boolean } = {}) =>
+    patch(
+      sel === null
+        ? { node: null, edge: null }
+        : sel.kind === "node"
+          ? { node: sel.id, edge: null }
+          : { edge: sel.id, node: null },
+      opts,
+    );
 
   useEffect(() => { void api.learners().then(setLearners).catch(() => undefined); }, []);
 
@@ -224,7 +286,10 @@ export function GraphPage() {
     const timer = setInterval(async () => {
       try {
         const v = await fetch("/api/graph/version").then((r) => r.json());
-        if (stamp.current && v.stamp !== stamp.current) void load();
+        if (stamp.current && v.stamp !== stamp.current) {
+          void load();
+          setRefreshedAt(Date.now());
+        }
         stamp.current = v.stamp;
       } catch { /* transient; the next tick retries */ }
     }, 3000);
@@ -267,16 +332,30 @@ export function GraphPage() {
             unlocks: unlocks.get(n.id) ?? 0,
             degree: degree.get(n.id) ?? 0,
             mode,
-            dimmed: false,
-            isFocus: false,
+            // Applied here as well as in the dimming effect below, because this layout
+            // is asynchronous — elk in teach mode — and lands after that effect has
+            // already run. Nodes built without the flags stayed undimmed with a focus
+            // active, which was invisible while focusing was only reachable by clicking
+            // a node on an already-loaded graph, and obvious the moment a focus could
+            // arrive from the URL on first paint.
+            dimmed: visible ? !visible.has(n.id) : false,
+            isFocus: n.id === focusId,
           };
           return { id: n.id, type: "concept", position: { x: p.x, y: p.y }, data };
         }),
       );
-      setEdges(graph.edges.map((e) => toFlowEdge(e, false)));
+      setEdges(
+        graph.edges.map((e) =>
+          toFlowEdge(e, Boolean(visible) && !(visible!.has(e.source) && visible!.has(e.target))),
+        ),
+      );
     })();
 
     return () => { cancelled = true; };
+    // `visible` and `focusId` are deliberately not dependencies: relaying out the whole
+    // graph on a focus change would be a visible jolt, and the effect below handles that
+    // case. They are read here only to seed nodes that are created after a load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, mode]);
 
   // Dimming is a cheap data update, kept separate so focusing never triggers a relayout.
@@ -303,7 +382,7 @@ export function GraphPage() {
   }, [visible, focusId]);
 
   const hopTo = (id: string) => {
-    setSelection({ kind: "node", id });
+    setSelection({ kind: "node", id }, { push: true });
     setTrail((t) => (t[t.length - 1] === id ? t : [...t, id]));
   };
 
@@ -342,13 +421,26 @@ export function GraphPage() {
         {focusId && <button onClick={() => setFocusId(null)}>Clear focus</button>}
         <button onClick={() => void load()} disabled={loading}>{loading ? "…" : "reload"}</button>
         <span className="spacer" />
-        <span className="live" title="Polls for changes every 3s">
-          <span className="pulse" style={{ background: live ? undefined : "var(--rule-strong)" }} />
+        {/* "live" said nothing about what it did. It watches for changes made elsewhere
+            — an expansion finishing, a lesson or an assessment moving mastery — and
+            redraws when it finds one. Naming the behaviour, and showing when it last
+            fired, explains it better than a tooltip nobody hovers. */}
+        <span className={live ? "live" : "live off"} title={
+          live
+            ? "Checks every 3s for changes made elsewhere — a graph expansion finishing, " +
+              "or mastery moving after a lesson or an assessment — and redraws when it finds one."
+            : "Not watching for changes. The view only updates when you press reload."
+        }>
+          <span className="pulse" />
           <button
-            style={{ border: "none", background: "none", padding: 0, color: "inherit" }}
+            style={{ border: "none", background: "none", padding: 0, color: "inherit", cursor: "pointer" }}
             onClick={() => setLive((v) => !v)}
           >
-            {live ? "live" : "paused"}
+            {live
+              ? refreshedAt
+                ? "auto-refresh · updated"
+                : "auto-refresh"
+              : "auto-refresh off"}
           </button>
         </span>
         <div className="legend">
