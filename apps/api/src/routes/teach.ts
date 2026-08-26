@@ -72,12 +72,26 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
 
     const sessionId = body.data.sessionId ?? (await openSession(id));
 
+    /**
+     * The stored item wins over whatever the client sent.
+     *
+     * The client only ever held the prompt text, so a question about a snippet arrived
+     * for grading with the snippet missing. Reading the row also means the prompt and
+     * rubric being graded against are the ones the item bank actually records, rather
+     * than a string that made a round trip through the browser.
+     */
+    const item = body.data.itemId
+      ? await prisma.assessmentItem.findUnique({ where: { id: body.data.itemId } })
+      : null;
+
     const result = await runAttempt({
       prisma,
       llm,
-      prompt: body.data.prompt,
+      prompt: item?.prompt ?? body.data.prompt,
+      code: item?.code ?? null,
+      codeLanguage: item?.codeLanguage ?? null,
       response: body.data.response,
-      requiresTransfer: body.data.requiresTransfer,
+      requiresTransfer: item?.requiresTransfer ?? body.data.requiresTransfer,
       ctx: {
         learnerId: id,
         conceptId: body.data.conceptId,

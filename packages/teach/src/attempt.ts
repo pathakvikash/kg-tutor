@@ -109,6 +109,9 @@ export interface RunAttemptInput {
   llm: LLMProvider;
   ctx: AttemptContext;
   prompt: string;
+  /** The snippet the prompt refers to, when the item has one. */
+  code?: string | null;
+  codeLanguage?: string | null;
   response: string;
   requiresTransfer: boolean;
   thresholds?: Thresholds;
@@ -131,6 +134,8 @@ export async function runAttempt(input: RunAttemptInput): Promise<AttemptOutcome
 
   const grade = await gradeResponse(input.llm, {
     prompt: input.prompt,
+    code: input.code ?? null,
+    codeLanguage: input.codeLanguage ?? null,
     response: input.response,
     conceptName: concept.canonicalName,
     requiresTransfer: input.requiresTransfer,

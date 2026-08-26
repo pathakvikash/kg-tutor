@@ -265,6 +265,9 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
 
     const grade = await gradeResponse(llm, {
       prompt: item?.prompt ?? "",
+      // The probe's snippet, which was being dropped here too.
+      code: item?.code ?? null,
+      codeLanguage: item?.codeLanguage ?? null,
       response: body.data.answer,
       conceptName: concept.canonicalName,
       requiresTransfer: item?.requiresTransfer ?? false,

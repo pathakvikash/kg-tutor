@@ -5,6 +5,17 @@ import { failureDiagnosis, type FailureDiagnosis } from "@kg/shared";
 export interface GradeInput {
   /** The item's prompt. NOT the explanation the learner just read. */
   prompt: string;
+  /**
+   * The snippet the question is about, when it has one.
+   *
+   * Items keep code in its own field so it renders as a block rather than one joined
+   * line. The grading path was never updated to reassemble the two, so the grader saw a
+   * question referring to four functions and no functions — and said so: "I cannot see
+   * the functions a, b, c, and d". It then recorded a failed check against a learner
+   * whose answer was right.
+   */
+  code?: string | null;
+  codeLanguage?: string | null;
   response: string;
   /** Stored failure modes on this concept's hard prerequisite edges. (03, 07) */
   failureModes: { edgeId: string; prerequisiteName: string; failureMode: string }[];
@@ -96,6 +107,7 @@ export async function gradeResponse(
       : "",
     "",
     `Question:\n${input.prompt}`,
+    input.code ? `\nThe code the question refers to (${input.codeLanguage ?? "code"}):\n${input.code}` : "",
     "",
     `Learner's answer:\n${input.response}`,
     "",
