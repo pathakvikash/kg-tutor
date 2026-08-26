@@ -6,8 +6,13 @@ import type { AdjudicationInput, Adjudicator } from "../src/adjudicate.js";
 export const prisma = new PrismaClient();
 
 export async function reset(): Promise<void> {
+  // Topics belong here too. Leaving them out made this suite depend on which other
+  // suite ran before it: the planner's fixtures survive its last `beforeEach`, and a
+  // leftover topic then broke an expansion test that counts topics globally.
   await prisma.$executeRawUnsafe(
-    `TRUNCATE "Edge", "ConceptAlias", "ConceptProposal", "Concept" RESTART IDENTITY CASCADE`,
+    `TRUNCATE "Edge", "ConceptAlias", "ConceptProposal", "Concept",
+      "TopicConcept", "MilestoneConcept", "MilestoneTemplate", "Topic"
+      RESTART IDENTITY CASCADE`,
   );
 }
 

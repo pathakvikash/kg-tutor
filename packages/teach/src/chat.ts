@@ -33,6 +33,17 @@ const schema = z.object({
   reasoning: z.string(),
 });
 
+/**
+ * This call gates the whole chat response: nothing can be shown to the learner until it
+ * returns, because an actionable intent means the answer is discarded rather than sent.
+ * So its output length is felt directly as blank screen.
+ *
+ * It was writing more tokens than the answer it was gating — an unbounded `reasoning`
+ * essay that the API returns and the UI has never rendered. With effort-based thinking
+ * doing the actual reasoning, a written rationale after it is duplication. Kept, because
+ * it is worth having when something routes strangely, but capped.
+ */
+
 export const CHAT_ROUTE_SYSTEM_PROMPT = `You classify a learner's question asked during a lesson. You do not answer it.
 
 Choose exactly one intent:
@@ -59,6 +70,9 @@ topic name — "create me a roadmap to master JS" becomes "JavaScript".
 Set wantsVisual true when the question is about STRUCTURE, MECHANISM or LIFE CYCLE —
 "what is the architecture of X", "what are the parts", "what moves where", "walk me
 through what happens when". Those have a better answer than a paragraph.
+
+reasoning: at most one short clause. Not a paragraph, not a restatement of the rules
+above — just the deciding factor, e.g. "asks for a study plan, not about the lesson".
 
 Respond with JSON: {"intent","prerequisiteIndex","namedConcept","wantsVisual","reasoning"}`;
 

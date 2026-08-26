@@ -155,6 +155,8 @@ describe("expandTopicShallow", () => {
     expect(await prisma.concept.count()).toBe(countAfterFirst);
     expect(second.conceptsCreated).toBe(0);
     expect(second.conceptsBound).toBe(first.conceptsCreated + first.conceptsBound);
-    expect(await prisma.topic.count()).toBe(1);
+    // Scoped to the topic under test: the claim is that re-expanding rebinds rather
+    // than duplicating, not that the database holds exactly one topic.
+    expect(await prisma.topic.count({ where: { name: "JavaScript functions" } })).toBe(1);
   });
 });

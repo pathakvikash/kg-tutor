@@ -45,6 +45,12 @@ export class LLMAdjudicator implements Adjudicator {
         system: ADJUDICATION_SYSTEM_PROMPT,
         user: buildAdjudicationPrompt(input),
         tier: "small",
+      // The one small-tier call worth paying to think about. Its errors are not
+      // symmetric: a false "same" merges two distinct concepts into one node of a graph
+      // every learner shares, and nothing downstream can tell it happened. On the
+      // labelled pairs medium scored 11/12 against 10/12 for both low and high — one
+      // pair, so weak evidence, but it costs a second on a call that runs rarely.
+      effort: "medium",
         temperature: 0,
       },
       schema,

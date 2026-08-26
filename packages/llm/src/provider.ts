@@ -12,6 +12,27 @@ import { z } from "zod";
  */
 export type ModelTier = "small" | "strong";
 
+/**
+ * How long the model should reason before answering.
+ *
+ * Worth separating from `tier` because they answer different questions: tier is how
+ * capable the model needs to be, effort is how long it should think. Grading against a
+ * stored rubric wants a capable-enough model that answers immediately; expanding a graph
+ * wants room to reason.
+ *
+ * Left unset it defaults by tier. Measured on the calls this system actually makes,
+ * "high" bought nothing: a grading call ran 15.0s with 1,085 thinking tokens against 126
+ * tokens of answer, and reached the same verdict as "low" at 8.7s. Item generation was
+ * worse — 41.5s and $0.0435 at high against 13.2s and $0.0145 at low, for four items of
+ * indistinguishable quality either way.
+ */
+export type Effort = "low" | "medium" | "high";
+
+/** Thinking helps novel reasoning, not rubric-bound checking. (17) */
+export function defaultEffort(tier: ModelTier): Effort {
+  return tier === "small" ? "low" : "medium";
+}
+
 export interface CompletionRequest {
   system: string;
   user: string;
@@ -19,6 +40,8 @@ export interface CompletionRequest {
   /** Sampling temperature. Self-consistency expansion needs this above zero. */
   temperature?: number;
   maxTokens?: number;
+  /** Overrides {@link defaultEffort} for a call that genuinely needs to reason. */
+  effort?: Effort;
 }
 
 /** What a call actually cost, when the provider can tell us. (17) */

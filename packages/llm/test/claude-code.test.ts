@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { ClaudeCodeLLM } from "../src/claude-code.js";
 import type { UsageReport } from "../src/provider.js";
 import { llmFromEnv } from "../src/providers.js";
@@ -102,5 +105,63 @@ describe("failure classification", () => {
     };
     await expect(llm.complete({ system: "s", user: "u", tier: "small" })).resolves.toBe("ok");
     expect(attempts).toBe(3);
+  });
+});
+
+/**
+ * These drive the real close handler through a real subprocess, because the bug they
+ * exist for lived there and a stubbed `run` cannot see it.
+ */
+describe("classification of a successful call", () => {
+  /** A stand-in CLI that ignores its arguments and prints one fixed JSON body. */
+  function fakeCli(body: unknown, exitCode = 0): string {
+    const dir = mkdtempSync(join(tmpdir(), "kg-cli-"));
+    const path = join(dir, "claude");
+    writeFileSync(path, `#!/bin/sh\ncat <<'JSON'\n${JSON.stringify(body)}\nJSON\nexit ${exitCode}\n`);
+    chmodSync(path, 0o755);
+    return path;
+  }
+
+  it("returns an answer about authentication instead of calling it an expired login", async () => {
+    // The regexes read the CLI's own error text, so running them over a *successful*
+    // result made the tutor unable to answer the thing it was asked. Caught by the
+    // adjudicator eval on a concept pair about authentication vs authorization.
+    const llm = new ClaudeCodeLLM({
+      bin: fakeCli({
+        is_error: false,
+        stop_reason: "end_turn",
+        result: '{"verdict":"related","reasoning":"Authentication is who you are; OAuth login precedes authorization."}',
+      }),
+    });
+    const out = await llm.complete({ system: "s", user: "u", tier: "small" });
+    expect(out).toContain("Authentication");
+  });
+
+  it("still reports an expired login when the call actually failed", async () => {
+    const { LLMAuthError } = await import("../src/provider.js");
+    const llm = new ClaudeCodeLLM({
+      maxRetries: 0,
+      bin: fakeCli({ is_error: true, result: "OAuth token expired, please log in again" }, 1),
+    });
+    const err = await llm.complete({ system: "s", user: "u", tier: "small" }).catch((e) => e);
+    expect(err).toBeInstanceOf(LLMAuthError);
+    expect(err.remedy).toContain("claude");
+  });
+
+  it("reports a tool call as the configuration error it is", async () => {
+    const llm = new ClaudeCodeLLM({
+      maxRetries: 0,
+      bin: fakeCli({ is_error: false, stop_reason: "tool_use", result: "" }),
+    });
+    await expect(llm.complete({ system: "s", user: "u", tier: "small" }))
+      .rejects.toThrow(/stopped to call a tool/);
+  });
+});
+
+describe("effort", () => {
+  it("asks for less thinking on rubric-bound work than on generative work", async () => {
+    const { defaultEffort } = await import("../src/provider.js");
+    expect(defaultEffort("small")).toBe("low");
+    expect(defaultEffort("strong")).toBe("medium");
   });
 });

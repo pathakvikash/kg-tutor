@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
-import { LLMAuthError, LLMError, type CompletionRequest, type LLMProvider, type ModelTier, type UsageSink } from "./provider.js";
+import {
+  LLMAuthError, LLMError, defaultEffort,
+  type CompletionRequest, type LLMProvider, type ModelTier, type UsageSink,
+} from "./provider.js";
 
 export interface ClaudeCodeOptions {
   /** Path to the CLI. Defaults to whatever `claude` resolves to on PATH. */
@@ -64,6 +67,16 @@ interface CliResult {
  * 4.7s, $0.0227 to $0.0023. Almost every call this system makes was paying twenty
  * thousand tokens of tool definitions it was never allowed to use.
  */
+/**
+ * Without `--effort` the CLI inherits whatever the machine's session default is, which
+ * here was "high" — so every call in the system was reasoning as hard as it can before
+ * answering. On a grading call that was 12.0s of a 15.0s response spent before the first
+ * token, to produce a verdict identical to the one "low" reached in 8.7s.
+ */
+function effortFlags(req: CompletionRequest): string[] {
+  return ["--effort", req.effort ?? defaultEffort(req.tier)];
+}
+
 const TEXT_ONLY = [
   "--tools", "",
   "--strict-mcp-config",
@@ -143,6 +156,7 @@ export class ClaudeCodeLLM implements LLMProvider {
         "--verbose",
         "--max-turns", "1",
         ...TEXT_ONLY,
+        ...effortFlags(req),
       ],
       { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env } },
     );
@@ -245,6 +259,7 @@ export class ClaudeCodeLLM implements LLMProvider {
         "--max-turns",
         "1",
         ...TEXT_ONLY,
+        ...effortFlags(req),
       ];
 
       const child = spawn(this.bin, args, {
@@ -291,17 +306,8 @@ export class ClaudeCodeLLM implements LLMProvider {
         }
 
         const message = typeof parsed?.result === "string" ? parsed.result : "";
+        const failed = code !== 0 || parsed?.is_error === true || typeof parsed?.result !== "string";
 
-        if (/authenticat|oauth|session expired|log ?in/i.test(message)) {
-          reject(
-            new LLMAuthError(
-              `Claude Code is not authenticated: ${message}`,
-              "Run `claude` once in a terminal to sign in again, then retry. " +
-                "Alternatively set ANTHROPIC_API_KEY and switch the provider in Settings.",
-            ),
-          );
-          return;
-        }
         if (parsed?.stop_reason === "tool_use") {
           reject(
             new LLMError(
@@ -311,23 +317,38 @@ export class ClaudeCodeLLM implements LLMProvider {
           );
           return;
         }
-        if (/rate.?limit|quota|usage limit/i.test(message)) {
-          reject(
-            new LLMAuthError(
-              `Claude Code refused the request: ${message}`,
-              "Wait for the limit to reset, or switch to an API key in Settings.",
-            ),
-          );
-          return;
-        }
 
-        if (code !== 0 || parsed?.is_error || typeof parsed?.result !== "string") {
+        // These read the CLI's own error text, so they must only run when the call
+        // actually failed. Sniffing them out of a successful `result` reported a
+        // perfectly good answer about authentication as an expired login — which, for a
+        // tutor whose whole job is explaining things like OAuth, fires on the content
+        // the learner asked for.
+        if (failed) {
+          if (/authenticat|oauth|session expired|log ?in/i.test(message)) {
+            reject(
+              new LLMAuthError(
+                `Claude Code is not authenticated: ${message}`,
+                "Run `claude` once in a terminal to sign in again, then retry. " +
+                  "Alternatively set ANTHROPIC_API_KEY and switch the provider in Settings.",
+              ),
+            );
+            return;
+          }
+          if (/rate.?limit|quota|usage limit/i.test(message)) {
+            reject(
+              new LLMAuthError(
+                `Claude Code refused the request: ${message}`,
+                "Wait for the limit to reset, or switch to an API key in Settings.",
+              ),
+            );
+            return;
+          }
           const detail = message || [stderr.trim(), stdout.trim()].filter(Boolean).join(" | ");
           reject(new LLMError(`claude CLI failed (exit ${code}): ${detail.slice(0, 400) || "(no output)"}`));
           return;
         }
 
-        const usage = parsed.usage ?? {};
+        const usage = parsed!.usage ?? {};
         this.onUsage?.(
           {
             model,
@@ -336,13 +357,13 @@ export class ClaudeCodeLLM implements LLMProvider {
             // Code's own prompt, not ours. Counted, because they are really paid for.
             promptTokens: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
             outputTokens: usage.output_tokens ?? 0,
-            costUsd: parsed.total_cost_usd ?? 0,
-            durationMs: parsed.duration_ms ?? Date.now() - started,
+            costUsd: parsed!.total_cost_usd ?? 0,
+            durationMs: parsed!.duration_ms ?? Date.now() - started,
           },
           req,
         );
 
-        resolve(parsed.result);
+        resolve(parsed!.result as string);
       });
     });
   }
