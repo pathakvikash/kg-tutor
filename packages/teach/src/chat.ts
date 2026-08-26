@@ -11,6 +11,8 @@ export interface ChatRouteInput {
 
 export interface ChatRoute {
   intent: ChatIntent;
+  /** The question deserves a diagram or a simulation, not only a paragraph. */
+  wantsVisual: boolean;
   /** For `prerequisite_gap`: which prerequisite, when it matched a known one. */
   prerequisiteConceptId: string | null;
   /** The concept the learner named, even when it is not a known prerequisite. */
@@ -22,6 +24,12 @@ const schema = z.object({
   intent: chatIntent,
   prerequisiteIndex: z.number().int().nullable(),
   namedConcept: z.string().nullable(),
+  /**
+   * The question is about structure, mechanism or life cycle — "what is the
+   * architecture of X", "what moves where", "walk me through what happens".
+   * Answering that in prose is a worse answer than showing it.
+   */
+  wantsVisual: z.boolean().default(false),
   reasoning: z.string(),
 });
 
@@ -48,7 +56,11 @@ what they actually asked about, in their words.
 If the intent is "new_goal", set namedConcept to the subject they want to learn, as a
 topic name — "create me a roadmap to master JS" becomes "JavaScript".
 
-Respond with JSON: {"intent","prerequisiteIndex","namedConcept","reasoning"}`;
+Set wantsVisual true when the question is about STRUCTURE, MECHANISM or LIFE CYCLE —
+"what is the architecture of X", "what are the parts", "what moves where", "walk me
+through what happens when". Those have a better answer than a paragraph.
+
+Respond with JSON: {"intent","prerequisiteIndex","namedConcept","wantsVisual","reasoning"}`;
 
 /**
  * Chat never teaches — it routes into paths that already exist. (19)
@@ -89,6 +101,7 @@ export async function routeChatQuestion(
 
   return {
     intent: raw.intent,
+    wantsVisual: raw.wantsVisual ?? false,
     prerequisiteConceptId: matched?.conceptId ?? null,
     namedConcept: raw.namedConcept,
     reasoning: raw.reasoning,

@@ -19,7 +19,14 @@ const DOT: Record<Mastery, string> = {
  * "you can predict the order of asynchronous output — 2 of 4" is a thing worth
  * finishing.
  */
-export function Roadmap({ learnerId, compact = false }: { learnerId: string; compact?: boolean }) {
+export function Roadmap({
+  learnerId, compact = false, onPick,
+}: {
+  learnerId: string;
+  compact?: boolean;
+  /** Clicking a concept starts teaching it. Without this the roadmap is a poster. */
+  onPick?: (conceptId: string, name: string) => void;
+}) {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<number>>(new Set([0]));
@@ -49,14 +56,23 @@ export function Roadmap({ learnerId, compact = false }: { learnerId: string; com
   const Step = ({ s }: { s: any }) => {
     const mastery = (s.currentMastery ?? "unknown") as Mastery;
     const met = RANK[mastery] >= RANK[(s.requiredLevel ?? "functional") as Mastery];
-    return (
-      <div className={`rm-step${met ? " met" : ""}`}>
+    const body = (
+      <>
         <span className="rm-dot" style={{ background: DOT[mastery] }} />
         <span className="rm-name">{s.name}</span>
-        <span className="rm-level">
-          {met ? "done" : `${mastery} → ${s.requiredLevel}`}
-        </span>
-      </div>
+        <span className="rm-level">{met ? "done" : `${mastery} → ${s.requiredLevel}`}</span>
+        {onPick && <span className="rm-go">{met ? "revisit" : "learn"} →</span>}
+      </>
+    );
+    if (!onPick) return <div className={`rm-step${met ? " met" : ""}`}>{body}</div>;
+    return (
+      <button
+        className={`rm-step actionable${met ? " met" : ""}`}
+        onClick={() => onPick(s.conceptId, s.name)}
+        title={`Start a lesson on ${s.name}`}
+      >
+        {body}
+      </button>
     );
   };
 
@@ -75,7 +91,10 @@ export function Roadmap({ learnerId, compact = false }: { learnerId: string; com
         <div className="rm-pct">{pct}%</div>
       </div>
       <div className="progress"><div className="bar" style={{ width: `${pct}%` }} /></div>
-      <div className="rm-count">{data.completed} of {data.totalConcepts} concepts</div>
+      <div className="rm-count">
+        {data.completed} of {data.totalConcepts} concepts
+        {onPick && <span> · click any concept to start it</span>}
+      </div>
 
       {data.milestones.map((m: any, i: number) => {
         const done = m.concepts.filter(

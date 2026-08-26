@@ -218,6 +218,11 @@ export function LearnPage() {
       }
 
       push({ role: "tutor", text: r.answer, meta: { intent: r.intent } });
+      if (r.suggestVisual) {
+        // Answer first, picture second: two model calls back to back would double the
+        // wait before anything appeared.
+        void showMe(text);
+      }
       push({
         role: "note",
         text:
@@ -307,7 +312,13 @@ export function LearnPage() {
                 {t.role === "note" ? (
                   t.text
                 ) : t.role === "roadmap" ? (
-                  <Roadmap learnerId={learnerId} />
+                  <Roadmap
+                    learnerId={learnerId}
+                    onPick={(conceptId, name) => {
+                      setOverride({ conceptId, name });
+                      void teach(conceptId, name);
+                    }}
+                  />
                 ) : t.role === "goal-offer" ? (
                   <div className="goal-offer">
                     <div>

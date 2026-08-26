@@ -570,3 +570,40 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .turn.roadmap .bubble, .turn.goal-offer .bubble {
   padding: 0; background: none; border: none;
 }
+
+/* Simulation: several regions under one clock. Frames could draw one stack; nothing
+   could show a call stack draining while a microtask queue fills, which is the event
+   loop and the thing prose is worst at. */
+.w-sim { border: 1px solid var(--rule); border-radius: 6px; padding: 12px; }
+.w-regions { display: grid; gap: 8px; margin: 12px 0 10px; }
+.w-region {
+  border: 1px solid var(--rule); border-radius: 5px; padding: 8px; min-width: 0;
+  background: var(--ground);
+}
+.w-region-title {
+  font-family: "IBM Plex Mono", monospace; font-size: 9.5px; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--ink-soft); margin-bottom: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.w-region .w-frame { font-size: 11px; padding: 4px 7px; word-break: break-word; }
+.w-frame.fresh {
+  border-color: var(--accent); background: var(--accent-bg);
+  animation: dropIn 260ms ease;
+}
+@keyframes dropIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .w-frame.fresh { animation: none; } }
+@media (max-width: 700px) { .w-regions { grid-template-columns: 1fr 1fr !important; } }
+
+.rm-step.actionable {
+  width: 100%; border: 1px solid transparent; border-radius: 4px;
+  background: none; cursor: pointer; padding: 5px 6px; margin-left: -6px;
+  font: inherit; text-align: left; color: inherit;
+}
+.rm-step.actionable:hover {
+  background: var(--surface-alt); border-color: var(--rule); color: inherit;
+}
+.rm-step.actionable:hover .rm-go { opacity: 1; }
+.rm-go {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; color: var(--accent);
+  opacity: 0; transition: opacity 120ms;
+}

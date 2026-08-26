@@ -20,6 +20,16 @@ const step = z.object({
   highlightLine: z.number().optional().describe("1-based line to highlight"),
 });
 
+/** One frame of a machine simulation: what every region holds at this instant. */
+const machineStep = z.object({
+  label: z.string().describe("What happens on this tick, in a few words"),
+  detail: z.string().optional().describe("One or two sentences on why"),
+  highlightLine: z.number().optional().describe("1-based line of `code` executing now"),
+  regions: z
+    .record(z.string(), z.array(z.string()))
+    .describe("Region name -> its contents at this instant. Every region, every step."),
+});
+
 const option = z.object({
   label: z.string(),
   correct: z.boolean(),
@@ -71,6 +81,28 @@ export const catalog = defineCatalog(schema, {
         items: z.array(z.string()).default([]),
         orientation: z.enum(["stack", "queue"]).default("stack"),
         empty: z.string().default("empty"),
+      }),
+    },
+    Simulation: {
+      description:
+        "THE component for architecture and lifecycle. Several named regions — a call " +
+        "stack, a task queue, a microtask queue, console output — all changing together " +
+        "as the learner steps through one program. Use this whenever a question is about " +
+        "how a machine works, what moves where, or the full life cycle of something. " +
+        "`code` is the program being traced; every step lists the contents of EVERY " +
+        "region at that instant, so the learner watches things move between them. " +
+        "Region order is the order given; mark stack-like regions in `stackRegions` so " +
+        "they grow upward.",
+      props: z.object({
+        code: z.string().describe("The program being traced. Plain code, no fences."),
+        language: z.string().default("javascript"),
+        regions: z.array(z.string()).describe("Region names, in display order"),
+        stackRegions: z
+          .array(z.string())
+          .default([])
+          .describe("Which regions grow upward rather than reading top-down"),
+        steps: z.array(machineStep),
+        stateKey: z.string().default("tick"),
       }),
     },
     Compare: {

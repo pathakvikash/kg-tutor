@@ -19,11 +19,24 @@ Text         { value: string, muted?: boolean }    A paragraph. Plain text only.
 CodeBlock    { code, language?, highlightLine? }   Source code. Never prose.
 Timeline     { steps: Step[], stateKey?: string }  Learner-advanced execution steps.
 Frames       { title?, items: string[], orientation?: "stack"|"queue", empty? }
+Simulation   { code, language?, regions: string[], stackRegions?: string[],
+               steps: MachineStep[], stateKey? }
 Compare      { leftTitle, leftCode, rightTitle, rightCode, note? }
 Choice       { question, options: {label, correct, feedback}[] }
 Toggle       { label, stateKey?, onText?, offText? }
 
-Step = { label: string, detail?: string, code?: string, highlightLine?: number }`;
+Step        = { label, detail?, code?, highlightLine? }
+MachineStep = { label, detail?, highlightLine?, regions: { [regionName]: string[] } }
+
+Simulation is THE component for architecture and life cycle. Several named regions — a
+call stack, a task queue, a microtask queue, console output — all changing together as
+the learner steps through one program. Every step must list the contents of EVERY
+region at that instant, even the empty ones, so movement between them is visible rather
+than inferred. Put stack-like regions in stackRegions so they grow upward.
+
+Reach for it whenever the question is about how something works, what moves where, or
+the full life cycle of something. A Timeline plus a paragraph is the wrong answer to
+"what is the architecture of X".`;
 
 const WIDGET_SYSTEM = `You build a small interactive widget that teaches one concept.
 
@@ -46,8 +59,11 @@ them, or give each step its own element.
 
 Rules:
 - The widget must show something prose cannot. If a paragraph would do the same job,
-  build a Timeline instead — sequence, ordering and state changes are what this is for.
-- Prefer ONE Timeline the learner steps through over many static blocks.
+  build a Timeline or a Simulation instead — sequence, movement and state changes are
+  what this is for.
+- Architecture, life cycle, "what are the parts and how do they interact": Simulation.
+- A single ordered walkthrough with no moving parts: Timeline.
+- Prefer ONE stepped component the learner drives over many static blocks.
 - Every element id referenced in "children" must exist in "elements".
 - Do not invent components or props. Do not use markdown anywhere.
 - 3 to 7 elements. Small and sharp beats comprehensive.
@@ -76,7 +92,8 @@ function validateSpec(raw: unknown): { ok: true; spec: any } | { ok: false; reas
   if (!spec.elements[spec.root]) return { ok: false, reason: `root "${spec.root}" is not an element` };
 
   const known = new Set([
-    "Stack", "Heading", "Text", "CodeBlock", "Timeline", "Frames", "Compare", "Choice", "Toggle",
+    "Stack", "Heading", "Text", "CodeBlock", "Timeline", "Frames",
+    "Simulation", "Compare", "Choice", "Toggle",
   ]);
   for (const [id, el] of Object.entries(spec.elements)) {
     if (!known.has(el.type)) return { ok: false, reason: `unknown component "${el.type}" on "${id}"` };

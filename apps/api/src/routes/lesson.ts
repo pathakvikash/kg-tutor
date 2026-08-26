@@ -284,6 +284,9 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     return {
       sessionId,
       intent: route.intent,
+      // The client follows up with a widget call rather than us making two model calls
+      // back to back — the answer lands immediately, the simulation arrives after.
+      suggestVisual: route.wantsVisual,
       answer,
       // The UI offers a detour rather than silently taking one.
       detourTo: route.intent === "prerequisite_gap" ? route.prerequisiteConceptId : null,
