@@ -86,6 +86,29 @@ async function advance(intakeId: string, lastAnswer?: AnswerVerdict): Promise<un
   };
 }
 
+/**
+ * The active goal for this topic and depth, created if it does not exist yet.
+ *
+ * Shared by start and finish so both plan against the same goal: `buildPlan` supersedes
+ * the previous plan for a goal and bumps the version, so reusing it turns the assessment
+ * into a *revision* of the roadmap — v1 to v2 with a diff — instead of a second goal
+ * with an unrelated plan hanging off it.
+ */
+async function activeGoalFor(
+  learnerId: string, topicId: string, depth: "use" | "debug" | "build",
+): Promise<string> {
+  const existing = await prisma.goal.findFirst({
+    where: { learnerId, topicId, depth, active: true },
+    orderBy: { createdAt: "desc" },
+  });
+  if (existing) return existing.id;
+  await prisma.goal.updateMany({ where: { learnerId, active: true }, data: { active: false } });
+  const created = await prisma.goal.create({
+    data: { learnerId, topicId, depth, active: true },
+  });
+  return created.id;
+}
+
 /** Writes what the intake concluded into the learner model, then plans. (07) */
 async function finish(intakeId: string): Promise<unknown> {
   const intake = await prisma.intakeSession.findUniqueOrThrow({ where: { id: intakeId } });
@@ -102,16 +125,10 @@ async function finish(intakeId: string): Promise<unknown> {
     });
   }
 
-  await prisma.goal.updateMany({
-    where: { learnerId: intake.learnerId, active: true }, data: { active: false },
-  });
-  const goal = await prisma.goal.create({
-    data: {
-      learnerId: intake.learnerId, topicId: intake.topicId,
-      depth: intake.depth as "use" | "debug" | "build", active: true,
-    },
-  });
-  const plan = await buildPlan({ prisma, learnerId: intake.learnerId, goalId: goal.id });
+  const goalId = await activeGoalFor(
+    intake.learnerId, intake.topicId, intake.depth as "use" | "debug" | "build",
+  );
+  const plan = await buildPlan({ prisma, learnerId: intake.learnerId, goalId });
   // The intake just established mastery for concepts nobody will teach. Without this the
   // fresh plan opens at 0% with half its steps already satisfied.
   await reconcilePlan(prisma, intake.learnerId);
@@ -195,7 +212,29 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    return advance(intake.id);
+    /**
+     * The roadmap exists before a single question is answered.
+     *
+     * It was only built at the end, so a learner who asked for "a roadmap to master data
+     * structures", waited out several minutes of graph building, and then met a run of
+     * questions had nothing to show for any of it — the thing they asked for did not
+     * exist yet and nothing said so. The graph is what the roadmap needs; the assessment
+     * only decides what to *skip*. So plan now, and let the assessment revise it.
+     */
+    const goalId = await activeGoalFor(body.data.learnerId, body.data.topicId, body.data.depth);
+    const provisional = await buildPlan({
+      prisma, learnerId: body.data.learnerId, goalId,
+      revisionReason: "first pass, before the assessment",
+    });
+
+    return {
+      ...(await advance(intake.id) as object),
+      plan: {
+        version: provisional.version,
+        steps: provisional.steps.length,
+        milestones: provisional.milestones.length,
+      },
+    };
   });
 
   app.post("/api/intake/:id/answer", async (req, reply) => {

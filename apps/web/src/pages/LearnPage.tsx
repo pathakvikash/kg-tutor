@@ -87,10 +87,22 @@ export function LearnPage() {
   useEffect(() => {
     if (!learnerId) return;
     let cancelled = false;
-    void api
-      .openIntake(learnerId)
-      .then((r) => { if (!cancelled && r?.intake) setShowIntake(true); })
-      .catch(() => undefined);
+    void (async () => {
+      try {
+        const r = await api.openIntake(learnerId);
+        if (!cancelled && r?.intake) { setShowIntake(true); return; }
+      } catch { /* fall through */ }
+      // A graph build in flight counts too. It runs for minutes, and if this page does
+      // not open the assessment component there is nothing on screen to reattach to it
+      // — the build finishes unobserved and the learner is left where they started.
+      try {
+        const jobs = await api.expansions();
+        if (cancelled) return;
+        if (jobs.some((j: any) => j.status === "queued" || j.status === "running")) {
+          setShowIntake(true);
+        }
+      } catch { /* nothing running */ }
+    })();
     return () => { cancelled = true; };
   }, [learnerId]);
 

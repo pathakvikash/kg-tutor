@@ -30,6 +30,8 @@ export function Intake({
   const [goalText, setGoalText] = useState("");
   const [alreadyKnow, setAlreadyKnow] = useState("");
   const [session, setSession] = useState<any>(null);
+  /** Set once when the assessment starts, so it survives every answer after it. */
+  const [roadmap, setRoadmap] = useState<{ steps: number; milestones: number } | null>(null);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,15 +44,37 @@ export function Intake({
    */
   useEffect(() => {
     let cancelled = false;
-    void api
-      .resumeIntake(learnerId)
-      .then((r) => {
-        if (cancelled || !r?.intake) return;
-        setSession(r);
-        setStage(r.status === "complete" ? "done" : "probing");
-        setResumed(r.intake);
-      })
-      .catch(() => undefined);
+    void (async () => {
+      try {
+        const r = await api.resumeIntake(learnerId);
+        if (cancelled) return;
+        if (r?.intake) {
+          setSession(r);
+          setStage(r.status === "complete" ? "done" : "probing");
+          setResumed(r.intake);
+          return;
+        }
+      } catch { /* fall through to the expansion check */ }
+
+      /**
+       * Nothing to resume, so look for a graph build still running.
+       *
+       * Expansion takes minutes — nineteen of them for "Data Structures" — and the job
+       * id lived only in this component's state. A reload during the build orphaned it:
+       * the work carried on server-side, finished, and nothing was listening. A learner
+       * who asked for a roadmap got no roadmap and no sign anything had happened, which
+       * is the same failure as an interrupted assessment and needs the same answer.
+       */
+      try {
+        const jobs = await api.expansions();
+        if (cancelled) return;
+        const live = jobs.find((j: any) => j.status === "queued" || j.status === "running");
+        if (!live) return;
+        setJob(live);
+        setBuildQueue([live.topicName]);
+        setStage("building");
+      } catch { /* nothing to reattach to */ }
+    })();
     return () => { cancelled = true; };
   }, [learnerId]);
 
@@ -126,6 +150,7 @@ export function Intake({
     try {
       const r = await api.startIntake({ learnerId, topicId, depth, goalText, alreadyKnow });
       setSession(r);
+      if (r.plan) setRoadmap({ steps: r.plan.steps, milestones: r.plan.milestones });
       setStage(r.status === "complete" ? "done" : "probing");
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
@@ -359,6 +384,17 @@ export function Intake({
                 list. Rendered as plain text it arrived with the punctuation showing. */}
             <span className="verdict-why"><Markdown text={session.lastAnswer.reasoning} /></span>
           </div>
+        )}
+        {roadmap && (
+          /* The learner asked for a roadmap and then met a run of questions. Saying the
+             roadmap already exists, and what these questions are for, is the difference
+             between an assessment and an unexplained quiz. */
+          <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
+            Your roadmap is built — <b>{roadmap.steps}</b> concepts
+            {roadmap.milestones > 0 ? ` across ${roadmap.milestones} milestones` : ""}. These
+            questions only decide where you start and what gets skipped, so answering more
+            of them means being taught less.
+          </p>
         )}
         <div className="intake-progress">
           Question {session.asked + 1} of at most {session.budget}
