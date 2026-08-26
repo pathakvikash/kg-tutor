@@ -100,6 +100,9 @@ export async function routeChatQuestion(
       ].join("\n"),
       tier: "small",
       temperature: 0,
+      // Sorting one question into one of five named intents. There is nothing here to
+      // reason about, and this call gates the whole response, so it gets no budget.
+      effort: "none",
     },
     schema,
   );

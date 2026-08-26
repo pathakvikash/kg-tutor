@@ -26,9 +26,21 @@ export type ModelTier = "small" | "strong";
  * worse — 41.5s and $0.0435 at high against 13.2s and $0.0145 at low, for four items of
  * indistinguishable quality either way.
  */
-export type Effort = "low" | "medium" | "high";
+export type Effort = "none" | "low" | "medium" | "high";
 
-/** Thinking helps novel reasoning, not rubric-bound checking. (17) */
+/**
+ * Thinking helps novel reasoning, not classification.
+ *
+ * "none" is for sorting an input into one of a fixed set of buckets — routing a question
+ * into one of five intents. It is NOT for anything that has to check claims against
+ * evidence. That distinction was originally drawn at the tier boundary and the tier is
+ * too coarse a proxy: grading a learner's answer about four functions is `small` tier,
+ * and it is reasoning. Asked to review its own four-way classification with no thinking
+ * at all, the model produced a table whose row for one function read "takes a function:
+ * no, returns a function: no, higher-order: yes".
+ *
+ * So `small` defaults to a real budget and anything wanting zero has to say so.
+ */
 export function defaultEffort(tier: ModelTier): Effort {
   return tier === "small" ? "low" : "medium";
 }

@@ -26,9 +26,17 @@ async function recentTurns(sessionId: string): Promise<string> {
     take: 6,
   });
   if (turns.length === 0) return "";
+  // Attributed, and explicitly not endorsed. "They asked: B returns a function" reads as
+  // background fact, and a learner's earlier mistake then comes back as an assumption in
+  // the next answer — one wrong claim about a function was restated as truth in a
+  // correction table a turn later. Whose sentence it was has to survive the formatting.
   return turns
     .reverse()
-    .map((t) => `${t.role === "learner" ? "They asked" : "You answered"}: ${t.text.slice(0, 600)}`)
+    .map((t) =>
+      t.role === "learner"
+        ? `LEARNER SAID (their words, may contain mistakes): ${t.text.slice(0, 600)}`
+        : `YOU REPLIED: ${t.text.slice(0, 600)}`,
+    )
     .join("\n");
 }
 
@@ -312,7 +320,9 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
         system: ANSWER_SYSTEM,
         user: [
           `They are learning "${concept.canonicalName}" (${concept.sense}).`,
-          history ? `Earlier in this conversation:\n${history}` : "",
+          history
+            ? `Earlier in this conversation (their statements are not established facts —\ncheck them before building on them):\n${history}`
+            : "",
           `They asked: ${body.data.question}`,
         ].filter(Boolean).join("\n"),
         tier: "small",
@@ -455,7 +465,9 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
           : "Answer the learner's question directly and concretely. Do not restate the whole lesson.",
       user: [
         `They are learning "${concept.canonicalName}" (${concept.sense}).`,
-        history ? `Earlier in this conversation:\n${history}` : "",
+        history
+          ? `Earlier in this conversation (their statements are not established facts —\ncheck them before building on them):\n${history}`
+          : "",
         `They asked: ${body.data.question}`,
       ].filter(Boolean).join("\n"),
       tier: "small",

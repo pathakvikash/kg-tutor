@@ -85,12 +85,15 @@ function effortFlags(req: CompletionRequest): string[] {
  * offers; this goes below it. Measured on one grading call: 33s to 3.6s, $0.0167 to
  * $0.0017, same verdict.
  *
- * Zero is right for rubric-bound work — grading against stored failure modes, routing a
- * question into one of five intents. It is not right for judgement calls, so `medium`
- * keeps a real budget and `high` leaves the model's own default alone.
+ * Zero is reserved for classification — routing a question into one of five intents —
+ * because it is not safe for work that has to check claims against evidence. Grading an
+ * answer is `small` tier and is still reasoning; running it at zero cost accuracy in a
+ * way the speed did not pay for. So `low` keeps a small real budget, and only `none`
+ * turns thinking off.
  */
 const THINKING_BUDGET: Record<Effort, string | null> = {
-  low: "0",
+  none: "0",
+  low: "1024",
   medium: "4096",
   high: null,
 };
