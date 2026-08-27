@@ -25,18 +25,7 @@ interface Attempt {
   goalId: string | null;
 }
 
-/**
- * Tests one "A is a prerequisite of B" claim against evidence. (11)
- *
- * The control arm is the piece that is easy to skip and expensive to skip. "Learners who
- * failed B were missing A" is true of almost any hard concept, because weak learners
- * fail everything. The question that actually carries information is whether learners
- * who *knew* A failed B *less*. Without asking it, the system systematically promotes
- * difficulty as dependency and the graph fills with confident nonsense.
- *
- * This is observational data with real selection effects. The control arm reduces the
- * confounding; it does not eliminate it, which is why promotion stays reversible.
- */
+/** Keep the control arm: without it, difficulty is promoted as dependency. (11) */
 export async function evaluateClaim(
   prisma: PrismaClient,
   prerequisiteId: string,

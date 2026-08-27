@@ -13,11 +13,7 @@ import type { Mastery } from "../api";
 interface Turn {
   /** Server row id, present only on turns that came back from the transcript. */
   id?: string;
-  /**
-   * Stable client key. The streaming turn is found by this and never by its array
-   * index: replacing `turns` mid-stream (opening a past session, a reset) used to
-   * splice live tokens into whatever unrelated turn had inherited the index.
-   */
+  /** Stable client key; the streaming turn is found by this, never by array index. */
   lid: string;
   createdAt?: string;
   role: string;
@@ -53,13 +49,7 @@ function failureOf(err: unknown): { message: string; remedy: string | null } {
   return { message: err instanceof Error ? err.message : String(err), remedy: null };
 }
 
-/**
- * Enough to offer a choice, never enough to decide.
- *
- * With a check open, whatever was typed was graded: permanent evidence, a mastery
- * write, sometimes a forced detour, and no undo — while the placeholder invited the
- * learner to ask something instead.
- */
+/** Only enough to offer the learner a choice; grading is irreversible. */
 function looksLikeQuestion(text: string): boolean {
   const t = text.trim();
   if (t.endsWith("?")) return true;
@@ -85,11 +75,7 @@ export function LearnPage() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState<{ label: string; step?: string } | null>(null);
-  /**
-   * Separate from `busy`: onOpen clears the label as soon as the first byte lands, so
-   * for the bulk of a 3–40s answer the page used to consider itself idle and Enter sent
-   * a second, overlapping request into the same transcript.
-   */
+  /** Separate from `busy`, which clears at the first byte while the answer is still arriving. */
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<Failure | null>(null);
   const [pending, setPending] = useState<{ itemId: string; prompt: string; requiresTransfer: boolean } | null>(null);
@@ -106,18 +92,13 @@ export function LearnPage() {
   const bottom = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
 
-  /**
-   * One token per operation. `askStream` and the api helpers take no AbortSignal, so
-   * Stop cannot cut the request off; it can and does stop the answer being applied to
-   * the page, which is what the learner asked for.
-   */
+  /** One token per operation; with no AbortSignal, Stop only discards the result. */
   const op = useRef(0);
   const begin = () => ++op.current;
   const live = (token: number) => op.current === token;
 
   useEffect(() => {
-    // No learner picker on this page any more — it lives on Home — but the page still
-    // has to resolve the stored learner against the ones the server knows.
+    // The stored learner still has to be resolved against the server's roster.
     void api.learners()
       .then((l) => setLearnerId(resolveLearner(learnerId, l)))
       .catch(() => undefined);
@@ -128,15 +109,13 @@ export function LearnPage() {
     if (!id) { setPhase("ready"); return null; }
     setPhase("loading"); setError(null);
     void api.sessions(id).then(setSessions).catch(() => undefined);
-    // Returned as well as stored: a caller that needs to act on the fresh plan cannot
-    // read it out of state yet, and reading the stale one starts the wrong lesson.
+    // Returned as well as stored: callers cannot read the fresh plan out of state yet.
     let loaded: any = null;
     let broke: Failure | null = null;
     try { loaded = await api.plan(id); setPlan(loaded); }
     catch (err) {
       setPlan(null);
-      // 404 is "no plan yet" — a real, confirmed empty state. Anything else means we
-      // do not know what this learner has, and must not claim they have nothing.
+      // Only a 404 confirms an empty plan; any other error is unknown, not empty.
       if (!(err instanceof HttpError && err.isMissing)) {
         broke = { title: "Your plan could not be loaded.", ...failureOf(err) };
       }
@@ -176,20 +155,13 @@ export function LearnPage() {
 
   useEffect(() => { void load(learnerId); setViewingSession(null); }, [learnerId, load]);
 
-  /**
-   * Progress only. `load` also replaces the transcript, which is right when switching
-   * learner or opening a past session and wrong in the middle of one: it discarded every
-   * turn the page was holding and redrew the conversation as the server last saw it.
-   */
+  /** Progress only; `load` also replaces the transcript, which is wrong mid-session. */
   const refreshPlan = useCallback(async (id: string) => {
     if (!id) return;
     try { setPlan(await api.plan(id)); } catch { /* keep the plan we have */ }
   }, []);
 
-  /**
-   * An interrupted assessment should present itself, not wait behind a button. It was
-   * resumable but invisible, which for the learner is the same as being lost.
-   */
+  /** An interrupted assessment reopens itself rather than waiting behind a button. */
   useEffect(() => {
     if (!learnerId) return;
     let cancelled = false;
@@ -198,9 +170,7 @@ export function LearnPage() {
         const r = await api.openIntake(learnerId);
         if (!cancelled && r?.intake) { setShowIntake(true); return; }
       } catch { /* fall through */ }
-      // A graph build in flight counts too. It runs for minutes, and if this page does
-      // not open the assessment component there is nothing on screen to reattach to it
-      // — the build finishes unobserved and the learner is left where they started.
+      // A graph build in flight counts too: nothing else can reattach to it.
       try {
         const jobs = await api.expansions();
         if (cancelled) return;
@@ -251,12 +221,7 @@ export function LearnPage() {
       return next;
     });
 
-  /**
-   * Resolve a bubble that is still marked streaming: drop it if nothing arrived, else
-   * label it as cut short. A stream can end without a `done` or `failed` event — the
-   * reader loop in `askStream` simply breaks on EOF — and a caret that blinks forever
-   * over an empty bubble is the one outcome the learner cannot act on.
-   */
+  /** A stream can end without `done` or `failed`, so every bubble needs resolving. */
   const settleStream = (lid: string) =>
     setTurns((prev) => {
       const i = prev.findIndex((t) => t.lid === lid);
@@ -355,8 +320,7 @@ export function LearnPage() {
     const target = conceptId ?? current?.conceptId;
     if (!target) return;
     const token = begin();
-    // Two model calls, named separately: one label over both made a 60s wait look like
-    // one hung request instead of two ordinary ones.
+    // Two model calls, labelled separately so a long wait reads as two steps.
     setBusy({ label: "writing the explanation", step: "step 1 of 2" });
     setError(null); setPending(null); setDetour(null); setAmbiguous(null);
     try {
@@ -431,9 +395,7 @@ export function LearnPage() {
         }
         setOverride(null);
       } catch (err) {
-        // "Not yet at the required level" is the expected case and stays quiet.
-        // Anything else is a real failure and was previously swallowed whole — which
-        // is exactly how a broken request hid while plans silently stopped advancing.
+        // Only "not yet at the required level" is expected here; nothing else stays quiet.
         const message = err instanceof Error ? err.message : String(err);
         if (!/not yet at the required level/i.test(message)) {
           push({ role: "note", meta: { note: "progress" }, text: `Could not advance the plan: ${message}` });
@@ -442,8 +404,7 @@ export function LearnPage() {
       await refreshPlan(learnerId);
     } catch (err) {
       if (!live(token)) return;
-      // The grading never happened, so the answer goes back to being unsent: out of the
-      // transcript, back in the composer, still the learner's own writing.
+      // Grading never happened, so the answer goes back to being unsent.
       setTurns((prev) => prev.filter((t) => t.lid !== mine));
       setInput(text);
       setError({
@@ -468,8 +429,7 @@ export function LearnPage() {
 
     try {
       await askStream(learnerId, current.conceptId, text, {
-        // The bubble opens before routing lands, so tokens have somewhere to land as
-        // they arrive. Creating it in onRouted meant every delta before that was dropped.
+        // The bubble must open before routing, or early deltas have nowhere to land.
         onOpen: () => {
           if (!live(token)) return;
           setBusy(null); setStreaming(true);
@@ -478,8 +438,7 @@ export function LearnPage() {
         onRouted: (r) => {
           if (!live(token)) return;
           setBusy(null);
-          // Annotates the answer already on screen rather than deciding whether to show
-          // one. An actionable intent adds the offer next to it.
+          // Annotates the answer already on screen; it never decides whether to show one.
           patch(streamLid, (t) => ({ ...t, meta: { ...t.meta, intent: r.intent } }));
           if (r.action === "start_roadmap") {
             push({ role: "goal-offer", text: r.goalText ?? text, meta: { goalText: r.goalText } });
@@ -512,8 +471,6 @@ export function LearnPage() {
         onFailed: (message) => {
           if (!live(token)) return;
           settled = true;
-          // An empty bubble with a blinking caret is worse than no bubble: it never
-          // resolves. Partial text stays, labelled as cut short.
           settleStream(streamLid);
           setStreaming(false);
           setError({
@@ -532,9 +489,7 @@ export function LearnPage() {
     } finally {
       if (live(token)) {
         setBusy(null); setStreaming(false);
-        // The stream can end with no `done` and no `failed` — a server restart, a
-        // dropped connection — and returning quietly left the bubble streaming for
-        // good. Silence is not success, so it is resolved and said out loud.
+        // A stream that ends with no event is a failure, not a success.
         if (!settled) {
           settleStream(streamLid);
           setError({
@@ -552,8 +507,7 @@ export function LearnPage() {
     const text = input.trim();
     if (!text || !current || locked || readOnly) return;
     setInput("");
-    // With a check open, a question that gets graded costs permanent evidence. The
-    // placeholder offered both, so both are offered here rather than one being assumed.
+    // With a check open, a graded question costs permanent evidence, so ask first.
     if (pending && looksLikeQuestion(text)) { setAmbiguous(text); return; }
     if (pending) { void grade(text); return; }
     void ask(text);
@@ -567,8 +521,6 @@ export function LearnPage() {
   };
 
   const stop = () => {
-    // No AbortSignal reaches the request, so this stops the page acting on the answer
-    // rather than stopping the work. Named "Stop" because that is what it does here.
     begin();
     setBusy(null); setStreaming(false);
     setTurns((prev) =>
@@ -577,15 +529,9 @@ export function LearnPage() {
     push({ role: "note", meta: { note: "progress" }, text: "Stopped." });
   };
 
-  /**
-   * An interactive example, on demand. Prose and a code block are static; sequencing —
-   * which is most of what is hard about the event loop, recursion or async ordering —
-   * only becomes obvious when the learner can step through it themselves.
-   */
+  /** Builds a steppable example for the sequencing that prose cannot show. */
   const showMe = async (focus?: string) => {
-    // `locked` too: this used to fire mid-answer from an aria-disabled button, and
-    // begin() then invalidated the live stream's token — the answer was discarded in
-    // silence and the composer stayed stuck on "Stop".
+    // `locked` too: begin() mid-answer would invalidate the live stream's token.
     if (!current || readOnly || locked) return;
     const token = begin();
     setBusy({ label: "building an interactive example" }); setError(null);
@@ -604,8 +550,7 @@ export function LearnPage() {
   };
 
   const reset = async () => {
-    // Start over stays available while something is in flight: it is the way out of a
-    // slow answer, so gating it on the slow answer is the wrong way round.
+    // Start over stays available in flight; it is the way out of a slow answer.
     const token = begin();
     setBusy({ label: "starting over" }); setStreaming(false);
     try {
@@ -634,9 +579,7 @@ export function LearnPage() {
           onComplete={() => {
             setShowIntake(false);
             setIntakeGoal(null);
-            // The summary says "Starting with X", and then nothing started: the learner
-            // landed on the lesson page with a roadmap card and no lesson. Deliver the
-            // thing that was just promised.
+            // The summary promises a first step, so actually start it here.
             void load(learnerId).then((fresh) => {
               push({ role: "roadmap", text: "" });
               const first = fresh?.steps?.find((st: any) => !st.completed);
@@ -726,8 +669,7 @@ export function LearnPage() {
           {turns.map((t) => {
             const stamp = relativeTime(t.createdAt);
             if (t.role === "system") {
-              // A real heading: it is the one landmark in a long transcript, and the
-              // jump-list in the inspector needs something to jump to.
+              // A real heading: the inspector's jump-list needs a target.
               return (
                 <div className="turn system" key={t.lid} id={`lesson-${t.lid}`}>
                   <h2 className="lesson-divider">
@@ -779,8 +721,7 @@ export function LearnPage() {
                   {t.role === "roadmap" ? (
                     <Roadmap
                       learnerId={learnerId}
-                      // A past session is read-only, and this used to start a real lesson
-                      // into the OPEN session while rendering it into the historical one.
+                      // A past session is read-only; picking here would teach into the open one.
                       onPick={readOnly ? undefined : (conceptId, name) => {
                         setOverride({ conceptId, name });
                         void teach(conceptId, name);
@@ -810,15 +751,12 @@ export function LearnPage() {
                   ) : t.role === "widget" ? (
                     <Widget spec={t.meta?.spec} />
                   ) : t.role === "code" ? (
-                    // Fenced and then rendered, so the lesson's primary example gets the
-                    // same highlighting as the snippets below it. The fence is what keeps
-                    // it safe: inside one, a `#` comment stays a comment.
+                    // Fenced so the example is highlighted and its markdown stays literal.
                     <Markdown text={`\`\`\`${t.meta?.language ?? ""}\n${t.text}\n\`\`\``} />
                   ) : (
                     <>
                       <Markdown text={t.text} />
-                      {/* A question's snippet is a separate field, so its line breaks
-                          survive instead of being collapsed by paragraph joining. */}
+                      {/* A separate field so the snippet's line breaks survive. */}
                       {t.meta?.code && (
                         <Markdown
                           text={`\`\`\`${t.meta.codeLanguage ?? ""}\n${t.meta.code}\n\`\`\``}
@@ -872,8 +810,7 @@ export function LearnPage() {
           )}
 
           {busy && (
-            // key: the clock restarts per step, so elapsed time is attributable to the
-            // step that is actually running.
+            // Keyed on the label so the clock restarts for each step.
             <div className="turn busy-turn" key={busy.label}>
               <Busy label={busy.step ? `${busy.label} · ${busy.step}` : busy.label} block />
             </div>
@@ -907,9 +844,7 @@ export function LearnPage() {
           )}
 
           {error && (
-            // Its own turn role, not .turn.note: .turn.note .bubble beats .err on
-            // specificity, so every failure on this page rendered as 11px grey mono,
-            // indistinguishable from a routing diagnostic.
+            // Its own role, not .turn.note: that selector outranks .err on specificity.
             <div className="turn failure">
               <div className="notice notice--error" role="alert">
                 <strong>{error.title}</strong>
@@ -999,9 +934,7 @@ export function LearnPage() {
                   aria-describedby={pending ? "check-hint" : undefined}
                   disabled={!current}
                 />
-                {/* One element, two actions: swapping two buttons here would unmount the
-                    focused one mid-answer and drop focus to <body>. The label changes
-                    because the action changed, not because a status did. */}
+                {/* One element, two actions: swapping buttons would drop focus mid-answer. */}
                 <button
                   className="primary"
                   onClick={locked ? stop : send}
@@ -1073,8 +1006,7 @@ export function LearnPage() {
         )}
 
         {phase === "failed" && (
-          // No role="alert" here: the copy in the transcript already announces this
-          // failure, and two alerts for one fault talk over each other.
+          // No role="alert": the transcript copy already announces this failure.
           <div className="notice notice--error">
             <strong>The plan could not be loaded.</strong>
             This is not the same as having no plan. The retry is in the transcript.
@@ -1086,8 +1018,7 @@ export function LearnPage() {
             <section>
               <div className="head inspector-head">
                 <h4>Goal</h4>
-                {/* Read-only means read-only: from inside a historical transcript this
-                    used to start a real lesson into the open session. */}
+                {/* A historical transcript must not act on the open session. */}
                 {!readOnly && (
                   <button className="linkish" onClick={() => push({ role: "roadmap", text: "" })}>
                     show roadmap
@@ -1167,8 +1098,7 @@ export function LearnPage() {
         )}
 
         {sessions.length > 0 && (
-          // Collapsed, and capped: an unbounded list of every session this learner has
-          // ever had pushed the plan itself off the bottom of the sidebar.
+          // Collapsed and capped so the plan stays visible in the sidebar.
           <details className="history">
             <summary>History ({sessions.length})</summary>
             <div className="head inspector-head">

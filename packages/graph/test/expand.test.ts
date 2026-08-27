@@ -10,11 +10,7 @@ const FM_SCOPE =
 const FM_FUNC =
   "The learner reads a returned inner function as having already run, and expects its result.";
 
-/**
- * Scripted so the test measures our consensus, resolver and edge discipline rather
- * than a model. Concept sampling is deliberately noisy: `closures` and `scope` appear
- * in all three samples, while three one-off items appear once each.
- */
+// Scripted and deliberately noisy: two concepts recur in every sample, three appear once.
 function scriptedModel() {
   const concepts = [
     { concepts: [
@@ -155,8 +151,7 @@ describe("expandTopicShallow", () => {
     expect(await prisma.concept.count()).toBe(countAfterFirst);
     expect(second.conceptsCreated).toBe(0);
     expect(second.conceptsBound).toBe(first.conceptsCreated + first.conceptsBound);
-    // Scoped to the topic under test: the claim is that re-expanding rebinds rather
-    // than duplicating, not that the database holds exactly one topic.
+    // Scoped to the topic under test, not to how many topics the database holds.
     expect(await prisma.topic.count({ where: { name: "JavaScript functions" } })).toBe(1);
   });
 });

@@ -42,9 +42,7 @@ function ReadFailure({ title, failure, onRetry }: {
 /** "We have not asked yet", which is not the same claim as "there is nothing here". */
 function Lines({ count = 3 }: { count?: number }) {
   const widths = ["skeleton--w80", "skeleton--w60", "skeleton--w40"];
-  // aria-busy so the section admits it is mid-read. The spoken half is one page-level
-  // live region (see the page body): every section here loads off the same two reads, so
-  // five separate "loading" announcements would be noise rather than information.
+  // aria-busy only; one page-level live region does the announcing.
   return (
     <div aria-busy="true">
       <div aria-hidden="true">
@@ -64,15 +62,7 @@ function shortDate(iso: string): string {
     : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-/**
- * Expanding a new topic. This was the missing loop: the endpoint existed but nothing in
- * the UI reached it, so the graph could only grow from a seed or a curl. A learner
- * typing "React" is the whole premise of the product.
- *
- * Everything here is gated because the write is shared and irreversible: the concepts and
- * edges it creates land in the one graph every learner sees, and nothing in the app takes
- * them back out.
- */
+/** Gated throughout: the write is shared across learners and irreversible. */
 function NewTopic({ onDone }: { onDone: () => void }) {
   const [name, setName] = useState("");
   const [job, setJob] = useState<any>(null);
@@ -85,13 +75,10 @@ function NewTopic({ onDone }: { onDone: () => void }) {
   const buildRef = useRef<HTMLButtonElement | null>(null);
   const confirmRef = useRef<HTMLDivElement | null>(null);
 
-  // A live region that announces its own buttons and never takes focus leaves a keyboard
-  // user hunting for what just spoke. Focus the dialog itself rather than "Yes, build it":
-  // a held Enter on the button that opened it must not fall through onto the confirm.
+  // Focus the dialog, not the confirm button, so a held Enter cannot fall through.
   useEffect(() => { if (confirming) confirmRef.current?.focus(); }, [confirming]);
 
-  // A build outlives this page, so the form must not offer to start one that is already
-  // running — leaving and coming back showed an empty field mid-build.
+  // A build outlives this page, so check for one already running.
   useEffect(() => {
     let cancelled = false;
     void api.expansions()
@@ -106,8 +93,7 @@ function NewTopic({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     if (!job || job.status === "done" || job.status === "failed" || lost) return;
-    // A successful poll calls setJob, which re-runs this effect and resets the counter; a
-    // failed one does not, so only consecutive misses accumulate.
+    // A successful poll re-runs this effect, so only consecutive misses accumulate.
     let misses = 0;
     const timer = setInterval(() => {
       void api.expansion(job.id)
@@ -159,8 +145,7 @@ function NewTopic({ onDone }: { onDone: () => void }) {
           aria-describedby="new-topic-hint"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          // Enter moves to the button instead of committing: this spends minutes of model
-          // time on a shared write, so a typo must not be able to reach it.
+          // Enter moves to the button rather than committing a shared, irreversible write.
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buildRef.current?.focus(); } }}
           placeholder="e.g. React, SQL, recursion"
         />
@@ -289,13 +274,7 @@ function MasteryLegend() {
   );
 }
 
-/**
- * The learner model, read first and edited second.
- *
- * The page is opened to answer "what does the tutor think I know", so nothing here may
- * destroy that answer as a side effect of arriving. The two selects describe the active
- * goal rather than a default, and replacing a plan is a named, confirmed act.
- */
+/** Read first, edited second: nothing here may destroy the answer it came to show. */
 export function LearnerPage() {
   const [learners, setLearners] = useState<any[]>([]);
   const [topics, setTopics] = useState<any[]>([]);
@@ -327,8 +306,7 @@ export function LearnerPage() {
     if (!learnerId) { setLoading(false); return; }
     const mine = ++generation.current;
     setLoading(true);
-    // Independent reads: the plan 404s for a learner who has no goal yet, which says
-    // nothing about whether their concept record loaded.
+    // The plan 404s when there is no goal, which says nothing about the concept record.
     const [s, p] = await Promise.all([
       read(api.learnerState(learnerId)),
       read(api.plan(learnerId)),
@@ -344,18 +322,10 @@ export function LearnerPage() {
   useEffect(() => { void load(id); }, [id, load]);
 
   const activeGoal = state?.goals?.find((g: any) => g.active) ?? null;
-  /**
-   * A failed learner read is not "this learner has no goal", but activeGoal is derived
-   * from state and cannot tell the two apart: on a 500 the panel claimed "No goal yet",
-   * the primary button relabelled itself "Set goal & plan", and its unconfirmed branch
-   * retired the learner's real goal on one click — with the real plan still drawn under
-   * Path from the read that succeeded. No goal write is offered while the goal is unknown.
-   */
+  /** A failed read is not "no goal", so no goal write is offered. */
   const goalUnknown = stateFail !== null;
 
-  // The selects describe the goal that exists. They were pinned to topics[0] and "use", so
-  // the primary button acted on values the learner had never chosen and never saw. Keyed
-  // on the learner too, or a learner with no goal inherits the last one's draft.
+  // The selects describe the goal that exists, and reset per learner.
   useEffect(() => {
     if (loading) return;
     if (activeGoal) { setTopicId(activeGoal.topicId); setDepth(activeGoal.depth); }
@@ -366,16 +336,13 @@ export function LearnerPage() {
     if (!activeGoal && !topicId && topics[0]) setTopicId(topics[0].id);
   }, [activeGoal, topicId, topics]);
 
-  // A result belongs to the inputs that produced it. Changing any of them makes the
-  // banner underneath a claim about something else.
+  // A result belongs to the inputs that produced it.
   useEffect(() => { setNote(null); setFailure(null); setConfirming(false); }, [id, topicId, depth]);
 
-  // Both are only ever set by one of the two plan actions, and both actions destroy the
-  // control that was focused, so focus follows the outcome instead of falling to <body>.
+  // Both plan actions destroy the focused control, so focus follows the outcome.
   useEffect(() => { if (note || failure) resultRef.current?.focus(); }, [note, failure]);
 
-  // The confirm is a dialog, so focus moves into it — announced-but-unfocused was the
-  // wrong half of the pattern. The container takes focus rather than "Replace it".
+  // The confirm is a dialog, so focus moves to the container rather than a button.
   useEffect(() => { if (confirming) confirmRef.current?.focus(); }, [confirming]);
 
   const dirty = !activeGoal || topicId !== activeGoal.topicId || depth !== activeGoal.depth;
@@ -433,10 +400,7 @@ export function LearnerPage() {
         </label>
       </div>
 
-      {/* One live region for the whole page: the five sections below are drawn from the
-          same two reads and finish together, so per-section announcements would talk over
-          each other. Mounted unconditionally, because a region that appears already
-          holding its text is not a change and may never be spoken. */}
+      {/* Mounted unconditionally: a region that appears already holding its text may never be spoken. */}
       <span className="sr-only" role="status">
         {loading ? "Loading this learner’s model." : ""}
       </span>
@@ -476,8 +440,7 @@ export function LearnerPage() {
           </label>
         </div>
 
-        {/* Depth decides the shape of the whole plan, so it says what each one costs
-            rather than offering three unexplained lowercase words. */}
+        {/* Depth decides the shape of the whole plan, so each option says what it costs. */}
         <div className="learner-field">
           <span className="learner-label" id="depth-label">How deeply?</span>
           <div className="depth-choice" role="group" aria-labelledby="depth-label">
@@ -499,10 +462,7 @@ export function LearnerPage() {
           <button
             ref={primaryRef}
             className="primary"
-            // Inert while it would replace a goal with itself, and never renamed for its
-            // own status — the label says which of the two acts this is. Also inert while
-            // the goal is unknown: the unconfirmed branch below is only safe when the page
-            // has actually read that there is no goal to destroy.
+            // Also inert while the goal is unknown: the unconfirmed branch below would destroy it.
             disabled={!dirty || !id || !topicId || goalUnknown}
             aria-disabled={busy !== null}
             onClick={() => {
@@ -575,10 +535,7 @@ export function LearnerPage() {
         )}
       </section>
 
-      {/* A failed irreversible write and a successful one used to be the same amber
-          banner, on the page where "did my plan just get replaced?" is the question.
-          Focused rather than merely announced, because the control that produced it is
-          either gone (the confirm) or now inert (nothing left to replace). */}
+      {/* Focused, not just announced: the control that produced it is gone or now inert. */}
       {(note || failure) && (
         <div className="learner-result" ref={resultRef} tabIndex={-1}>
           {note && (
@@ -618,18 +575,10 @@ export function LearnerPage() {
           {plan.revisionReason && (
             <p className="muted learner-hint">Last change: {plan.revisionReason}</p>
           )}
-          {/* Keyed on the version so a replan re-reads it, rather than showing the path
-              the banner above has just announced as replaced.
-
-              No onPick: the roadmap's click affordance is "learn →" and "click any concept
-              to start it", and this page has nowhere to start a lesson from — /learn takes
-              no concept in the URL, so the click landed on a graph node inspector and the
-              copy was a lie. The concept links this page can honestly offer are below. */}
+          {/* No onPick: /learn takes no concept in the URL, so there is nowhere to start. */}
           <Roadmap key={`${id}:${plan.version}`} learnerId={id} />
 
-          {/* The roadmap does not draw committed or unlockCount, and "which concepts are
-              pinned as firm" was readable on this page before it. Folded away so it
-              annotates the roadmap instead of competing with it. */}
+          {/* The roadmap does not draw committed or unlockCount, so they live here. */}
           <details className="learner-detail">
             <summary>Plan detail — order, firm steps, and what each concept unlocks</summary>
             <p className="muted learner-hint">
@@ -672,8 +621,6 @@ export function LearnerPage() {
       ) : activeGoal ? (
         <div className="empty">You have a goal but no plan for it. Replan builds one.</div>
       ) : goalUnknown ? (
-        // The plan read came back empty, but "so set a goal" would be advice built on a
-        // goal this page failed to read.
         <div className="empty">
           No plan on the server. Whether there is a goal behind it could not be read — the
           failure is under “Concept record” below.

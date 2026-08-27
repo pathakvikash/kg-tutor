@@ -3,11 +3,7 @@ import { z } from "zod";
 import { expandTopicShallow } from "@kg/graph";
 import { prisma, getLlm, resolverDeps } from "../context.js";
 
-/**
- * Expansion makes dozens of sequential model calls and takes minutes. Holding an HTTP
- * request open for that is a bad experience and a fragile one — a dropped connection
- * loses work that has already been paid for. It runs as a job the UI polls instead.
- */
+/** Expansion takes minutes, so it runs as a polled job rather than one long request. */
 async function runJob(jobId: string): Promise<void> {
   const job = await prisma.expansionJob.findUniqueOrThrow({ where: { id: jobId } });
   const llm = getLlm();
@@ -38,8 +34,7 @@ async function runJob(jobId: string): Promise<void> {
       prisma,
       resolver,
       onProgress: (phase, progress, partial) => {
-        // The partial report is written on every tick so the UI can render the graph
-        // being built rather than a percentage that means nothing to a learner.
+        // The partial report is written on every tick so the UI can render the graph so far.
         void prisma.expansionJob
           .update({ where: { id: jobId }, data: { phase, progress, report: partial as never } })
           .catch(() => undefined);
@@ -64,14 +59,7 @@ async function runJob(jobId: string): Promise<void> {
   }
 }
 
-/**
- * A job runs as an in-process promise, so a restart strands it in `running` forever.
- *
- * These are marked failed on boot rather than silently retried: expansion IS idempotent
- * — every concept goes back through the resolver and binds to what already exists — so
- * re-running is safe and cheap, but auto-retrying a job that might have crashed the
- * process would loop. Better to say plainly what happened and let the user click again.
- */
+/** Marks jobs stranded by a restart as failed; expansion is idempotent, so retry is manual. */
 export async function failStrandedJobs(): Promise<number> {
   const { count } = await prisma.expansionJob.updateMany({
     where: { status: { in: ["queued", "running"] } },

@@ -115,8 +115,7 @@ describe("proposeConcept", () => {
   });
 
   it("serializes concurrent proposals of the same name into one concept", async () => {
-    // Both callers see an empty graph and both decide "distinct" — the advisory lock
-    // plus the exact-name recheck is what stops two Pythons existing.
+    // Both callers decide "distinct"; the lock plus the recheck stops two Pythons.
     const results = await Promise.all([
       proposeConcept(deps(alwaysDistinct), { name: "Python", sense: "A general-purpose language." }),
       proposeConcept(deps(alwaysDistinct), { name: "Python", sense: "A general-purpose language." }),

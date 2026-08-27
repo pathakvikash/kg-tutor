@@ -7,8 +7,7 @@ const CATALOG = {
   "claude-code": {
     label: "Claude Code CLI (no API key)",
     models: ["haiku", "sonnet", "opus"],
-    // Which model each tier should be when switching provider. The UI had to guess,
-    // and guessing wrong means a silent tier change on a page about model choice.
+    // Tier defaults used when switching provider, so the UI never has to guess.
     defaultSmall: "haiku",
     defaultStrong: "sonnet",
     note: "Uses the local CLI. A few seconds per call, and each call pays for the CLI's own system prompt, so cost figures run high and are not comparable to the API.",
@@ -35,13 +34,7 @@ const CATALOG = {
 
 const PROVIDERS = ["claude-code", "anthropic", "openai", "none"] as const;
 
-/**
- * Adding a provider to CATALOG without adding it here is now a compile error.
- *
- * Deriving the list from Object.keys would widen `provider` to `string` and lose the
- * literal union ModelSettings depends on, so the check is a type assertion rather than a
- * runtime derivation — same protection, no loss of type information.
- */
+/** Adding a provider to CATALOG without listing it in PROVIDERS is a compile error. */
 type CatalogIsCovered =
   keyof typeof CATALOG extends (typeof PROVIDERS)[number] ? true : "CATALOG has a provider PROVIDERS does not list";
 const _providersCoverCatalog: CatalogIsCovered = true;
@@ -68,9 +61,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     await refreshLlm();
     const status = providerStatus();
     if (body.data.provider !== "none" && !status.llm) {
-      // Saved, but the key is missing. A problem statement with no next step is what
-      // makes a settings page feel broken rather than unconfigured, so this carries the
-      // remedy the client already knows how to render.
+      // Saved, but the key is missing, so the response carries a remedy the client renders.
       const entry = CATALOG[body.data.provider as keyof typeof CATALOG];
       const keyEnv = entry?.keyEnv ?? null;
       return reply.code(422).send({

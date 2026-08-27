@@ -40,11 +40,7 @@ export interface AttemptOutcome {
   misconceptionsResolved: number;
 }
 
-/**
- * Which evidence a graded response produces. `transferred` is only claimed when the
- * item actually required transfer and the answer was not a restatement — otherwise a
- * fluent paraphrase would promote straight to `solid`. (10, 16)
- */
+/** Claim `transferred` only when the item required transfer and the answer was not a restatement. (10, 16) */
 function evidenceFor(grade: GradeResult, requiresTransfer: boolean): EvidenceKind {
   if (!grade.correct) {
     if (grade.diagnosis === "careless") return "careless_error";
@@ -55,16 +51,7 @@ function evidenceFor(grade: GradeResult, requiresTransfer: boolean): EvidenceKin
   return requiresTransfer ? "transferred" : "applied";
 }
 
-/**
- * Decides what to do about a failure. The four causes need opposite responses, and
- * getting this wrong is what makes tutoring systems feel stupid: detour on a careless
- * slip and the learner feels patronised; re-explain a genuine prerequisite gap and they
- * feel stupid. (10)
- *
- * The bounds are what stop an infinite prerequisite descent. Past them the problem is a
- * wrong plan, not a local gap, so the concept is blocked and the planner moves on —
- * "come back tomorrow" beats a death spiral.
- */
+/** The four failure causes need opposite responses; the bounds stop an infinite descent. (10) */
 export function decideAction(
   grade: GradeResult,
   ctx: AttemptContext,
@@ -120,11 +107,7 @@ export interface RunAttemptInput {
   thresholds?: Thresholds;
 }
 
-/**
- * One graded turn of a concept attempt. Every path through it emits exactly one
- * evidence event — a turn that produces none leaves the learner model stale, which is
- * the invariant the whole design rests on. (10)
- */
+/** One graded turn; every path must emit exactly one evidence event or the model goes stale. (10) */
 export async function runAttempt(input: RunAttemptInput): Promise<AttemptOutcome> {
   const t = input.thresholds ?? DEFAULT_THRESHOLDS;
   const { prisma, ctx } = input;
@@ -178,8 +161,7 @@ export async function runAttempt(input: RunAttemptInput): Promise<AttemptOutcome
   );
 
   if (grade.belief && evidenceKind === "misconception_shown") {
-    // Same belief twice is a stronger signal than two unrelated ones, and the review
-    // queue orders by it. Creating a fresh row every time lost that.
+    // Same belief twice is a stronger signal, and the review queue orders by the count.
     const open = await prisma.misconception.findFirst({
       where: { learnerId: ctx.learnerId, conceptId: ctx.conceptId, resolvedAt: null },
     });
@@ -204,21 +186,13 @@ export async function runAttempt(input: RunAttemptInput): Promise<AttemptOutcome
     }
   }
 
-  /**
-   * A demonstration clears the recorded belief.
-   *
-   * Nothing had ever set `resolvedAt`, so a misconception recorded once stayed open for
-   * good — which makes it useless as a signal and, now that review is driven off it,
-   * would make the queue grow monotonically. A restatement does not count: repeating the
-   * right words is not evidence the wrong belief is gone. (10, 16)
-   */
+  // Only a demonstration clears the belief; a restatement does not count. (10, 16)
   const misconceptionsResolved =
     grade.correct && !grade.restatementOnly
       ? await resolveMisconceptions(prisma, ctx.learnerId, ctx.conceptId)
       : 0;
 
-  // Clean acquisition is the strongest available evidence about the prerequisites,
-  // and it costs no extra questions. (10)
+  // Clean acquisition is the strongest evidence about the prerequisites, and it is free. (10)
   const propagatedTo =
     grade.correct && !grade.restatementOnly
       ? await propagateBackwards(prisma, ctx.learnerId, ctx.conceptId)

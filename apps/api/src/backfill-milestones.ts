@@ -1,12 +1,4 @@
-/**
- * Writes capability claims for topics that have none.
- *
- * MilestoneTemplate rows only ever came from the seed script, so every topic a learner
- * expanded themselves renders as a flat list of every concept it holds. Expansion writes
- * them now; this covers the ones already built.
- *
- * Run with: pnpm --filter @kg/api backfill:milestones [--apply]
- */
+/** Writes capability claims for topics that have none: backfill:milestones [--apply]. */
 import { PrismaClient } from "@kg/db";
 import { generateMilestones } from "@kg/graph";
 import { llmFromEnv } from "@kg/llm";

@@ -20,34 +20,25 @@ const COLOR: Record<Mastery, string> = {
   solid: "var(--m-solid)",
 };
 
-/**
- * Below this the 11px label draws under 5px, which is decoration rather than text.
- *
- * Not an edge case: a ~78-node explore layout fits at roughly 0.2–0.7, so the fitted
- * view was always inside the illegible band and nothing here read zoom.
- */
+// Below this the 11px label draws under 5px and stops being readable.
 const LABEL_ZOOM = 0.42;
 
 export function ConceptNode({ data, selected }: NodeProps) {
   const d = data as ConceptNodeData;
-  // The label lives in graph space, so its screen size follows the viewport transform
-  // unless it is counter-scaled back out of it.
+  // Labels live in graph space, so their screen size follows the viewport zoom.
   const zoom = useStore(
     (s) => s.transform[2],
-    // Quantised to 5% steps: an exact subscription re-rendered all ~78 nodes on every
-    // wheel tick, and a label 5% off its ideal size is not a thing anyone can see.
+    // Quantised to 5% steps, so a wheel tick does not re-render every node.
     (a, b) => Math.round(a * 20) === Math.round(b * 20),
   );
-  // A null state means "no learner selected", not "assessed as unknown" — filling these
-  // with the unknown swatch told a first-time visitor they know nothing.
+  // A null state means no learner selected, not assessed as unknown.
   const unstated = d.mastery === null;
   const fill = d.mastery ? COLOR[d.mastery] : "transparent";
 
   if (d.mode === "explore") {
     const r = orbDotSize(d.degree);
     const showLabel = zoom >= LABEL_ZOOM;
-    // Capped at the tier boundary so a counter-scaled label cannot grow past the width
-    // the collide radius reserved for it.
+    // Capped so a counter-scaled label stays inside the reserved collide width.
     const scale = Math.min(1 / zoom, 1 / LABEL_ZOOM);
     return (
       <div
@@ -60,8 +51,7 @@ export function ConceptNode({ data, selected }: NodeProps) {
         style={{ width: ORB_W }}
         title={d.name}
       >
-        {/* Not connectable: this graph is authored by the model, and a drag from a handle
-            offered a connection the app has no endpoint to accept. */}
+        {/* Not connectable: there is no endpoint for a user-drawn edge. */}
         <Handle type="target" position={Position.Top} isConnectable={false} />
         <span
           className={`orb-dot${unstated ? " orb-dot--unstated" : ""}`}
@@ -87,8 +77,7 @@ export function ConceptNode({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Top} isConnectable={false} />
       <div className="n-name">{d.name}</div>
       <div className="n-meta">
-        {/* The shared mark carries a shape as well as a hue; two of the four swatches are
-            1.13:1 apart, so colour cannot be the only channel. */}
+        {/* The mark carries a shape too, so colour is not the only channel. */}
         <span className="mastery-mark" data-level={d.mastery ?? "unstated"} />
         <span>{d.mastery ?? "not assessed"}</span>
         {d.inferred && <span title="credited by inference, never demonstrated">inf</span>}

@@ -15,12 +15,7 @@ export function higher(a: MasteryLevel, b: MasteryLevel): MasteryLevel {
   return rank(a) >= rank(b) ? a : b;
 }
 
-/**
- * The level a single piece of evidence can demonstrate. (10)
- *
- * `downstream_success` is the free one: cleanly learning a concept that has this one
- * as a hard prerequisite demonstrates solid understanding of it, with no extra question.
- */
+/** The highest level a single piece of evidence can demonstrate. (10) */
 const DEMONSTRATES: Partial<Record<EvidenceKind, MasteryLevel>> = {
   restated: "familiar",
   applied: "functional",
@@ -41,10 +36,7 @@ export function contradicts(kind: EvidenceKind): boolean {
   return kind === "failed_check" || kind === "reprobe_fail" || kind === "misconception_shown";
 }
 
-/**
- * Confidence decays with time since evidence; mastery does not. An absence of recent
- * evidence is not proof of forgetting. (06)
- */
+/** Confidence decays with time since evidence; mastery does not. (06) */
 export function decayedConfidence(
   base: number,
   lastEvidenceAt: Date | null,
@@ -57,10 +49,7 @@ export function decayedConfidence(
   return base * Math.pow(0.5, days / t.confidenceHalfLifeDays);
 }
 
-/**
- * High mastery with low confidence means re-probe, not re-teach — the single reason
- * mastery and confidence are separate fields. (06)
- */
+/** High mastery with low confidence means re-probe, not re-teach. (06) */
 export function needsReprobe(
   mastery: MasteryLevel,
   confidence: number,

@@ -1,17 +1,4 @@
-/**
- * Retires stored assessment items written in a language their topic contradicts.
- *
- * Items are shared, versioned rows on the Concept, so fixing the generator does nothing
- * about the ones already in the bank. A learner working through "JavaScript Fundamentals"
- * was being handed a Python traceback and asked to explain it — at that point the item
- * measures their Python, not the concept it claims to assess.
- *
- * Retiring rather than deleting: `selectItem` already skips retired items, the statistics
- * they accumulated stay auditable, and the generator refills the level on the next pass.
- *
- * Run with: pnpm --filter @kg/api repair:item-language [--apply]
- * Without --apply it prints what it would retire and changes nothing.
- */
+/** Retires assessment items whose language contradicts their topic; pass --apply to commit. */
 import { PrismaClient } from "@kg/db";
 
 const prisma = new PrismaClient();
@@ -25,13 +12,7 @@ const TOPIC_LANGUAGE: [RegExp, string][] = [
   [/\bsql\b|\bpostgres\b/i, "sql"],
 ];
 
-/**
- * Language given away by the prompt or code text rather than by the tag.
- *
- * Deliberately narrow: each pattern is something that cannot plausibly appear in the
- * other languages here, so a false positive retires a good item. "array" or "function"
- * would match everything; `malloc` and `printf` do not.
- */
+/** Keep these narrow: a pattern that also matches another language retires a good item. */
 const PROSE_MARKERS: [RegExp, string][] = [
   [/\bin C\b|\bmalloc\b|\bcalloc\b|\brealloc\b|\bprintf\b|\bsizeof\b|\bstruct\s+\w+\s*\{|\bint\s+\w+\s*\[/, "c"],
   [/\bdef\s+\w+\s*\(|\bin Python\b|\bself\.|\b__init__\b|\bprint\(/, "python"],
@@ -62,14 +43,7 @@ const COMPATIBLE: Record<string, string[]> = {
 async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
 
-  /**
-   * Every live item, not only the tagged ones.
-   *
-   * The first version of this only looked at items with a codeLanguage, which missed the
-   * whole class that caused the complaint: a question reading "a student declares
-   * `int scores[100];` in C" carries its language inline in the prompt, so the code field
-   * is empty and codeLanguage is null. Untagged did not mean neutral, it meant unexamined.
-   */
+  // Untagged items count too: the language is often inline in the prompt text.
   const items = await prisma.assessmentItem.findMany({
     where: { status: { not: "retired" } },
     include: { concept: { include: { topics: { include: { topic: true } } } } },
@@ -79,9 +53,7 @@ async function main(): Promise<void> {
 
   for (const item of items) {
     const topicNames = item.concept.topics.map((t) => t.topic.name);
-    // Every topic the concept sits under must agree on a language before a mismatch is
-    // a mismatch. A concept shared between a JS topic and a Python one is genuinely
-    // language-neutral, and its item is nobody's error.
+    // A mismatch only counts when every topic the concept sits under agrees on a language.
     const implied = new Set<string>();
     for (const name of topicNames) {
       for (const [pattern, lang] of TOPIC_LANGUAGE) if (pattern.test(name)) implied.add(lang);

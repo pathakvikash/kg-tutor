@@ -42,11 +42,7 @@ export const evidencePayload = z.discriminatedUnion("kind", [
     claimedLevel: masteryLevel,
   }),
   z.object({
-    /**
-     * The learner named their own prerequisite gap. Premium missing-edge evidence:
-     * self-reported while attempting the target, so it carries none of the selection
-     * confound the control arm exists to handle. (19)
-     */
+    /** The learner named their own gap, so this carries no selection confound. (19) */
     kind: z.literal(evidenceKind.enum.spontaneous_prerequisite_request),
     referencedConceptId: z.string().nullable(),
     question: z.string(),

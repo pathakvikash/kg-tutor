@@ -1,15 +1,7 @@
 import type { PrismaClient } from "@kg/db";
 import { DEFAULT_THRESHOLDS, type MasteryLevel, type Thresholds } from "@kg/shared";
 
-/**
- * The initial assessment. (07)
- *
- * The objective is NOT an accurate learner model — it is the smallest number of
- * questions that makes the first few teaching steps defensible. Everything after that
- * is corrected by the teaching loop for free, with no friction, because teaching *is*
- * assessment. Optimising for model accuracy here is how these products turn into
- * twenty-question quizzes that people abandon before learning anything.
- */
+// Intake targets the fewest questions that make the first teaching steps defensible. (07)
 
 export interface Chain {
   /** Ordered foundation → goal-facing. */
@@ -32,13 +24,7 @@ export interface ProbeChoice {
   chainLength: number;
 }
 
-/**
- * Longest-path chains through the topic's prerequisite graph.
- *
- * One chain per goal-facing concept, walking back along the deepest prerequisite each
- * time. Chains overlap where they share foundations — that is fine and useful: a pass
- * low in one chain resolves the shared part of the others too.
- */
+/** Longest-path chains through the prerequisite graph; chains may overlap on shared foundations. */
 export function buildChains(
   conceptIds: string[],
   edges: { srcId: string; dstId: string }[],
@@ -95,13 +81,7 @@ export function initialState(chains: string[][]): IntakeState {
   };
 }
 
-/**
- * The next question, or null when the budget is spent or nothing is left to learn.
- *
- * Probing is binary search *within* a chain and round-robin *across* chains: breadth
- * first, so a handful of questions covers the topic's spread rather than drilling one
- * branch. Roughly log(n) per chain instead of n.
- */
+/** Binary search within a chain, round-robin across chains, so breadth comes first. */
 export function nextProbe(
   state: IntakeState,
   t: Thresholds = DEFAULT_THRESHOLDS,
@@ -142,13 +122,7 @@ export function nextProbe(
   return null;
 }
 
-/**
- * Folds an answer back in.
- *
- * A pass means everything *below* it in the chain is probably known too, so the window
- * moves up rather than re-asking foundations. A failure means the gap is at or below,
- * so the window descends. Same answer, opposite halves — that is the whole search.
- */
+/** A pass implies the foundations below it, so the window moves up; a failure moves it down. */
 export function applyAnswer(
   state: IntakeState,
   probe: ProbeChoice,
@@ -173,13 +147,7 @@ export interface DerivedBelief {
   source: "assessed" | "inferred";
 }
 
-/**
- * What the intake concluded.
- *
- * Directly answered concepts are `assessed`. Anything below a passed probe is
- * `inferred` at a lower level — enough to skip teaching, not enough to skip probing on
- * the critical path. (06)
- */
+/** Probed concepts are `assessed`; anything below a pass is `inferred` and still worth probing. (06) */
 export function derivedBeliefs(state: IntakeState): DerivedBelief[] {
   const out = new Map<string, DerivedBelief>();
 

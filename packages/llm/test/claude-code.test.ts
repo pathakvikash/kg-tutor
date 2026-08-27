@@ -10,8 +10,7 @@ describe("llmFromEnv", () => {
   it("selects the CLI backend only on explicit opt-in", () => {
     expect(llmFromEnv({ LLM_PROVIDER: "claude-code" } as NodeJS.ProcessEnv)?.name)
       .toContain("claude-code");
-    // Without the opt-in, a machine with the CLI installed still gets null rather than
-    // silently routing production traffic through a developer tool.
+    // Without the opt-in, a machine with the CLI installed still gets null.
     expect(llmFromEnv({} as NodeJS.ProcessEnv)).toBeNull();
   });
 
@@ -57,8 +56,7 @@ describe("ClaudeCodeLLM", () => {
 describe("failure classification", () => {
   it("treats an expired login as an auth failure with a remedy, not a generic error", async () => {
     const { LLMAuthError } = await import("../src/provider.js");
-    // The CLI exits non-zero but still prints a JSON body whose `result` carries the
-    // only actionable text. Rejecting on the exit code alone threw that away.
+    // A failing CLI still prints a JSON body whose `result` carries the actionable text.
     const body = JSON.stringify({
       is_error: true,
       result: "Failed to authenticate: OAuth session expired and could not be refreshed",
@@ -108,10 +106,7 @@ describe("failure classification", () => {
   });
 });
 
-/**
- * These drive the real close handler through a real subprocess, because the bug they
- * exist for lived there and a stubbed `run` cannot see it.
- */
+// Drives the real close handler through a real subprocess; a stubbed `run` cannot.
 describe("classification of a successful call", () => {
   /** A stand-in CLI that ignores its arguments and prints one fixed JSON body. */
   function fakeCli(body: unknown, exitCode = 0): string {
@@ -123,9 +118,7 @@ describe("classification of a successful call", () => {
   }
 
   it("returns an answer about authentication instead of calling it an expired login", async () => {
-    // The regexes read the CLI's own error text, so running them over a *successful*
-    // result made the tutor unable to answer the thing it was asked. Caught by the
-    // adjudicator eval on a concept pair about authentication vs authorization.
+    // The error regexes read the CLI's error text, so they must not run on a success.
     const llm = new ClaudeCodeLLM({
       bin: fakeCli({
         is_error: false,

@@ -25,72 +25,12 @@ interface CliResult {
   modelUsage?: Record<string, unknown>;
 }
 
-/**
- * Uses the local `claude` CLI in print mode as the model backend.
- *
- * This exists so the system can run with no API key on a machine where Claude Code is
- * already installed and authenticated. It is a **development** path, and the trade-offs
- * are real rather than theoretical:
- *
- *   - **Latency.** Every call boots a CLI process: roughly 3–6 seconds even for a
- *     one-line answer, against a few hundred milliseconds for a direct API call.
- *     Expansion, which fans out to dozens of calls, goes from seconds to minutes.
- *   - **Cost is inflated and the inflation is invisible.** Each invocation pays to
- *     establish Claude Code's own system prompt — several thousand cache-creation
- *     tokens before your prompt is even considered. A trivial adjudication that would
- *     cost a fraction of a cent through the API reports around a cent here. Cost per
- *     verified outcome measured this way is real spend, but it is *not* the number the
- *     architecture's economics argument is about, and it should not be compared against
- *     an API-backed run.
- *   - **Not a serving path.** It is an interactive developer tool driven by a
- *     subprocess, with no connection pooling, no streaming into our pipeline, and
- *     no useful behaviour under concurrency beyond what the semaphore below imposes.
- *
- * Use it to exercise the system end to end. Switch to `AnthropicLLM` before drawing any
- * conclusion about cost, latency, or throughput.
- */
-/**
- * Flags that strip the CLI down to text generation.
- *
- * This started as a blocklist of built-in tool names, which was close to useless: asking
- * the CLI to enumerate what it could still reach returned Artifact, Workflow, CronCreate,
- * SendMessage, the whole Task family, and every MCP server configured on the machine —
- * including one that can provision and destroy infrastructure. A tutoring prompt must not
- * have `destroy_cluster` within reach, and a blocklist can only ever exclude the names
- * someone thought to write down.
- *
- * So it is an allowlist of nothing instead. `--tools ""` drops every built-in,
- * `--strict-mcp-config` with no `--mcp-config` drops every MCP server, and
- * `--setting-sources ""` stops user or project settings adding any back.
- *
- * Measured on one identical call, before and after: 20,910 input tokens to 258, 21.9s to
- * 4.7s, $0.0227 to $0.0023. Almost every call this system makes was paying twenty
- * thousand tokens of tool definitions it was never allowed to use.
- */
-/**
- * Without `--effort` the CLI inherits whatever the machine's session default is, which
- * here was "high" — so every call in the system was reasoning as hard as it can before
- * answering. On a grading call that was 12.0s of a 15.0s response spent before the first
- * token, to produce a verdict identical to the one "low" reached in 8.7s.
- */
+/** Always pass `--effort`, or the CLI inherits the machine's session default. */
 function effortFlags(req: CompletionRequest): string[] {
   return ["--effort", req.effort ?? defaultEffort(req.tier)];
 }
 
-/**
- * A hard ceiling on thinking, which `--effort` alone does not give.
- *
- * Even at `--effort low` a grading call spent around 2,900 tokens thinking to produce a
- * 30-token verdict, and 33 of its 35 seconds went on that. `low` is the floor the flag
- * offers; this goes below it. Measured on one grading call: 33s to 3.6s, $0.0167 to
- * $0.0017, same verdict.
- *
- * Zero is reserved for classification — routing a question into one of five intents —
- * because it is not safe for work that has to check claims against evidence. Grading an
- * answer is `small` tier and is still reasoning; running it at zero cost accuracy in a
- * way the speed did not pay for. So `low` keeps a small real budget, and only `none`
- * turns thinking off.
- */
+/** Caps thinking below the floor `--effort low` gives; zero is only safe for classification. */
 const THINKING_BUDGET: Record<Effort, string | null> = {
   none: "0",
   low: "1024",
@@ -105,16 +45,17 @@ function envFor(req: CompletionRequest): NodeJS.ProcessEnv {
     : { ...process.env, MAX_THINKING_TOKENS: budget };
 }
 
+/** Allowlist nothing: a tool blocklist cannot cover MCP servers or future built-ins. */
 const TEXT_ONLY = [
   "--tools", "",
   "--strict-mcp-config",
   "--setting-sources", "",
-  // Secondary, and deliberately kept after the line that does the real work: if a future
-  // CLI changes what `--tools ""` means, this still catches the tools that can write.
+  // Fallback in case a future CLI changes what `--tools ""` means.
   "--disallowed-tools",
   "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite,NotebookEdit",
 ];
 
+/** Dev-only backend for running without an API key; its cost and latency are not API-comparable. */
 export class ClaudeCodeLLM implements LLMProvider {
   readonly name: string;
   onUsage?: UsageSink | undefined;
@@ -137,9 +78,6 @@ export class ClaudeCodeLLM implements LLMProvider {
   }
 
   async complete(req: CompletionRequest): Promise<string> {
-    // A long fan-out makes dozens of sequential CLI invocations and some of them fail
-    // transiently. Without a retry, one bad call in fifty destroys an expansion that
-    // has already run for minutes — so retry before giving up.
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       await this.acquire();
@@ -147,8 +85,7 @@ export class ClaudeCodeLLM implements LLMProvider {
         return await this.run(req);
       } catch (err) {
         lastError = err;
-        // Neither a missing binary nor an expired login fixes itself, and retrying an
-        // expired session just makes the failure slower to report.
+        // A missing binary and an expired login never recover, so fail fast.
         if (err instanceof LLMAuthError) throw err;
         if (err instanceof LLMError && err.message.includes("could not run")) throw err;
       } finally {
@@ -161,13 +98,7 @@ export class ClaudeCodeLLM implements LLMProvider {
     throw lastError;
   }
 
-  /**
-   * Incremental text from the CLI's stream-json mode.
-   *
-   * Only `text_delta` is yielded. The stream also carries `thinking_delta`, which is the
-   * model reasoning about the request — showing that to a learner as if it were the
-   * answer would be actively confusing, so it is dropped.
-   */
+  /** Yields `text_delta` only; `thinking_delta` is dropped rather than shown as the answer. */
   async *stream(req: CompletionRequest): AsyncIterable<string> {
     await this.acquire();
     const started = Date.now();
@@ -193,8 +124,7 @@ export class ClaudeCodeLLM implements LLMProvider {
     let stderr = "";
     child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
 
-    // NDJSON: one JSON document per line, so a partial trailing line must be held back
-    // until its newline arrives or it will fail to parse and drop real output.
+    // NDJSON: hold back a partial trailing line until its newline arrives.
     let buffer = "";
     let sawText = false;
     try {
@@ -240,8 +170,6 @@ export class ClaudeCodeLLM implements LLMProvider {
               },
               req,
             );
-            // A run that produced no text at all is a failure the caller must see,
-            // not an empty answer to render.
             if (!sawText) throw new LLMError(`claude CLI produced no text: ${stderr.slice(0, 200)}`);
           }
         }
@@ -275,8 +203,7 @@ export class ClaudeCodeLLM implements LLMProvider {
       const args = [
         "-p",
         req.user,
-        // Replaces Claude Code's prompt rather than appending to it, so the model is
-        // not simultaneously told it is a coding agent.
+        // Replaces Claude Code's own prompt rather than appending to it.
         "--system-prompt",
         req.system,
         "--model",
@@ -323,9 +250,7 @@ export class ClaudeCodeLLM implements LLMProvider {
           reject(new LLMError(`claude CLI timed out after ${this.timeoutMs}ms`));
           return;
         }
-        // The CLI exits non-zero for real failures but still prints a JSON body with a
-        // usable message in `result`. Rejecting on the exit code before parsing threw
-        // away the one part a human could act on.
+        // A failing CLI still prints a JSON body with a usable message in `result`.
         let parsed: CliResult | null = null;
         try {
           parsed = JSON.parse(stdout) as CliResult;
@@ -346,11 +271,7 @@ export class ClaudeCodeLLM implements LLMProvider {
           return;
         }
 
-        // These read the CLI's own error text, so they must only run when the call
-        // actually failed. Sniffing them out of a successful `result` reported a
-        // perfectly good answer about authentication as an expired login — which, for a
-        // tutor whose whole job is explaining things like OAuth, fires on the content
-        // the learner asked for.
+        // Only match on failure; a successful answer about OAuth is not an auth error.
         if (failed) {
           if (/authenticat|oauth|session expired|log ?in/i.test(message)) {
             reject(
@@ -381,8 +302,7 @@ export class ClaudeCodeLLM implements LLMProvider {
           {
             model,
             tier: req.tier,
-            // Cache-creation tokens are most of the input here and they are Claude
-            // Code's own prompt, not ours. Counted, because they are really paid for.
+            // Cache-creation tokens are Claude Code's own prompt, counted because they are paid.
             promptTokens: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
             outputTokens: usage.output_tokens ?? 0,
             costUsd: parsed!.total_cost_usd ?? 0,

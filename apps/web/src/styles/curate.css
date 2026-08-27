@@ -1,12 +1,5 @@
-/* Page-scoped styles for: curate
- *
- * One file per page so that page work can happen in parallel without two people
- * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
- * NOT redefined here — if something belongs to more than one page, it belongs there.
- */
+/* Page-scoped styles for curate; shared tokens and primitives live in styles.css. */
 
-/* The prose on this page is the evidence a permanent graph write rests on, so it gets a
-   measure. Unbounded, the claim sentences ran ~250 characters per line. */
 .cur > .notice,
 .cur .cur-lead,
 .cur .cur-sub,
@@ -23,8 +16,7 @@
   line-height: 1.5;
 }
 
-/* Load-bearing text out of --ink-soft: the claim and the negative-evidence sentences are
-   what the decision rests on, and they measured ~4.5:1 in light mode. */
+/* Decision text uses --ink-mid; --ink-soft is too faint to carry it. */
 .cur-sub,
 .cur-note,
 .cur-detail,
@@ -50,10 +42,7 @@
 
 .cur-sk { margin-bottom: var(--s-3); }
 
-/* ── Near misses ──────────────────────────────────────────────────────────────
-   The copy has always promised these; now that they are rendered, a scan that
-   found 30 candidates and promoted 0 no longer looks like a scan that found
-   nothing. Collapsed, because the promoted ones are the reason you scanned. */
+/* Near misses */
 .cur-misses summary { cursor: pointer; font-weight: 600; }
 .cur-misses ul { list-style: none; margin: var(--s-2) 0 0; padding: 0; }
 .cur-misses li {
@@ -64,12 +53,7 @@
 .cur-miss-meta { font-size: var(--t-meta); color: var(--ink-mid); }
 .cur-miss-links { display: flex; flex-wrap: wrap; gap: var(--s-3); font-size: var(--t-meta); }
 
-/* ── Open proposals ───────────────────────────────────────────────────────────
-   One panel per proposal at every width, not a table. Each row carries a
-   contract paragraph, a textarea, a live check, its own error and two decisions;
-   as a table that has a ~600px min-content floor, so below ~630px the page
-   scrolled sideways and reaching Accept took the column headers off screen —
-   an irreversible write with no visible row identity. */
+/* Open proposals: one panel each, since a table overflows at narrow widths. */
 .cur-proposals, .cur-decided { display: flex; flex-direction: column; gap: var(--s-3); }
 
 .cur-card-head { align-items: baseline; margin-bottom: var(--s-1); }
@@ -83,10 +67,7 @@
   border-bottom: 1px solid var(--rule);
 }
 
-/* The comparison the acceptance criterion names: without it → with it.
-   No hue on the two numbers: --danger and --positive-text are re-declared by the
-   light :root *after* the dark block, so in dark mode they resolve to the light
-   values and both read wrong. The arrow and the caption carry the direction. */
+/* No hue on these numbers: --danger and --positive-text resolve wrong in dark mode. */
 .cur-shift { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s-2); }
 .cur-rate {
   font-family: var(--font-serif); font-size: var(--t-h); line-height: 1;
@@ -98,8 +79,7 @@
   margin: 0;
   font-size: var(--t-meta); color: var(--ink-mid); line-height: 1.4;
 }
-/* Only inside the row: .cur-evidence is a flex column, where a flex-basis would be
-   read as a height and leave 220px of blank card. */
+/* Scoped to the row; in the flex column a flex-basis reads as a height. */
 .cur-shift > .cur-shift-t { flex: 1 1 220px; }
 
 .cur-meters { display: flex; flex-wrap: wrap; gap: var(--s-5); }
@@ -122,9 +102,6 @@
   background: var(--ink-mid);
 }
 
-/* The claim restates the numbers above it in prose. Quieter than the meters, but on the
-   page rather than behind a disclosure: it is the acceptance criterion, and it is the only
-   place the unprompted-request count appears. */
 .cur-claim {
   margin: 0; max-width: var(--measure);
   font-size: var(--t-small); color: var(--ink-mid); line-height: 1.55;
@@ -141,7 +118,6 @@
   margin: 0 0 var(--s-2); max-width: var(--measure-narrow);
   font-size: var(--t-small); color: var(--ink-mid); line-height: 1.55;
 }
-/* Was width: 240 inline inside a table cell. */
 .cur-fm-input { width: 100%; max-width: var(--measure-narrow); resize: vertical; }
 .cur-fm-check {
   margin: var(--s-1) 0 0; max-width: var(--measure-narrow);
@@ -154,8 +130,7 @@
   display: flex; align-items: flex-start; flex-wrap: wrap;
   gap: var(--s-3); margin-top: var(--s-3);
 }
-/* Reject used to be one text node away from Accept and the last tab stop in the row.
-   It is quieter, it is separated, and it asks first. */
+/* Keep Reject away from Accept so the two decisions cannot be misclicked. */
 .cur-reject { margin-left: auto; }
 .cur-confirm { margin-top: var(--s-2); max-width: var(--measure-narrow); }
 @media (max-width: 620px) {
@@ -166,8 +141,7 @@
 .cur-decision-meta { margin: var(--s-1) 0 var(--s-2); font-size: var(--t-meta); color: var(--ink-mid); }
 .cur-decision .head { gap: var(--s-2); }
 
-/* ── Read-only tables ─────────────────────────────────────────────────────────
-   Local horizontal scroll rather than dragging the whole page sideways. */
+/* Read-only tables; the scroll stays local instead of moving the whole page. */
 .table-wrap > .cur-table { min-width: 560px; }
 .cur-table td { vertical-align: top; }
 .cur-table a { text-decoration: none; }

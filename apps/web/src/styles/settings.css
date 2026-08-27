@@ -1,13 +1,6 @@
-/* Page-scoped styles for: settings
- *
- * One file per page so that page work can happen in parallel without two people
- * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
- * NOT redefined here — if something belongs to more than one page, it belongs there.
- */
+/* Page-scoped styles for settings; shared tokens and primitives live in styles.css. */
 
-/* Headings. The page had no h1 at all, and its one h4 ("Caveats") was the only heading
-   in the app outside a parent-scoped rule, so it rendered as browser-default bold sans
-   at 1em while every other heading was serif. */
+/* Headings, which the shared parent-scoped heading rules never reach. */
 .settings .set-title {
   font-size: var(--t-h);
   line-height: 1.2;
@@ -18,8 +11,7 @@
   margin: 0;
 }
 
-/* ── Fields. The label, the hint and the control are three separate elements now: the
-   hint used to live inside the <label>, so it joined the select's accessible name. ── */
+/* Fields: the hint stays outside the label, out of the control's accessible name. */
 .settings .set-field {
   display: flex;
   flex-direction: column;
@@ -37,8 +29,7 @@
   color: var(--ink-soft);
   max-width: var(--measure-narrow);
 }
-/* Selects hold ids up to ~30 characters; at narrow widths they shrink rather than
-   overflow the panel. */
+/* Selects hold ~30-character ids, so they shrink instead of overflowing the panel. */
 .settings .set-field select,
 .settings .set-custom {
   max-width: 100%;
@@ -48,14 +39,12 @@
   font-size: var(--t-small);
   font-weight: 400;
 }
-/* .linkish still paints itself --accent, which measures 3.98:1 as text in light mode.
-   Overridden here rather than in the shared rule, which eight other pages use. */
+/* Local contrast override; the shared .linkish accent is too light as text. */
 .settings button.linkish {
   color: var(--accent-text);
 }
 
-/* ── The state table. The global th rule is written for column headers — uppercase mono
-   micro-type — which is wrong for a row header, where the label is the reading order. ── */
+/* State table: row headers opt out of the global column-header th treatment. */
 .settings .set-table th[scope="row"] {
   font-family: var(--font-sans);
   font-size: var(--t-body);
@@ -73,8 +62,6 @@
 .settings .set-table td {
   word-break: break-word;
 }
-/* Saved and in-use disagreeing is the half-state this page exists to show, so it is
-   marked rather than left to a character-by-character comparison. */
 .settings .set-differs {
   margin-left: var(--s-2);
   border-color: var(--accent);
@@ -82,15 +69,11 @@
   background: var(--accent-bg);
 }
 
-/* ── Feedback. Both live regions stay in the DOM and stay displayed — a region that was
-   display:none when its text arrived may never be announced. Only the wrapper is a flex
-   item, so the empty slot costs one gap instead of two. ── */
+/* Feedback: both live regions stay displayed, or their text may never be announced. */
 .settings .set-feedback {
   display: flex;
   flex-direction: column;
 }
-/* A notice is title-plus-explanation, so the paragraph belongs to the title above it
-   rather than floating a UA 1em away from it. */
 .settings .notice > p {
   margin: var(--s-1) 0 0;
 }
@@ -108,14 +91,11 @@
   margin-top: var(--s-1);
 }
 
-/* ── Actions ─────────────────────────────────────────────────────────────────────── */
+/* Actions */
 .settings .set-actions {
   gap: var(--s-3);
 }
-/* aria-disabled, not disabled: a real `disabled` on the button that was just pressed
-   moves focus to <body>. The shared [aria-disabled="true"] rule gives it the inert look;
-   these two only stop the button hover rules from repainting it — `button:hover`
-   recolours the text, and `button.primary:hover` lifts opacity back to 0.9. */
+/* aria-disabled keeps focus, so the button hover rules are neutralised here. */
 .settings button[aria-disabled="true"]:not(.primary):hover {
   color: var(--ink);
 }
@@ -123,8 +103,7 @@
   opacity: 0.55;
 }
 
-/* ── The two-tier rationale, demoted to a disclosure: it is an explanation, and the
-   status of the model is what the page is opened for. ────────────────────────────── */
+/* Rationale disclosure */
 .settings .set-why > summary {
   cursor: pointer;
   font-family: var(--font-serif);

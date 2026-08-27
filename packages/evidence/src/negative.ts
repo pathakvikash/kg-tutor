@@ -11,16 +11,7 @@ export interface FictionCandidate {
   observed: number;
 }
 
-/**
- * Negative evidence: parts of the graph that look like invention. (11)
- *
- * A stored failure mode that no learner has ever exhibited across hundreds of attempts
- * is probably fiction — something plausible a model wrote. Given the whole graph starts
- * as model assertion, this is arguably the highest-value evidence type in year one,
- * because it *prunes* claims rather than adding more.
- *
- * A candidate is a prompt to look, not a verdict. Some real failure modes are rare.
- */
+/** Failure modes no learner has exhibited; a candidate is a prompt to look, not a verdict. (11) */
 export async function findUnobservedFailureModes(
   prisma: PrismaClient,
   minAttempts = 30,
@@ -68,10 +59,7 @@ export interface UnusedPrerequisite {
   bypassRate: number;
 }
 
-/**
- * A "hard" prerequisite that learners routinely succeed without is not hard. Same idea
- * as an unobserved failure mode, measured from the other side. (11)
- */
+/** A hard prerequisite that learners routinely succeed without is not hard. (11) */
 export async function findBypassedPrerequisites(
   prisma: PrismaClient,
   minLearners = 10,
@@ -117,10 +105,7 @@ export async function findBypassedPrerequisites(
     .sort((a, b) => b.bypassRate - a.bypassRate);
 }
 
-/**
- * Human attention is the scarce resource, so review is ordered by how many learners
- * actually cross an edge. Most of the graph will never be traversed by anyone. (15)
- */
+/** Review is ordered by how many learners actually cross an edge. (15) */
 export async function reviewQueueByTraversal(
   prisma: PrismaClient,
   limit = 50,

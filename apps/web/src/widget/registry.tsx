@@ -10,10 +10,7 @@ interface Step {
   frames?: Record<string, string[]>;
 }
 
-/**
- * The boxes in a region are a picture of a list; this is the same fact as a sentence,
- * which is what a live region can actually announce.
- */
+// A sentence version of the boxes, for a live region to announce.
 function regionSummary(name: string, items: string[]): string {
   if (items.length === 0) return `${name}: empty`;
   return `${name}: ${items.length} ${items.length === 1 ? "frame" : "frames"}, ${items.join(", ")}`;
@@ -40,8 +37,7 @@ export const { registry } = defineRegistry(catalog, {
       <div className="w-stack" style={{ gap: props.gap ?? 12 }}>{children}</div>
     ),
 
-    // A real heading, not a styled div: model-authored headings were the only structure
-    // on the longest surface in the app and heading navigation returned nothing.
+    // A real heading, not a styled div, so heading navigation finds it.
     Heading: ({ props }: any) => <h4 className="w-heading">{props.value}</h4>,
 
     Text: ({ props }: any) => (
@@ -52,15 +48,10 @@ export const { registry } = defineRegistry(catalog, {
       <Code code={props.code} language={props.language} highlight={props.highlightLine} />
     ),
 
-    /**
-     * The learner drives the clock. Auto-playing an animation shows the same thing but
-     * teaches less — stepping forces a prediction before each reveal, which is the
-     * whole point of a worked example.
-     */
+    /** The learner drives the clock; stepping forces a prediction before each reveal. */
     Timeline: ({ props }: any) => {
       const key = props.stateKey ?? "step";
-      // useStateBinding is the documented read/write pair. Reading the raw store object
-      // by key looked equivalent and silently never re-rendered.
+      // Reading the store by key does not re-render; use the binding pair.
       const [raw, setRaw] = useStateBinding<number>(`/${key}`);
       const steps: Step[] = props.steps ?? [];
       const i = Math.min(Math.max(Number(raw ?? 0), 0), Math.max(0, steps.length - 1));
@@ -71,8 +62,7 @@ export const { registry } = defineRegistry(catalog, {
       return (
         <div className="w-timeline">
           <div className="w-tl-head">
-            {/* aria-disabled, never disabled: the last press of Next is what reaches the
-                final step, and disabling it there blurs focus to <body>. go() clamps. */}
+            {/* aria-disabled, never disabled: disabling blurs focus to <body>. go() clamps. */}
             <button onClick={() => go(i - 1)} aria-disabled={i === 0 || undefined} aria-label="Previous step">←</button>
             <div className="w-tl-dots" role="group" aria-label="Steps">
               {steps.map((_, n) => (
@@ -88,8 +78,7 @@ export const { registry } = defineRegistry(catalog, {
             <button onClick={() => go(i + 1)} aria-disabled={i === steps.length - 1 || undefined} aria-label="Next step">→</button>
             <span className="w-tl-count">{i + 1} / {steps.length}</span>
           </div>
-          {/* Next replaces label, code and detail in place, so without a live region the
-              one thing this widget exists to do is silent. */}
+          {/* Next replaces the content in place, so it needs a live region. */}
           <div aria-live="polite" aria-atomic="true">
             <span className="sr-only">Step {i + 1} of {steps.length}.</span>
             {step.label && <div className="w-tl-label">{step.label}</div>}
@@ -103,8 +92,7 @@ export const { registry } = defineRegistry(catalog, {
     Frames: ({ props }: any) => {
       const items: string[] = Array.isArray(props.items) ? props.items : [];
       const stack = props.orientation !== "queue";
-      // A call stack that grows downward on screen contradicts every diagram a learner
-      // has ever seen, so the newest frame renders at the top.
+      // A stack grows upward on screen, so the newest frame renders at the top.
       const ordered = stack ? [...items].reverse() : items;
       return (
         <div className={`w-frames ${stack ? "as-stack" : "as-queue"}`}>
@@ -124,15 +112,7 @@ export const { registry } = defineRegistry(catalog, {
       );
     },
 
-    /**
-     * The architecture view: several regions moving together under one clock.
-     *
-     * Frames could already draw a single stack or queue, but nothing could show a call
-     * stack draining while a microtask queue fills — which IS the event loop, and is
-     * the thing prose is worst at. Regions are laid out side by side and every step
-     * declares the full contents of all of them, so nothing has to be inferred from a
-     * diff the learner cannot see.
-     */
+    /** Several regions under one clock; every step declares the contents of all of them. */
     Simulation: ({ props }: any) => {
       const key = props.stateKey ?? "tick";
       const [raw, setRaw] = useStateBinding<number>(`/${key}`);
@@ -146,8 +126,7 @@ export const { registry } = defineRegistry(catalog, {
       if (steps.length === 0 || regions.length === 0) return null;
 
       const previous: Record<string, string[]> = steps[i - 1]?.regions ?? {};
-      // The code block itself is fixed across ticks; only the highlighted line moves, so
-      // that line is announced as text instead of re-reading the whole listing.
+      // Only the highlighted line changes per tick, so announce just that line.
       const activeLine = step.highlightLine && props.code
         ? String(props.code).split("\n")[Number(step.highlightLine) - 1]?.trim()
         : undefined;
@@ -155,8 +134,7 @@ export const { registry } = defineRegistry(catalog, {
       return (
         <div className="w-sim">
           <div className="w-tl-head">
-            {/* aria-disabled, never disabled: the press that reaches the last tick would
-                otherwise disable itself and blur focus to <body>. go() clamps. */}
+            {/* aria-disabled, never disabled: disabling blurs focus to <body>. go() clamps. */}
             <button onClick={() => go(0)} aria-disabled={i === 0 || undefined} aria-label="Restart">⏮</button>
             <button onClick={() => go(i - 1)} aria-disabled={i === 0 || undefined} aria-label="Back">←</button>
             <div className="w-tl-dots" role="group" aria-label="Ticks">
@@ -178,8 +156,7 @@ export const { registry } = defineRegistry(catalog, {
             <Code code={props.code} language={props.language} highlight={step.highlightLine} />
           )}
 
-          {/* One live region over every region and the caption: a tick replaces all of
-              them at once, and separate regions would interleave mid-sentence. */}
+          {/* One live region for all of them; separate ones would interleave. */}
           <div aria-live="polite" aria-atomic="true">
             <span className="sr-only">
               Tick {i + 1} of {steps.length}.
@@ -193,8 +170,7 @@ export const { registry } = defineRegistry(catalog, {
                 const shown = isStack ? [...items].reverse() : items;
                 return (
                   <div className="w-region" key={name}>
-                    {/* The boxes below say the same thing visually, so they are hidden
-                        rather than announced a second time item by item. */}
+                    {/* The boxes repeat this visually, so they are aria-hidden. */}
                     <span className="sr-only">{regionSummary(name, shown)}</span>
                     <div className="w-region-title" aria-hidden="true">{name}</div>
                     {shown.length === 0 ? (
@@ -204,8 +180,7 @@ export const { registry } = defineRegistry(catalog, {
                         {shown.map((it, n) => (
                           <div
                             key={`${it}-${n}`}
-                            /* New since the last tick, so movement between regions is
-                               visible rather than something to spot by comparing. */
+                            /* "fresh" marks frames new since the last tick. */
                             className={`w-frame${!before.includes(it) ? " fresh" : ""}${isStack && n === 0 ? " top" : ""}`}
                           >
                             {it}
@@ -229,8 +204,7 @@ export const { registry } = defineRegistry(catalog, {
       <div className="w-compare-wrap">
         <div className="w-compare">
           <div>
-            {/* h5: these label the two halves of one comparison, which sits under a
-                Heading (h4) in every spec the model writes. */}
+            {/* h5: these sit under the widget's Heading, which is an h4. */}
             <h5 className="w-heading">{props.leftTitle}</h5>
             <Code code={props.leftCode} />
           </div>
@@ -243,8 +217,7 @@ export const { registry } = defineRegistry(catalog, {
       </div>
     ),
 
-    /** Feedback is per option: being told *why* your specific wrong answer is wrong is
-     *  the part that teaches, and a bare right/wrong throws it away. */
+    /** Feedback is per option, not a bare right or wrong. */
     Choice: ({ props }: any) => {
       const [picked, setPicked] = useState<number | null>(null);
       const optionsRef = useRef<HTMLDivElement>(null);
@@ -268,8 +241,7 @@ export const { registry } = defineRegistry(catalog, {
                 <button
                   key={i}
                   className={state ? `w-opt ${state}` : "w-opt"}
-                  // aria-disabled, not disabled: the outcome is attached to the button the
-                  // learner just pressed, and disabling it blurs focus off the answer.
+                  // aria-disabled, not disabled: disabling blurs focus off the chosen answer.
                   aria-disabled={answered || undefined}
                   onClick={() => { if (!answered) setPicked(i); }}
                 >
@@ -277,16 +249,14 @@ export const { registry } = defineRegistry(catalog, {
                     <span className="w-opt-mark" aria-hidden="true">{state === "right" ? "✓" : "✗"}</span>
                   )}
                   <span className="w-opt-label">{o.label}</span>
-                  {/* Border and text colour do not survive greyscale, and the glyph above
-                      is decorative. */}
+                  {/* Colour alone does not survive greyscale, and the glyph is decorative. */}
                   {state === "right" && <span className="sr-only"> — correct</span>}
                   {state === "wrong" && <span className="sr-only"> — incorrect</span>}
                 </button>
               );
             })}
           </div>
-          {/* Present before the answer, so the verdict is announced rather than appearing
-              somewhere below the focused option. */}
+          {/* Present before the answer, so the verdict is actually announced. */}
           <div aria-live="polite">
             {answered && (
               <p className={chosen?.correct ? "w-feedback right" : "w-feedback wrong"}>

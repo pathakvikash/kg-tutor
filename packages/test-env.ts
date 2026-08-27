@@ -1,11 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-/**
- * Test setup. These suites TRUNCATE every table, so pointing them at the development
- * database destroys its data — which is exactly what happened once. The guard below
- * makes that failure impossible rather than merely unlikely.
- */
+// These suites truncate every table, so the guard below must reject any other database.
 const envPath = resolve(import.meta.dirname, "../.env.test");
 for (const line of readFileSync(envPath, "utf8").split("\n")) {
   const m = /^\s*([A-Z_]+)\s*=\s*"?([^"\n]*)"?\s*$/.exec(line);

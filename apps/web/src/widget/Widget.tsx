@@ -2,10 +2,7 @@ import { Component, type ReactNode } from "react";
 import { JSONUIProvider, Renderer } from "@json-render/react";
 import { registry } from "./registry";
 
-/**
- * A model-authored spec is untrusted input. A malformed one must degrade to "the widget
- * did not render" rather than taking the whole lesson down with it.
- */
+// A model-authored spec is untrusted; a bad one must not take the lesson down.
 class WidgetBoundary extends Component<{ children: ReactNode }, { failed: string | null }> {
   state = { failed: null as string | null };
   static getDerivedStateFromError(err: unknown) {

@@ -1,12 +1,4 @@
-/**
- * Self-consistency: sample the same question K times independently and keep only what
- * a majority of samples agree on. (15)
- *
- * This is the cheapest quality intervention available against an over-generating model.
- * Asked once for "the prerequisites of X" a model returns eight things, most of them
- * merely adjacent; asked three times, the merely-adjacent tail mostly fails to recur.
- * It costs 3x on the one operation that is cached forever after the first learner.
- */
+/** Self-consistency: sample K times independently, keep what a majority agree on. (15) */
 
 export interface ConsensusItem<T> {
   value: T;
@@ -23,18 +15,7 @@ export interface ConsensusOptions<T> {
   threshold?: number;
 }
 
-/**
- * Vote-matching identity. Deliberately NOT the same as the resolver's `normalizeName`,
- * which keys the alias uniqueness index and must stay conservative.
- *
- * Two normalizations that matter here:
- *   - punctuation becomes a separator, not nothing, so `event-loop` keys the same as
- *     `event loop`. Deleting it yields `eventloop`, which matches neither.
- *   - a leading article is dropped, so `the event loop` and `event loop` vote together.
- *     Without it, samples that agree on a concept but not on its article split their
- *     votes and can drop *both* variants below threshold — losing a concept every
- *     sample actually named.
- */
+/** Vote-matching identity only, deliberately looser than the resolver's `normalizeName`. */
 export function normalizeKey(s: string): string {
   return s
     .toLowerCase()
@@ -43,11 +24,7 @@ export function normalizeKey(s: string): string {
     .replace(/^(?:the|a|an) +/, "");
 }
 
-/**
- * Items are matched across samples by `key`. Anything below the threshold is dropped
- * and reported separately — a dropped item is not noise to hide, it is the measurable
- * output of the filter.
- */
+/** Anything below the threshold is dropped and reported separately, not hidden. */
 export function consensus<T>(
   samples: T[][],
   opts: ConsensusOptions<T>,

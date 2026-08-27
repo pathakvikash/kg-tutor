@@ -41,14 +41,7 @@ export type ResolverAction =
   | { kind: "alias"; targetConceptId: string }
   | { kind: "create"; relateTo: RelateTo | null };
 
-/**
- * Verdict → what actually happens. Most real overlap is subsumption rather than
- * identity, which is why a binary verdict cannot express any of the middle rows. (05)
- *
- * Throws on a verdict that names no referent. Falling back to a bare create would be a
- * blind insert under another name, and that is what produces the duplicates the
- * resolver exists to prevent.
- */
+/** Throws when a verdict names no referent; a fallback create would be a blind insert. (05) */
 export function actionFor(decision: ResolverDecision): ResolverAction {
   if (decision.verdict === "distinct") return { kind: "create", relateTo: null };
 
@@ -83,10 +76,7 @@ export function isWellFormed(decision: ResolverDecision): boolean {
   return decision.verdict === "distinct" || decision.relatedConceptId !== null;
 }
 
-/**
- * Merging is destructive and asymmetric: two duplicates are repairable, a wrong merge
- * corrupts every learner attached to both. Bias hard against it. (05)
- */
+/** Merging is destructive and asymmetric, so the thresholds are biased hard against it. (05) */
 export function shouldAutoMerge(c: ResolverCandidate, verdict: ResolverVerdict): boolean {
   return verdict === "same" && c.vectorScore >= 0.95 && c.neighborhoodOverlap >= 0.5;
 }

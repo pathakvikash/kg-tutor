@@ -5,8 +5,7 @@ const listeners = new Set<(id: string) => void>();
 let current = read();
 
 function read(): string {
-  // Throws outright in some contexts (blocked site data, embedded previews), not
-  // only when empty, so this cannot be left unguarded.
+  // localStorage can throw, not just return empty, when site data is blocked.
   try {
     return localStorage.getItem(KEY) ?? "";
   } catch {
@@ -14,15 +13,7 @@ function read(): string {
   }
 }
 
-/**
- * One learner selection, shared by every consumer.
- *
- * This was a `useState` per call site with no cross-instance sync, so switching learner
- * on Home left the nav's due badge polling the previous learner for the rest of the
- * session — the count in the chrome and the content under it described two different
- * people. A module-level store with a listener set keeps the localStorage semantics the
- * original docstring argued for while making every consumer agree.
- */
+/** Module-level store, so every consumer sees the same learner. */
 export function setLearner(id: string): void {
   if (id === current) return;
   current = id;

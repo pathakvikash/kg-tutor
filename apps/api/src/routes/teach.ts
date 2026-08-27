@@ -32,14 +32,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  /**
-   * One more level of prerequisites under a single concept.
-   *
-   * A topic expansion goes one level deep and takes minutes, so the graph's depth is
-   * whatever that first pass happened to produce — there was no way to say "go further
-   * here" short of re-running the whole thing. Runs the identical pass a full expansion
-   * uses, so the consensus filter, the name check and the cycle rejection all still apply.
-   */
+  /** One more level of prerequisites under a single concept, using the full expansion pass. */
   app.post("/api/concepts/:id/deepen", async (req, reply) => {
     const { id } = req.params as { id: string };
     const llm = getLlm();
@@ -60,8 +53,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
     const before = await prisma.edge.count({
       where: { dstId: id, type: "prerequisite_of", retiredAt: null },
     });
-    // Judged against everything already in the topic, so a prerequisite that exists is
-    // reused rather than duplicated.
+    // Judged against everything already in the topic, so an existing prerequisite is reused.
     const siblings = await prisma.topicConcept.findMany({
       where: { topicId: home.id },
       select: { conceptId: true },
@@ -149,14 +141,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
 
     const sessionId = body.data.sessionId ?? (await openSession(id, body.data.kind));
 
-    /**
-     * The stored item wins over whatever the client sent.
-     *
-     * The client only ever held the prompt text, so a question about a snippet arrived
-     * for grading with the snippet missing. Reading the row also means the prompt and
-     * rubric being graded against are the ones the item bank actually records, rather
-     * than a string that made a round trip through the browser.
-     */
+    // The stored item wins over the client copy, which never carries the snippet or rubric.
     const item = body.data.itemId
       ? await prisma.assessmentItem.findUnique({ where: { id: body.data.itemId } })
       : null;
@@ -180,10 +165,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    // The answer and the verdict are turns like any other. Without these the transcript
-    // held the question and then jumped to the next one, so refreshing after grading
-    // erased what the learner had just written and the feedback they had just been
-    // given — the work disappeared and the screen went back a step.
+    // The answer and the verdict are turns like any other, so a reload still shows them.
     await saveTurn(sessionId, id, body.data.conceptId, "learner", body.data.response, {
       itemId: body.data.itemId ?? null,
     });

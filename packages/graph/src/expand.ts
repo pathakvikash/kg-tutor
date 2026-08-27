@@ -64,14 +64,7 @@ export interface ExpandOptions {
   resolver: ResolverDeps;
   prisma: PrismaClient;
   thresholds?: Thresholds;
-  /**
-   * Called as the job advances, carrying the report so far.
-   *
-   * A percentage alone is dead time. Expansion is the most interesting thing this
-   * system does — concepts appearing, duplicates being caught, unjustified hard edges
-   * being demoted — and streaming the partial result turns a blind wait into watching
-   * the graph get built.
-   */
+  /** Called as the job advances, carrying the partial report for live rendering. */
   onProgress?: (phase: string, progress: number, partial: ExpandReport) => void;
 }
 
@@ -105,8 +98,7 @@ async function sample<T>(
   req: { system: string; user: string },
   schema: z.ZodType<T>,
 ): Promise<T[]> {
-  // Independent samples, so temperature must be above zero or all K are identical
-  // and the filter measures nothing.
+  // Temperature must stay above zero or all K samples come back identical.
   return Promise.all(
     Array.from({ length: n }, () =>
       completeJson(llm, { ...req, tier: "strong", temperature: 0.7 }, schema),
@@ -114,17 +106,7 @@ async function sample<T>(
   );
 }
 
-/**
- * Shallow topic expansion: Topic → its Concepts → one level of hard prerequisites. (04)
- *
- * Deliberately shallow. This is the only expansion that blocks a learner, and it is the
- * same for everyone asking for the topic, so it caches after the first. The deep
- * backwards expansion happens later, bounded by what the learner already knows — the
- * recursion floor is the learner, not the graph.
- *
- * Every concept goes through the resolver and every edge through `proposeEdge`, so
- * expansion cannot bypass dedup, the failure-mode requirement, or acyclicity.
- */
+/** Topic to concepts to one level of prerequisites, all through the resolver. (04) */
 export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandReport> {
   const t = opts.thresholds ?? DEFAULT_THRESHOLDS;
   const k = t.expansionSamples;
@@ -229,16 +211,7 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     if (report.events.length > 200) report.events.splice(0, report.events.length - 200);
   }
 
-  /**
-   * Last, because a capability claim needs the concepts to exist first.
-   *
-   * Without this a self-expanded topic has no milestones at all, and the roadmap
-   * degrades to a flat list of everything — 37 entries for Data Structures. The grouping
-   * is what turns a wall into a sequence of things worth finishing.
-   */
-  // Reported, not fatal. The concepts and edges are already written and are the
-  // expensive part; losing all of that because the last call failed would be absurd,
-  // and the backfill script exists to finish the job later.
+  // Last because a claim needs its concepts to exist; a failure here is reported, not fatal.
   try {
     const milestones = await generateMilestones(opts.prisma, opts.llm, topic.id);
     report.milestones = milestones.written;
@@ -281,10 +254,7 @@ async function link(
   });
 }
 
-/**
- * Samples disagree on phrasing. Prefer the variant that justifies the strongest claim:
- * a `hard` proposal with a real failure mode beats one whose failure mode is empty.
- */
+/** Prefer the variant justifying the strongest claim: hard with a real failure mode. */
 function bestVariant<T extends { strength: "hard" | "soft"; failureMode: string | null }>(
   item: ConsensusItem<T>,
 ): T {
@@ -297,14 +267,7 @@ function bestVariant<T extends { strength: "hard" | "soft"; failureMode: string 
   return longest ?? item.value;
 }
 
-/**
- * The prerequisite pass for one concept.
- *
- * Extracted so deepening a single concept on demand runs the identical path a full
- * expansion does — same consensus filter, same name check, same resolver, same cycle
- * rejection. A second implementation of this would drift, and the parts that matter here
- * are exactly the parts that are easy to get subtly wrong.
- */
+/** Extracted so deepening one concept runs the identical path a full expansion does. */
 export async function expandPrerequisitesOf(
   target: { id: string; name: string; sense: string },
   ctx: {
@@ -336,8 +299,7 @@ export async function expandPrerequisitesOf(
       prereqSchema,
     );
   } catch (err) {
-    // The concept itself is already written; losing its prerequisites is a partial
-    // result worth keeping, not a reason to discard the whole expansion.
+    // The concept is already written, so a partial result is worth keeping.
     report.conceptsWithFailedPrerequisites.push(target.name);
     return;
   }
@@ -351,19 +313,7 @@ export async function expandPrerequisitesOf(
   for (const p of survived) {
     const best = bestVariant(p);
 
-    /**
-     * A compound name is not a concept, and one written here is permanent.
-     *
-     * These arrive as invented prerequisite names — the model describing what a
-     * learner needs rather than naming a node — and every downstream mechanism then
-     * has nothing coherent to work with: an item cannot ask for a demonstration of
-     * "Arrays or Linked Lists", a mastery level cannot say whether they have it, and
-     * it can never merge with either half, so the graph keeps a permanent
-     * near-duplicate of concepts it already holds.
-     *
-     * Split rather than drop when the halves are real, which they usually are: this
-     * arrived as "Hash Functions and Hash Tables" while both already existed.
-     */
+    // A compound name written here is permanent, so split it when both halves are real.
     const nameCheck = checkConceptName(best.name);
     if (!nameCheck.ok) {
       const halves = (nameCheck.parts ?? []).filter((h) => checkConceptName(h).ok);

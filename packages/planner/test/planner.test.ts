@@ -12,8 +12,7 @@ async function scenario(depth: GoalDepth = "use") {
     data: { email: `l${Math.round(performance.now() * 1000)}@x.test` },
   });
 
-  // functions -> closures -> memoization, and functions -> scope.
-  // `variables` sits behind functions, two levels from anything goal-facing.
+  // functions -> closures -> memoization, functions -> scope, variables behind functions.
   const variables = await concept("variables");
   const functions = await concept("functions");
   const closures = await concept("closures");
@@ -134,8 +133,7 @@ describe("orderTargetSet", () => {
   });
 
   it("degrades to a usable order instead of looping when nothing is eligible", () => {
-    // Should be unreachable given the write-time DAG guard, but a stalled planner that
-    // hangs is worse than one that emits a flagged order.
+    // Unreachable given the write-time DAG guard, but a hang is worse than a flagged order.
     const order = orderTargetSet({
       target: [
         { conceptId: "a", requiredLevel: "functional", relevance: 0, goalFacing: true },
@@ -227,12 +225,7 @@ describe("describeDiff", () => {
 });
 
 describe("reconcilePlan", () => {
-  /**
-   * The bug this exists for: a learner finished an intake that established mastery for
-   * four of six concepts, and the roadmap header read "0 of 6" directly above rows that
-   * each said "done". Completion was only ever written at the end of a lesson, so
-   * mastery that arrived any other way never advanced the plan.
-   */
+  /** Mastery can arrive outside a lesson, so completion cannot be written only at lesson end. */
   it("completes steps whose mastery arrived without a lesson", async () => {
     const s = await scenario();
     const plan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
@@ -300,12 +293,7 @@ describe("reconcilePlan", () => {
 });
 
 describe("activePlanWhere", () => {
-  /**
-   * The bug: superseding only happens between versions of one goal, so an abandoned goal
-   * keeps its last plan un-superseded forever. Ordering by version then picks the highest
-   * version across ALL of them. A learner finished a 36-concept Data Structures
-   * assessment and was taught higher-order functions from an old JavaScript goal.
-   */
+  /** An abandoned goal keeps its last plan un-superseded, so ordering by version can pick it. */
   it("ignores an un-superseded plan whose goal is no longer active", async () => {
     const s = await scenario();
 

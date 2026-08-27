@@ -2,21 +2,7 @@ import type { PrismaClient } from "@kg/db";
 import { atLeast, type MasteryLevel } from "@kg/shared";
 import { activePlanWhere, loadMastery } from "./plan.js";
 
-/**
- * Reconciles the plan against what the learner actually knows.
- *
- * Plan steps used to be completed in exactly one place: the end of a lesson. But mastery
- * does not only arrive from lessons. Intake establishes it for concepts that are never
- * taught, a review probe can raise it, and teaching one concept can lift a prerequisite.
- * Every one of those left a step that the learner had satisfied but the plan still called
- * outstanding, which showed up three ways at once — a roadmap header reading 0% above
- * rows saying "done", milestones that could never complete, and "what's next" offering a
- * lesson on something already known.
- *
- * So completion is derived from mastery rather than recorded by whoever happened to
- * notice. `completedAt` keeps its real meaning — the moment the step became satisfied —
- * but nothing has to remember to set it.
- */
+/** Completion is derived from mastery, since mastery does not only arrive from lessons. */
 export async function reconcilePlan(
   prisma: PrismaClient,
   learnerId: string,
@@ -47,8 +33,7 @@ export async function reconcilePlan(
   const milestones: string[] = [];
   for (const m of plan.milestones) {
     if (m.completedAt) continue;
-    // A milestone claiming no concepts is malformed, not satisfied. Treating it as met
-    // would hand out a capability claim nobody demonstrated.
+    // A milestone claiming no concepts is malformed, not satisfied.
     if (m.template.concepts.length === 0) continue;
     if (!m.template.concepts.every((c) => met(c.conceptId, c.requiredLevel))) continue;
     await prisma.milestoneInstance.update({ where: { id: m.id }, data: { completedAt: now } });

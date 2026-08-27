@@ -20,18 +20,7 @@ interface Row {
   arms: string[];
 }
 
-/**
- * Three retrieval arms, unioned into one pool, then scored — in a single round trip.
- *
- * Why all three: cosine similarity alone cannot separate `promises` from `async/await`
- * (close, but different concepts) and cannot connect `the event loop` to
- * `JavaScript's concurrency model` (distant strings, same concept). The lexical arm
- * catches renames and abbreviations that embeddings smooth over; the graph-local arm
- * catches synonyms whose names share nothing but whose neighbours do.
- *
- * ANN and lexical run as their own ORDER BY ... LIMIT subqueries so the HNSW and GIN
- * indexes are actually used; scoring happens afterwards over the small union.
- */
+/** Three arms in one round trip; ANN and lexical stay separate so their indexes are used. */
 const SQL = `
 WITH p AS (
   SELECT $1::vector AS v, $2::text AS name, $3::text[] AS expected

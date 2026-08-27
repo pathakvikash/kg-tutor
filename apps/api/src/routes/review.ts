@@ -8,10 +8,9 @@ import {
 import { prisma } from "../context.js";
 
 export async function reviewRoutes(app: FastifyInstance): Promise<void> {
-  /** Ordered by how many learners actually cross each edge — most of the graph is never
-   *  traversed, and reviewing that is wasted attention. (15) */
-  app.get("/api/review/queue", async () => reviewQueueByTraversal(prisma, 100));
+  /** Ordered by how many learners cross each edge; most of the graph is never traversed. (15) */
 
+  app.get("/api/review/queue", async () => reviewQueueByTraversal(prisma, 100));
   app.get("/api/review/proposals", async () => {
     const proposals = await prisma.promotionProposal.findMany({
       orderBy: [{ status: "asc" }, { effectSize: "desc" }],

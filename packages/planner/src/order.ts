@@ -41,11 +41,7 @@ function isEligible(
   return true;
 }
 
-/**
- * Counts what a concept unblocks, transitively, within the target set. Direct successors
- * undercount badly: teaching a concept that unblocks one thing which unblocks six is
- * worth more than one that unblocks two dead ends.
- */
+/** Counts unlocks transitively within the target set; direct successors undercount badly. */
 function transitiveUnlocks(
   conceptId: string,
   dependents: Map<string, string[]>,
@@ -62,18 +58,7 @@ function transitiveUnlocks(
   return seen.size;
 }
 
-/**
- * Orders a target set into a teaching sequence. (09)
- *
- * Primary objective is unlock count. Ties break toward staying in the chain already in
- * progress, then toward goal relevance — thrashing between unrelated branches is worse
- * for a learner than a slightly suboptimal order.
- *
- * The first step is a deliberate exception: if something eligible is directly relevant
- * to the goal, take it even when it is not unlock-optimal. Session one decides whether
- * there is a session two, and a learner who does something recognisable in their first
- * sitting comes back. (09)
- */
+/** Ordered by unlock count, except the first step, which prefers a goal-relevant win. (09) */
 export function orderTargetSet(input: OrderInput): OrderedStep[] {
   const inTarget = new Set(input.target.map((t) => t.conceptId));
   const byId = new Map(input.target.map((t) => [t.conceptId, t]));
@@ -96,8 +81,7 @@ export function orderTargetSet(input: OrderInput): OrderedStep[] {
       isEligible(id, prereqsOf, input.mastery, satisfied, inTarget),
     );
 
-    // A cycle would make nothing eligible. The write-time DAG guard should prevent it,
-    // but a stalled planner must degrade to a usable order rather than loop forever.
+    // A cycle makes nothing eligible; degrade to a usable order rather than loop forever.
     const pool = eligible.length > 0 ? eligible : [...remaining];
     const stalled = eligible.length === 0;
 

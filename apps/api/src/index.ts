@@ -23,9 +23,7 @@ const PORT = Number(process.env.PORT ?? 4000);
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
 
-// Several endpoints take no body. Fastify's default JSON parser rejects an empty one
-// with a 400 before any handler runs, which is a confusing failure for a request that
-// is perfectly valid.
+// Several endpoints take no body; the default JSON parser 400s on an empty one.
 app.addContentTypeParser(
   "application/json",
   { parseAs: "string" },

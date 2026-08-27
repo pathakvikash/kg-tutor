@@ -163,13 +163,6 @@ describe("promoteExplanations", () => {
 });
 
 describe("language-aware item selection", () => {
-  /**
-   * The reported failure: a learner working through JavaScript, assessed on concepts from
-   * a language-neutral Data Structures graph, was handed C — `int scores[100]`, `realloc`,
-   * a dangling pointer to diagnose. Nothing recorded what they write in, so nothing could
-   * have chosen better. An item in the wrong language does not test the concept, it tests
-   * the language.
-   */
   /** Explicit rather than a partial spread: exactOptionalPropertyTypes rejects the latter. */
   let seq = 0;
   const make = (
@@ -234,11 +227,7 @@ describe("language-aware item selection", () => {
     expect(picked?.id).toBe(best.id);
   });
 
-  /**
-   * The reported failure, exactly: "A student declares `int scores[100];` in C" carries
-   * its C inline in the prompt, so `code` is empty and codeLanguage is null. Treating
-   * null as neutral served that question to a learner who writes JavaScript.
-   */
+  /** An item can carry its language inline in the prompt, leaving `codeLanguage` null. */
   it("treats an untagged item as unknown rather than neutral", () => {
     expect(isWrongLanguage({ codeLanguage: null }, "JavaScript")).toBe(true);
   });
@@ -266,8 +255,7 @@ describe("language-aware item selection", () => {
   it("does not call a matching item wrong, in either casing", () => {
     expect(isWrongLanguage({ codeLanguage: "JavaScript" }, "javascript")).toBe(false);
     expect(isWrongLanguage({ codeLanguage: "python" }, "JavaScript")).toBe(true);
-    // Was asserted false here, which is the bug this suite now pins: an untagged item
-    // is unknown, and a "C in the prompt text" item is untagged.
+    // An untagged item is unknown, and a "C in the prompt text" item is untagged.
     expect(isWrongLanguage({ codeLanguage: null }, "JavaScript")).toBe(true);
     // No stated language means nothing to mismatch against.
     expect(isWrongLanguage({ codeLanguage: "c" }, null)).toBe(false);

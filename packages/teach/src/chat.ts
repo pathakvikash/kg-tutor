@@ -24,25 +24,12 @@ const schema = z.object({
   intent: chatIntent,
   prerequisiteIndex: z.number().int().nullable(),
   namedConcept: z.string().nullable(),
-  /**
-   * The question is about structure, mechanism or life cycle — "what is the
-   * architecture of X", "what moves where", "walk me through what happens".
-   * Answering that in prose is a worse answer than showing it.
-   */
+  /** The question is about structure, mechanism or life cycle, so prose is the wrong answer. */
   wantsVisual: z.boolean().default(false),
   reasoning: z.string(),
 });
 
-/**
- * This call gates the whole chat response: nothing can be shown to the learner until it
- * returns, because an actionable intent means the answer is discarded rather than sent.
- * So its output length is felt directly as blank screen.
- *
- * It was writing more tokens than the answer it was gating — an unbounded `reasoning`
- * essay that the API returns and the UI has never rendered. With effort-based thinking
- * doing the actual reasoning, a written rationale after it is duplication. Kept, because
- * it is worth having when something routes strangely, but capped.
- */
+// Keep the output short: this call gates the whole chat response.
 
 export const CHAT_ROUTE_SYSTEM_PROMPT = `You classify a learner's question asked during a lesson. You do not answer it.
 
@@ -76,13 +63,7 @@ above — just the deciding factor, e.g. "asks for a study plan, not about the l
 
 Respond with JSON: {"intent","prerequisiteIndex","namedConcept","wantsVisual","reasoning"}`;
 
-/**
- * Chat never teaches — it routes into paths that already exist. (19)
- *
- * Only `prerequisite_gap` touches the learner model, and it does so through the same
- * detour machinery a failed check uses. That is what keeps the "never teach off-graph"
- * invariant true while still letting a learner ask questions.
- */
+/** Chat never teaches; it only routes into paths that already exist. (19) */
 export async function routeChatQuestion(
   llm: LLMProvider,
   input: ChatRouteInput,
@@ -100,8 +81,7 @@ export async function routeChatQuestion(
       ].join("\n"),
       tier: "small",
       temperature: 0,
-      // Sorting one question into one of five named intents. There is nothing here to
-      // reason about, and this call gates the whole response, so it gets no budget.
+      // Five named intents, and it gates the whole response, so no thinking budget.
       effort: "none",
     },
     schema,
@@ -130,13 +110,7 @@ export function touchesLearnerModel(intent: ChatIntent): boolean {
   return intent === "prerequisite_gap" || intent === "clarifies_current";
 }
 
-/**
- * Intents the system should act on rather than answer.
- *
- * A request for a roadmap has a real answer — a plan, assessed and ordered — and
- * describing one in prose instead is the worst of both: it costs a model call and
- * leaves the learner exactly where they started.
- */
+/** Intents with a real non-prose answer, such as a roadmap request that should build a plan. */
 export function isActionable(intent: ChatIntent): boolean {
   return intent === "new_goal";
 }

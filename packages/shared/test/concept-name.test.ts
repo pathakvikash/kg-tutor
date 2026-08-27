@@ -13,9 +13,6 @@ describe("checkConceptName", () => {
     ["Graph terminology (vertices, edges, directed/undirected, weighted)", "parenthetical"],
     ["Graph connectivity concepts", "meta_noun"],
     ["LIFO (Last-In-First-Out) ordering concept", "meta_noun"],
-    // Listed as acceptable on a first pass, and it is not: "memory addresses" and
-    // "address arithmetic" are two things, joined. It is also step one of the real
-    // Data Structures plan, so the first thing that graph teaches is a compound.
     ["Memory addresses and address arithmetic", "conjunction"],
   ];
   for (const [name, reason] of observed) {

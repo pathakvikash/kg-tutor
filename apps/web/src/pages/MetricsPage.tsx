@@ -3,11 +3,7 @@ import { api, HttpError } from "../api";
 import { Busy } from "../components/Busy";
 import { MASTERY_ORDER } from "../vocabulary";
 
-/**
- * Mirrors `crossSessionPersistence`'s minGapDays default. The entire meaning of
- * "cross-session" hangs on it and the API does not return it, so it is stated on screen
- * rather than left as a number only the server knows.
- */
+/** Mirrors the server's crossSessionPersistence minGapDays default, which the API omits. */
 const MIN_GAP_DAYS = 7;
 
 /** Below this many learners an arm is one person's session, not a measurement. */
@@ -24,15 +20,7 @@ interface Rate {
   d: number;
 }
 
-/**
- * The one place a ratio becomes a number.
- *
- * Three of the four rates here returned 0 for an empty denominator and printed a
- * confident "0%" over "0 bound / 0 proposals", so on a fresh install the page's own
- * stated falsification signal read as a refutation. The clamp is a backstop: the waste
- * numerator counts events against a denominator of distinct pairs, so it can exceed it,
- * and 130% is not a percentage anyone can act on.
- */
+/** Clamps at 1: the waste numerator can exceed its denominator. */
 function rate(n: number, d: number): Rate {
   if (!Number.isFinite(n) || !Number.isFinite(d) || d <= 0) {
     return { measurable: false, value: 0, n, d: 0 };
@@ -40,10 +28,7 @@ function rate(n: number, d: number): Rate {
   return { measurable: true, value: Math.min(n / d, 1), n, d };
 }
 
-/**
- * Percentages by magnitude, and never 100% unless it is genuinely all of them:
- * toFixed(0) turned 99.6% into a claim that every proposal was reused.
- */
+/** Never prints 100% unless the numerator really covers the denominator. */
 function pct(value: number, n?: number, d?: number): string {
   const complete = n !== undefined && d !== undefined && n >= d;
   if (value >= 1) return complete ? "100%" : ">99%";
@@ -56,11 +41,7 @@ function pct(value: number, n?: number, d?: number): string {
 
 const rateText = (r: Rate) => (r.measurable ? pct(r.value, r.n, r.d) : NOT_YET);
 
-/**
- * Spend by magnitude. Fixed three decimals printed real sub-cent usage as "$0.000" — so
- * a purpose that definitely burned paid calls read as free — and would put fake
- * thousandths on a four-figure total.
- */
+/** Precision scales with magnitude so sub-cent spend never prints as $0.000. */
 function usd(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return NOT_YET;
   if (n === 0) return "$0";
@@ -78,11 +59,6 @@ function levelFor(rank: number): string {
   return MASTERY_ORDER[i];
 }
 
-/**
- * A labelled number. dt/dd so label and value are paired programmatically rather than by
- * adjacency, and an absent value says so in words instead of an em dash that could
- * equally be a minus sign or a loading state.
- */
 function Stat({ k, v, sub, empty }: { k: string; v: string; sub?: string; empty?: boolean }) {
   return (
     <div className="stat" {...(empty ? { "data-empty": "true" } : {})}>
@@ -110,15 +86,7 @@ const Empty = ({ children }: { children: ReactNode }) => (
   <div className="empty metrics-empty">{children}</div>
 );
 
-/**
- * What is actually weakened, derived from the fields, plus the API's own caveats.
- *
- * The hand-written sentence said "stub providers" (plural) whenever either half was
- * stubbed, so a real model with a stubbed embedding was reported as having no model at
- * all — and the caveats array, which exists precisely so the UI can be specific, was
- * fetched and dropped. Tone comes from .notice--warn rather than accent-coloured text,
- * which measured 3.98:1 in light mode.
- */
+/** Reasons are derived from the provider fields plus the API's own caveats. */
 function DegradedNotice({ p }: { p: any }) {
   const reasons: string[] = [];
   if (!p.llm) reasons.push("no model is configured");
@@ -131,10 +99,7 @@ function DegradedNotice({ p }: { p: any }) {
       <strong>Degraded run{p.llm ? ` · model: ${p.llm}` : ""}</strong>
       <p>
         {lead.charAt(0).toUpperCase() + lead.slice(1)}.{" "}
-        {/* Whether the numbers are real depends on whether a MODEL is real, not on
-            whether anything at all is stubbed. With claude-code live and only the
-            embedding stubbed, the spend below is money that was actually spent — and
-            telling the reader to disregard an accurate figure is its own kind of wrong. */}
+        {/* Only a missing model invalidates these figures; a stubbed embedding does not. */}
         {p.llm
           ? "The counts and costs below are from real calls; what is weakened is described above."
           : "Nothing here reflects live model behaviour — the numbers describe seeded and test data only."}
@@ -161,8 +126,7 @@ function ErrorNotice({
       </p>
       <p className="mono metrics-detail">{error.message}</p>
       <div className="row">
-        {/* Enabled with aria-disabled: disabling the control just pressed blurs focus
-            to <body>. */}
+        {/* aria-disabled rather than disabled: disabling a focused button drops focus to body. */}
         <button onClick={onRetry} aria-disabled={busy}>Retry</button>
         {busy && <Busy label="retrying" />}
       </div>
@@ -195,16 +159,7 @@ export function MetricsPage() {
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
-    /**
-     * /api/metrics gets slower the more the app is used — wastedTeaching reads every
-     * evidence event and crossSessionPersistence issues one findFirst per re-probe — so
-     * an unmount or a second Refresh landing mid-flight is the normal case, and the
-     * earlier reply must not overwrite the later one.
-     *
-     * The signal gates the state writes only: `api.metrics()` takes no AbortSignal, so
-     * the request itself still runs to completion. Threading one through would be a
-     * one-word change in api.ts, which this page does not own.
-     */
+    // Gates the state writes only; api.metrics() takes no AbortSignal.
     const ctl = new AbortController();
     setBusy(true);
     api.metrics()
@@ -228,8 +183,7 @@ export function MetricsPage() {
     setNonce((n) => n + 1);
   }, [busy]);
 
-  // Nothing has arrived yet. The shell stays and the placeholders say "not asked yet",
-  // rather than a finished dashboard full of zeroes.
+  // Nothing has arrived yet, so placeholders rather than a dashboard of zeroes.
   if (!m) {
     return (
       <div className="page metrics">
@@ -277,8 +231,7 @@ export function MetricsPage() {
       <div className="page--table">
         <Header asOf={asOf} busy={busy} onRefresh={refresh} />
 
-        {/* A failed refresh over numbers already on screen: the timestamp above still
-            names the load these figures came from. */}
+        {/* A failed refresh keeps the numbers already on screen; the timestamp dates them. */}
         {error && <ErrorNotice error={error} onRetry={refresh} busy={busy} />}
 
         {m.providers.degraded && <DegradedNotice p={m.providers} />}
@@ -310,10 +263,7 @@ export function MetricsPage() {
         </p>
 
         <h2 className="section-title">Teaching</h2>
-        {/* Was one "wasted teaching" rate that printed 130%: its numerator added every
-            gap-diagnosed failed check (unbounded per concept) to a count of distinct
-            first contacts, and it never showed its own denominator. Two numbers with two
-            denominators, because they are two measurements. */}
+        {/* Two measurements with two denominators, not one combined rate. */}
         <dl className="stats">
           <Stat
             k="taught what they knew"
@@ -395,8 +345,7 @@ export function MetricsPage() {
                 reports zero dollars per call.
               </div>
             )}
-            {/* Focusable scroll region: the overflow container is otherwise unreachable
-                by keyboard, and it is the only way to see the trailing columns at 380px. */}
+            {/* Focusable so the overflow region is reachable by keyboard. */}
             <div className="table-wrap" tabIndex={0} role="region" aria-label="Cost by purpose">
               <table className="t-purpose">
                 <thead>
@@ -424,8 +373,7 @@ export function MetricsPage() {
                     );
                   })}
                 </tbody>
-                {/* Here so the total does not have to be summed across fourteen rows in
-                    the reader's head to be checked against the total-spend card. */}
+                {/* Total here so it can be checked against the total-spend card. */}
                 <tfoot>
                   <tr>
                     <th scope="row">All purposes</th>
@@ -471,8 +419,7 @@ export function MetricsPage() {
                         <span className="mono">{a.variant}</span>
                         {a.variant === "baseline" && <span className="sub">control arm</span>}
                       </td>
-                      {/* n is the loudest column: "12.00 per learner" from a single
-                          learner reads as a measurement, and it is one session. */}
+                      {/* Learner count is emphasised so thin arms are not read as measurements. */}
                       <td className="num mono n-cell">{a.learners}</td>
                       <td className="num mono">{a.conceptsMastered}</td>
                       <td className="num mono">
@@ -510,8 +457,7 @@ export function MetricsPage() {
               </thead>
               <tbody>
                 {reuseByTopic.map((t: any) => {
-                  // The API returns the rate, not the numerator; recovering it keeps the
-                  // "never print 100% unless it is all of them" rule honest.
+                  // The API returns the rate, not the numerator; recovering it keeps pct honest.
                   const r = rate(Math.round(t.reuseRate * t.proposals), t.proposals);
                   return (
                     <tr key={t.topic}>

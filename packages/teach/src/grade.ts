@@ -5,15 +5,7 @@ import { failureDiagnosis, type FailureDiagnosis } from "@kg/shared";
 export interface GradeInput {
   /** The item's prompt. NOT the explanation the learner just read. */
   prompt: string;
-  /**
-   * The snippet the question is about, when it has one.
-   *
-   * Items keep code in its own field so it renders as a block rather than one joined
-   * line. The grading path was never updated to reassemble the two, so the grader saw a
-   * question referring to four functions and no functions — and said so: "I cannot see
-   * the functions a, b, c, and d". It then recorded a failed check against a learner
-   * whose answer was right.
-   */
+  /** The snippet the question is about; pass it or the grader sees a prompt with no code. */
   code?: string | null;
   codeLanguage?: string | null;
   response: string;
@@ -40,14 +32,7 @@ export interface GradeResult {
 
 const schema = z.object({
   correct: z.boolean(),
-  /**
-   * Null on a correct answer.
-   *
-   * The prompt has always said "diagnosis (when incorrect)", but the schema demanded it
-   * unconditionally — so a model that correctly omitted it on a right answer failed
-   * validation twice and took the whole request down with it. A schema that contradicts
-   * its own instructions fails on exactly the path that was working.
-   */
+  /** Nullable, because the prompt asks for a diagnosis only when the answer is incorrect. */
   diagnosis: failureDiagnosis.nullable().default(null),
   matchedFailureModeIndex: z.number().int().nullable(),
   belief: z.string().nullable(),
@@ -55,14 +40,7 @@ const schema = z.object({
   reasoning: z.string(),
 });
 
-/**
- * The grader is deliberately blind to the explanation that preceded the question. (16)
- *
- * A model that just explained closures will accept a paraphrase of its own explanation
- * as evidence of understanding. That is not learner cheating — it is systematic mastery
- * inflation baked into the loop, and every plan built on it is wrong. Nothing in this
- * prompt may carry the explanation text.
- */
+/** The grader stays blind to the preceding explanation; nothing here may carry it. (16) */
 export const GRADE_SYSTEM_PROMPT = `You grade a learner's answer against a rubric. You have NOT seen any explanation the learner was given, and you must not assume one.
 
 You are given the question, the learner's answer, and a numbered list of known failure
@@ -116,8 +94,7 @@ export async function gradeResponse(
     .filter(Boolean)
     .join("\n");
 
-  // Small tier: narrow, rubric-bound, and a large model is more likely to charitably
-  // reinterpret a bad answer into a good one. (17)
+  // Small tier: a larger model reinterprets a bad answer charitably. (17)
   const raw = await completeJson(
     llm,
     { system: GRADE_SYSTEM_PROMPT, user, tier: "small", temperature: 0 },
@@ -132,8 +109,7 @@ export async function gradeResponse(
 
   return {
     correct: raw.correct,
-    // Irrelevant when correct; "careless" is the harmless placeholder since nothing
-    // downstream reads a diagnosis off a passing answer.
+    // Placeholder: nothing downstream reads a diagnosis off a passing answer.
     diagnosis: raw.diagnosis ?? "careless",
     matchedEdgeId: matched?.edgeId ?? null,
     belief: raw.belief,

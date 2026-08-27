@@ -3,20 +3,9 @@ import { Link } from "react-router-dom";
 import { Busy } from "../components/Busy";
 import { HttpError, api } from "../api";
 
-/**
- * Curate: the review surface for the shared graph.
- *
- * Everything here is a claim about the graph every future learner is taught from, so the
- * page's job is to make a wrong write hard: a decision is never one unlabelled click, a
- * failed request is never rendered as "nothing to review", and an outcome is reported
- * next to the thing that produced it.
- */
+/** Curate: the review surface for the shared graph every future learner is taught from. */
 
-/* ── Async state ──────────────────────────────────────────────────────────────
-   "Not asked yet", "asked, nothing there" and "asked, it failed" are three
-   different claims, and this page used to render the third as the second — a
-   down backend read as an empty review queue on the one surface whose job is
-   catching fiction in the graph. */
+/* Async state: "not asked yet", "nothing there" and "it failed" are three different claims. */
 type Async<T> =
   | { phase: "loading" }
   | { phase: "ready"; data: T }
@@ -24,11 +13,7 @@ type Async<T> =
 
 const asError = (e: unknown): Error => (e instanceof Error ? e : new Error(String(e)));
 
-/**
- * Two calls this page needs have no wrapper in api.ts: the reverse endpoint has none at
- * all, and `negative()` cannot pass minAttempts. Same HttpError shape, so callers below
- * cannot tell which helper they went through.
- */
+/** For the two calls api.ts has no wrapper for; same HttpError shape. */
 async function reviewFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
@@ -38,10 +23,7 @@ async function reviewFetch<T>(url: string, init?: RequestInit): Promise<T> {
     try {
       const body = JSON.parse(text) as { error?: unknown; remedy?: string; detail?: string };
       remedy = body.remedy ?? null;
-      // The same three shapes api.ts's failure() reads, in the same order: a string error,
-      // a structured one (a zod flatten arrives as an object), then detail. Dropping the
-      // last two turned a `{error: {...}}` body back into the raw blob this page exists
-      // to stop rendering.
+      // The same three body shapes api.ts's failure() reads, in the same order.
       message =
         typeof body.error === "string"
           ? body.error
@@ -64,10 +46,7 @@ const reverseProposal = (id: string, reason: string) =>
     body: JSON.stringify({ reason }),
   });
 
-/* ── Proposal kinds ───────────────────────────────────────────────────────────
-   Five kinds are documented on PromotionProposal and only one of them is a new
-   hard edge. Accept writes a hard edge unconditionally, so any other kind shown
-   with an Accept button and a failure-mode field is offering the wrong action. */
+/* Accept writes a hard edge unconditionally, so only new_hard_edge is acceptable. */
 const KIND: Record<string, { label: string; blurb: string; acceptable: boolean }> = {
   new_hard_edge: {
     label: "new hard edge",
@@ -99,13 +78,10 @@ const KIND: Record<string, { label: string; blurb: string; acceptable: boolean }
 const kindOf = (kind: string) =>
   KIND[kind] ?? { label: kind.replace(/_/g, " "), blurb: "Unknown kind — read only here.", acceptable: false };
 
-/* Promotion thresholds, from DEFAULT_THRESHOLDS. Printed rather than implied: a
-   reviewer cannot judge "0.24" without knowing the bar is 0.20. */
+/* Promotion thresholds from DEFAULT_THRESHOLDS, printed rather than implied. */
 const BAR = { effect: 0.2, learners: 12, goals: 2 };
 
-/* ── Failure mode: the same contract the server enforces ──────────────────────
-   Mirrors checkFailureMode in @kg/shared (which apps/web does not depend on).
-   Advisory only — the server still decides, and its 422 lands in this row. */
+/* Mirrors checkFailureMode in @kg/shared; advisory only, the server still decides. */
 const VAGUE = [
   /\b(?:won'?t|will not|can'?t|cannot|couldn'?t|doesn'?t|does not|unable to)\s+(?:really\s+|fully\s+|properly\s+|truly\s+)?(?:understand|grasp|get|follow|learn|make sense of)\b/i,
   /\bwill(?: be)?\s+(?:get\s+)?confus(?:ed|ing)\b/i,
@@ -158,7 +134,7 @@ function faultHelp(fault: FmFault, words: number, src: string | null, dst: strin
   }
 }
 
-/* ── Small shared bits ───────────────────────────────────────────────────────── */
+/* Small shared bits */
 const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -278,10 +254,7 @@ function RateShift({
   );
 }
 
-/* ── Dismissals ──────────────────────────────────────────────────────────────
-   There is no retire-edge endpoint, so a reviewed fiction candidate has nowhere
-   to go and comes back on every load. This keeps it out of the way in this
-   browser only, and says so, until the endpoint exists. */
+/* No retire-edge endpoint yet, so a reviewed row is only hidden in this browser. */
 const DISMISS_KEY = "kg-tutor.curate.dismissed";
 
 function readDismissed(): Record<string, string> {
@@ -297,8 +270,7 @@ export function ReviewPage() {
   const [negative, setNegative] = useState<Async<any>>({ phase: "loading" });
 
   const [failureModes, setFailureModes] = useState<Record<string, string>>({});
-  /* Keyed by proposal id, like failureModes — so a rejected failure mode is reported in
-     the row that produced it and the text the reviewer typed is still sitting there. */
+  /* Keyed by proposal id so a rejection is reported in the row that produced it. */
   const [rowError, setRowError] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<Record<string, "reject" | "reverse" | null>>({});
   const [reverseReason, setReverseReason] = useState<Record<string, string>>({});
@@ -340,16 +312,14 @@ export function ReviewPage() {
   useEffect(() => { void loadProposals(); void loadQueue(); }, [loadProposals, loadQueue]);
   useEffect(() => { void loadNegative(minAttempts); }, [loadNegative, minAttempts]);
 
-  // A decision removes its own row, which would drop focus to <body>; the outcome it
-  // produced is the sensible place to land.
+  // A decision removes its own row, so focus lands on the outcome it produced.
   useEffect(() => { if (outcome) outcomeRef.current?.focus(); }, [outcome]);
 
   const locked = busy !== null;
   const announce = (text: string) => setOutcome({ text, token: Date.now() });
 
   const refreshAll = () => {
-    // Three loads fired mid-accept race the accept's own reload; every other handler
-    // on this page already refuses while an operation is running.
+    // Refuses while an operation runs; these loads would race its own reload.
     if (locked) return;
     void loadProposals(); void loadQueue(); void loadNegative(minAttempts);
   };
@@ -360,11 +330,7 @@ export function ReviewPage() {
     setScanNote(null);
     try {
       const r = await api.scan();
-      /* `proposed` is the route's `created` flag, and it is false in two unrelated cases:
-         the candidate missed the bar, or it passed and its proposal was already open and
-         got updated. Splitting on it labelled every re-scan of an open proposal a near
-         miss and printed a reason it never had. What actually failed is what carries a
-         rejection reason — that is the same condition the server used for `passes`. */
+      /* Split on rejectedFor: proposed is also false for an open proposal that was re-checked. */
       const misses = r.results.filter((x: any) => (x.rejectedFor ?? []).length > 0);
       const passed = r.results.filter((x: any) => (x.rejectedFor ?? []).length === 0);
       const fresh = passed.filter((x: any) => x.proposed).length;
@@ -557,9 +523,7 @@ export function ReviewPage() {
               {open.map((p) => {
                 const kind = kindOf(p.kind);
                 const hasEnds = Boolean(p.src && p.dst);
-                /* A uuid where a name should be means the concept row is gone — the route
-                   falls back to the raw id. applyProposal refuses such a proposal outright,
-                   so offering Accept here promises a write that cannot happen. */
+                /* applyProposal refuses a proposal whose ends are gone; Accept must not show. */
                 const endsLive = hasEnds && !UUID.test(p.src) && !UUID.test(p.dst);
                 const canAccept = kind.acceptable && endsLive;
                 const text = failureModes[p.id] ?? "";
@@ -591,9 +555,7 @@ export function ReviewPage() {
                         <Meter label="goals" value={p.distinctGoals} target={BAR.goals}
                           format={(n) => String(n)} />
                       </div>
-                      {/* Kept visible beside the meters: the prose is the acceptance
-                          criterion, and it carries one datum the meters do not — how many
-                          learners asked for the prerequisite unprompted. */}
+                      {/* The claim carries one datum the meters do not: unprompted requests. */}
                       <p className="cur-claim">{p.claim}</p>
                     </div>
 
@@ -816,10 +778,7 @@ export function ReviewPage() {
         {(n) => {
           const unobserved = (n.unobserved ?? []).filter((u: any) => !dismissed[u.edgeId]);
           const bypassed = (n.bypassed ?? []).filter((b: any) => !dismissed[b.edgeId]);
-          /* The count and the list have to be the same set. The rows hidden from *this*
-             payload are one group; dismissals stored for edges this payload does not
-             contain — no longer flagged, or below the current threshold — are another, and
-             saying "3 dismissed" over a list of ten was the disagreement. */
+          /* The count and the list have to be the same set, hence the two groups below. */
           const hiddenHere = [...(n.unobserved ?? []), ...(n.bypassed ?? [])]
             .filter((r: any) => dismissed[r.edgeId])
             .map((r: any) => [r.edgeId, dismissed[r.edgeId]] as [string, string]);
@@ -957,7 +916,7 @@ export function ReviewPage() {
   );
 }
 
-/** The server's own rejection reason, said in the reviewer's words where we know it. */
+/** The server's own rejection reason, restated in the reviewer's words. */
 function serverFailureMessage(err: Error): string {
   const m = err.message;
   const reason = /failure mode rejected \((\w+)\)/.exec(m)?.[1];

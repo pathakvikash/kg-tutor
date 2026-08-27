@@ -37,13 +37,7 @@ export async function loadMastery(
   return new Map(rows.map((r) => [r.conceptId, r.mastery]));
 }
 
-/**
- * Builds a plan and persists it as a new version. (09)
- *
- * Plans are stored rather than recomputed on demand because plan *growth* has to be
- * explainable: "we found a gap, two concepts added" needs a previous version to diff
- * against, and a progress bar that silently regresses reads as a bug. (08)
- */
+/** Persists the plan as a new version, so growth can be explained by diff. (08, 09) */
 export async function buildPlan(input: BuildPlanInput): Promise<PlanSummary> {
   const { prisma, learnerId, goalId } = input;
   const t = input.thresholds ?? DEFAULT_THRESHOLDS;
@@ -139,10 +133,7 @@ export async function buildPlan(input: BuildPlanInput): Promise<PlanSummary> {
   });
 }
 
-/**
- * Milestone templates are trimmed against the learner, capability claim unchanged, and
- * a mostly-satisfied one folds forward rather than awarding a hollow completion. (18)
- */
+/** Trims templates against the learner, claim unchanged; a mostly-satisfied one folds forward. (18) */
 async function attachMilestones(
   tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0],
   planId: string,
@@ -167,8 +158,7 @@ async function attachMilestones(
       (id) => mastery.get(id) ?? "unknown",
       t,
     );
-    // A malformed template is skipped rather than attached: an empty milestone on a
-    // plan is a completion waiting to be handed out for nothing.
+    // Skip malformed templates; an empty milestone hands out a completion for nothing.
     if (malformed) continue;
     await tx.milestoneInstance.create({
       data: { planId, templateId: template.id, position, foldedForward: foldForward },
@@ -179,10 +169,7 @@ async function attachMilestones(
   return out;
 }
 
-/**
- * The learner-facing explanation of a replan. Growth is stated plainly rather than
- * hidden, because an unexplained jump backwards is what destroys trust in progress. (08)
- */
+/** Learner-facing text, so it states growth plainly rather than hiding it. (08) */
 export function describeDiff(before: string[], after: string[]): string {
   const wasThere = new Set(before);
   const isThere = new Set(after);
@@ -201,21 +188,7 @@ export function describeDiff(before: string[], after: string[]): string {
   return parts.join("; ");
 }
 
-/**
- * Where-clause for "the plan this learner is currently working through".
- *
- * `supersededAt: null` alone is not that plan, and reading it as such taught the wrong
- * subject. Superseding only happens between versions of the SAME goal, so every goal a
- * learner ever abandons leaves its last plan un-superseded forever. One learner had eight
- * such plans and `orderBy: { version: "desc" }` picked the highest version among them —
- * an abandoned Asynchronous JavaScript goal at v3 — over the Data Structures plan at v1
- * they had just built. They finished a 36-concept assessment and were taught
- * higher-order functions.
- *
- * The active goal is what disambiguates, and `activeGoalFor` keeps exactly one. Spread
- * this rather than rewriting the clause, so the next reader inherits the constraint
- * instead of rediscovering it.
- */
+/** Spread this instead of rewriting it: `supersededAt: null` alone also matches abandoned goals. */
 export function activePlanWhere(learnerId: string) {
   return { learnerId, supersededAt: null, goal: { active: true } };
 }

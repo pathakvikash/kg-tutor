@@ -4,26 +4,7 @@ import {
   type MasteryLevel, type Thresholds,
 } from "@kg/shared";
 
-/**
- * What a learner owes attention to right now, independent of any plan.
- *
- * `selectProbes` answers a narrower question — what to check before the *next plan step* —
- * so it needs a next concept and caps itself at two review probes. That is right inside a
- * lesson and useless as a way back in: confidence decays on a 45-day half life whether or
- * not the learner opens the next step, and nothing was telling them that anything had
- * gone stale. The decay model was being computed and then dropped.
- *
- * Three kinds, in the order they matter:
- *
- *   - **misconception** — a wrong belief was recorded and never resolved. Actively worse
- *     than not knowing, because the learner will apply it. Nothing in the system had ever
- *     set `resolvedAt`, so these were write-only: recorded, listed on one page, and never
- *     acted on again.
- *   - **inferred** — mastery credited from downstream success, never demonstrated
- *     directly. Cheap to confirm, and load-bearing if anything was built on it. (06)
- *   - **decayed** — held at a real level once, and confidence has since fallen below the
- *     re-probe floor. Cheaper to re-probe than to re-teach.
- */
+/** Why a concept is due, independent of any plan; `selectProbes` covers the in-lesson case. */
 export type DueKind = "misconception" | "inferred" | "decayed";
 
 export interface DueItem {
@@ -119,13 +100,7 @@ export async function dueForReview(
   return opts.limit ? sorted.slice(0, opts.limit) : sorted;
 }
 
-/**
- * Clears misconceptions on a concept the learner has just demonstrated.
- *
- * A recorded belief that is never cleared makes the concept due forever, so the review
- * queue would only ever grow. Only a real demonstration counts: a restatement is not
- * evidence that the belief is gone. (10, 16)
- */
+/** Call only on a real demonstration; an uncleared belief keeps the concept due forever. (10, 16) */
 export async function resolveMisconceptions(
   prisma: PrismaClient,
   learnerId: string,

@@ -178,9 +178,6 @@ describe("runAttempt", () => {
 
 describe("grading a correct answer", () => {
   it("accepts a null diagnosis, because the prompt asks for null when correct", async () => {
-    // The schema demanded a diagnosis unconditionally while the prompt said "only when
-    // incorrect". A model that followed the instructions failed validation twice and
-    // 500'd — the schema broke the path that was working.
     const f = await (async () => {
       const l = await learner();
       const c = await concept("promises");

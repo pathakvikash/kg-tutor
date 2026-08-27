@@ -31,10 +31,7 @@ describe("dueForReview", () => {
     expect(await dueForReview(prisma, l)).toEqual([]);
   });
 
-  /**
-   * The whole point: confidence decays on a 45-day half life whether or not the learner
-   * comes back, and nothing was surfacing that.
-   */
+  /** Confidence decays with elapsed time, whether or not the learner comes back. */
   it("surfaces a concept whose confidence has decayed past the floor", async () => {
     const l = await learner();
     const c = await concept("hash tables");
@@ -133,8 +130,7 @@ describe("resolveMisconceptions", () => {
   it("takes a resolved concept out of the queue", async () => {
     const l = await learner();
     const c = await concept("union-find");
-    // lastEvidenceAt matters: without it decayedConfidence returns 0 and the concept is
-    // due as "decayed" regardless, which would hide what this test is checking.
+    // Needs lastEvidenceAt, or confidence decays to 0 and the concept is due as "decayed".
     await prisma.learnerConceptState.create({
       data: {
         learnerId: l, conceptId: c, mastery: "functional", confidence: 0.85,

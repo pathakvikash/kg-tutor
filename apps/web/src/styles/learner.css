@@ -1,12 +1,6 @@
-/* Page-scoped styles for: learner
- *
- * One file per page so that page work can happen in parallel without two people
- * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
- * NOT redefined here — if something belongs to more than one page, it belongs there.
- */
+/* Page-scoped styles for learner; shared tokens and primitives live in styles.css. */
 
-/* Section rhythm. The page is a stack of panels and tables with nothing between them,
-   so every boundary was carried by a border alone. */
+/* Section rhythm */
 .learner-page > .head { margin-bottom: var(--s-5); }
 .learner-page > .panel { margin-bottom: var(--s-5); }
 .learner-page > .learner-note,
@@ -15,8 +9,6 @@
 .learner-page > .table-wrap,
 .learner-page > .empty { margin-bottom: var(--s-2); }
 
-/* Field labels that are actually labels. The topic input's only label used to be a
-   styled div, and its instruction existed only as a placeholder. */
 .learner-label {
   font-size: var(--t-small); font-weight: 600; color: var(--ink);
 }
@@ -29,17 +21,13 @@
 
 .learner-build .learner-topic { flex: 1 1 220px; min-width: 0; }
 
-/* Notices carry two or three paragraphs here (what is lost, then what is kept), and a
-   bare <p> inside one arrives with a 1em browser margin. */
+/* Notices here carry several paragraphs, so the UA margin is replaced. */
 .learner-page .notice p { margin: 0 0 var(--s-2); }
 .learner-page .notice > :last-child { margin-bottom: 0; }
-/* Only where the row follows the prose it acts on. In the success banner the row IS the
-   notice, and this rule gave its single line a gap above nothing. */
+/* :not(:only-child) so a row that is the whole notice gets no gap above it. */
 .learner-page .notice .row:not(:only-child) { margin-top: var(--s-3); }
 .learner-dismiss { margin-left: auto; font-size: var(--t-small); }
 
-/* The mastery scale is drawn in the table, in the roadmap and in the record, and had no
-   key anywhere on the page. */
 .learner-legend {
   list-style: none; margin: 0 0 var(--s-3); padding: 0;
   gap: var(--s-2) var(--s-4);
@@ -47,12 +35,9 @@
 .learner-legend li { display: flex; align-items: center; gap: var(--s-2); }
 .learner-legend b { color: var(--ink); font-weight: 600; }
 
-/* Both confirms are alertdialogs that receive focus, so the ring needs the same room the
-   result banner gets. */
+/* Focused alertdialogs need the same outline room as the result banner. */
 .learner-confirm { outline-offset: var(--s-1); }
 
-/* The plan-detail fold: closed by default, and quiet enough that it reads as an annotation
-   on the roadmap above rather than a second path. */
 .learner-detail { margin: var(--s-3) 0 var(--s-2); }
 .learner-detail > summary {
   cursor: pointer; padding: var(--s-1) 0;
@@ -70,9 +55,7 @@
 /* Five columns need more than the shared 520px floor before they stop crushing. */
 .learner-page .table-wrap > .learner-mastery { min-width: 640px; }
 
-/* Below this the mastery table cannot be read by scrolling — five columns at 320px is a
-   438px min-content in a 292px box — so each row becomes its own labelled block. The
-   other two tables keep the shared local-scroll treatment. */
+/* Only the mastery table stacks; the other two keep the shared local scroll. */
 @media (max-width: 600px) {
   .learner-page .table-wrap > .learner-mastery { min-width: 0; }
   .learner-mastery thead { display: none; }

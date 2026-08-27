@@ -10,23 +10,13 @@ export interface TrimResult {
   /** Concepts the learner still has to reach. */
   remaining: MilestoneRequirement[];
   satisfied: MilestoneRequirement[];
-  /**
-   * True when most of the milestone was already satisfied. Awarding it would be a
-   * hollow completion, so it folds into the next one instead. (18)
-   */
+  /** True when most of it was already satisfied, so it folds into the next one. (18) */
   foldForward: boolean;
-  /**
-   * A milestone claiming no concepts at all. It is not satisfied — it is broken, and
-   * treating "nothing required" as "everything done" silently awards a capability
-   * nobody demonstrated.
-   */
+  /** A milestone claiming no concepts is broken, not satisfied. */
   malformed: boolean;
 }
 
-/**
- * A template is trimmed against one learner's state while its capability claim stays
- * unchanged — that is what keeps completion comparable across learners. (18)
- */
+/** Trims against one learner's state; the capability claim stays unchanged. (18) */
 export function trimMilestone(
   requirements: MilestoneRequirement[],
   current: (conceptId: string) => MasteryLevel,

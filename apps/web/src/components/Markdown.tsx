@@ -1,18 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import { highlight, resolveLanguage } from "./highlight";
 
-/**
- * A small markdown renderer for tutor output.
- *
- * Deliberately not `marked` + a sanitiser: this renders model output into a page, so
- * the safe move is to never produce HTML at all. Everything below builds React
- * elements from parsed text, which means there is no injection surface to sanitise —
- * a stray `<script>` in a model response is just characters.
- *
- * Covers what a tutor actually emits: fenced code, inline code, bold, italics, links,
- * headings, and both list kinds. Anything else renders as plain text, which is the
- * right failure mode.
- */
+// Builds React elements, never HTML, so model output has no injection surface.
 
 function inline(text: string, keyPrefix: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -72,8 +61,6 @@ export function Markdown({ text }: { text: string }) {
       const html = highlight(source, lang);
       blocks.push(
         <pre key={key++} className="code-block" data-lang={resolveLanguage(lang) ?? lang ?? undefined}>
-          {/* Highlighting is a readability improvement, never a correctness one: an
-              unknown language falls back to plain text rather than risking mangled code. */}
           {html
             ? <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
             : <code>{source}</code>}
@@ -85,8 +72,7 @@ export function Markdown({ text }: { text: string }) {
     const heading = /^(#{1,4})\s+(.*)$/.exec(line);
     if (heading) {
       const depth = heading[1]!.length;
-      // A real heading, not a styled div. Model output sits under the page's own h1-h3,
-      // so #..#### map to h4..h6 and clamp; the classes keep the visual unchanged.
+      // Model output sits under the page's own h1-h3, so #..#### map to h4..h6.
       const Tag = depth === 1 ? "h4" : depth === 2 ? "h5" : "h6";
       blocks.push(
         <Tag key={key++} className={`md-h md-h${depth}`}>
@@ -97,8 +83,7 @@ export function Markdown({ text }: { text: string }) {
       continue;
     }
 
-    // A pipe table. Without this the rows fall through to the paragraph branch and get
-    // joined with spaces into one unreadable line — which is exactly what happened.
+    // A pipe table; without this the rows fall through to the paragraph branch.
     const nextLine = lines[i + 1] ?? "";
     if (line.includes("|") && /^\s*\|?[\s:-]*-[\s:|-]*\|?\s*$/.test(nextLine) && nextLine.includes("-")) {
       const cells = (row: string) =>

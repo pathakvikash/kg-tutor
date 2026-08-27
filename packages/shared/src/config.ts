@@ -1,7 +1,4 @@
-/**
- * Every number here is a starting value to be calibrated against real learner data,
- * never an architectural rule. (policy A)
- */
+/** Starting values to calibrate against real learner data, not architectural rules. (policy A) */
 export interface Thresholds {
   /** Hard cap on the initial assessment. Stop even if uncertainty remains. (07) */
   maxInitialProbes: number;

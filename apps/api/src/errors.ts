@@ -1,11 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { LLMAuthError, LLMError } from "@kg/llm";
 
-/**
- * A provider that will not serve us is not a server fault, and reporting it as one
- * buries the only actionable part. An expired login should say "sign in again", not
- * "Internal Server Error" over a wall of JSON.
- */
+/** A provider that refuses is not a 500; the remedy is the actionable part. */
 export function installErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof LLMAuthError) {

@@ -12,12 +12,6 @@ import { api } from "./api";
 import { useLearner } from "./learnerStore";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
-/**
- * How much has gone stale, in the nav.
- *
- * The queue existed as data and nowhere on screen, so it could only grow. A number next
- * to the link is the whole mechanism by which spaced review actually happens.
- */
 function DueBadge() {
   const [learnerId] = useLearner();
   const [count, setCount] = useState(0);
@@ -30,8 +24,7 @@ function DueBadge() {
         .catch(() => undefined);
     };
     check();
-    // Slow on purpose: decay is measured in days, so this is about picking up an answer
-    // graded a moment ago, not about polling.
+    // Slow on purpose: decay is measured in days, not seconds.
     const timer = setInterval(check, 60_000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [learnerId]);
@@ -42,12 +35,7 @@ function DueBadge() {
 type Health = { llm: string | null; degraded: boolean };
 
 function ProviderBadge() {
-  /**
-   * Three states, not two. This checked neither res.ok nor the shape, so when the API
-   * returned 500 with a parseable JSON error body — which it does when the database is
-   * down — `llm` came back undefined and the badge confidently advised the user to go
-   * and configure a model. The model was fine; the backend was not.
-   */
+  // A 500 can still parse as JSON, so check both res.ok and the shape.
   const [state, setState] = useState<"loading" | "unreachable" | Health>("loading");
   useEffect(() => {
     let cancelled = false;
@@ -93,13 +81,6 @@ const TITLES: Record<string, string> = {
   "/settings": "Settings",
 };
 
-/**
- * Route-change housekeeping the app was missing entirely.
- *
- * One static <title> served eight pages, so browser history and tab switching gave no
- * clue where you were; and after navigating, keyboard focus stayed wherever the link
- * had been, so a screen reader announced nothing and Tab resumed mid-nav.
- */
 function RouteChrome({ mainRef }: { mainRef: React.RefObject<HTMLElement | null> }) {
   const { pathname } = useLocation();
   const first = useRef(true);

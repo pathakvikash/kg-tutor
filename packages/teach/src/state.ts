@@ -55,13 +55,7 @@ const CONFIDENCE_OF: Record<EvidenceSource, number> = {
   assessed: 0.85,
 };
 
-/**
- * Appends an evidence event and folds it into the learner's state. (06, 10)
- *
- * Mastery only ever moves up here. A contradicting failure lowers confidence and queues
- * a re-probe; demotion requires a *confirmed* second failure, because careless errors
- * are common and a learner knocked down a level for one slip will not trust the system.
- */
+/** Mastery only moves up here; demotion needs a confirmed second failure. (06, 10) */
 export async function recordEvidence(
   prisma: PrismaClient,
   input: RecordEvidenceInput,
@@ -154,10 +148,7 @@ export async function recordEvidence(
   });
 }
 
-/**
- * Demonstrated mastery of a concept implies its hard prerequisites — backwards only,
- * at lower confidence, and never overwriting direct evidence. (06, 10)
- */
+/** Backwards only, at lower confidence, and never overwriting direct evidence. (06, 10) */
 export async function propagateBackwards(
   prisma: PrismaClient,
   learnerId: string,

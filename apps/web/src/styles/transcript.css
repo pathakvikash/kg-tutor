@@ -1,25 +1,6 @@
-/* Page-scoped styles for: transcript
- *
- * One file per page so that page work can happen in parallel without two people
- * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
- * NOT redefined here — if something belongs to more than one page, it belongs there.
- *
- * Scope: the two surfaces that render model output — the markdown renderer and the
- * interactive widgets. Loaded after styles.css, so these rules override the base
- * declarations there at equal specificity; where a base rule sits inside a media query
- * the override repeats the query rather than raising specificity.
- */
+/* Transcript page styles; loaded after styles.css, so equal-specificity rules here win. */
 
-/* ── Dark-mode tokens, locally ─────────────────────────────────────────────────
-   styles.css declares --danger / --danger-bg / --positive-text inside its dark
-   @media block (line 46) and then AGAIN, unconditionally, in the :root below it
-   (line 105). Same specificity, later source order, so the LIGHT values win in dark
-   mode and the dark block is dead — measured: --danger resolves to #b3261e on the
-   dark ground, which is the 2.6:1 failure this page is supposed to be fixing.
-
-   Scoped to the surfaces this file owns rather than to :root, because the ordering
-   bug lives in a shared file that is not mine to edit. Delete this block once the
-   duplicate declarations there are removed. */
+/* Scoped dark tokens: styles.css redeclares these after its own dark block. */
 @media (prefers-color-scheme: dark) {
   .w-root,
   .build-log {
@@ -29,11 +10,7 @@
   }
 }
 
-/* ── Model-authored headings are now h4..h6 ───────────────────────────────────
-   Real elements bring UA margins and match container rules written for the app's own
-   h4s (`.inspector h4` is uppercase mono), so the visual has to be pinned to the
-   class rather than left to the tag. Two classes, so this beats both `.inspector h4`
-   and `.build-section h4` on specificity. */
+/* Two classes, to beat .inspector h4 and .build-section h4 on specificity. */
 .md .md-h {
   font-family: var(--font-serif);
   font-weight: 600;
@@ -46,8 +23,7 @@
 .md .md-h2 { font-size: var(--t-section); }
 .md .md-h3,
 .md .md-h4 { font-size: var(--t-body); }
-/* `.md > *:first-child` in styles.css loses the tie to `.md-h`, so a response opening
-   with a heading carried a stray 14px above it. */
+/* `.md > *:first-child` in styles.css loses the tie to `.md-h`. */
 .md > .md-h:first-child { margin-top: 0; }
 
 .w-root .w-heading {
@@ -60,15 +36,7 @@
   margin: 0 0 2px;
 }
 
-/* ── Container queries, not viewport queries ──────────────────────────────────
-   The widget column is the viewport minus a fixed 240/260/400px sidebar, so every
-   collapse rule keyed to viewport width fired at the wrong moment: between roughly
-   760 and 1100px a two-up compare got two 300px code columns and a four-region
-   simulation got four ~118px columns with identifiers broken mid-token.
-
-   .w-root is the container the widget grids actually live in, so it measures the real
-   available width; .chat and .inspector are containers too, for the markdown and
-   coach content around them. */
+/* Container queries: the widget column width is not the viewport width. */
 .chat,
 .inspector,
 .w-root { container-type: inline-size; }
@@ -77,41 +45,22 @@
   .w-compare { grid-template-columns: 1fr; }
 }
 
-/* One column per region does not survive a narrow column. auto-fit wraps instead, and
-   140px is about where a mono identifier stops breaking mid-token.
-
-   Qualified by .w-root — the ancestor .w-regions always has — to reach 0-2-0. The base
-   collapse in styles.css is `.w-regions:not([style*="grid-template-columns"])`, also
-   0-2-0, so a bare `.w-regions` here lost to it at every viewport under 700px no matter
-   how wide the widget column really was: two 241px tracks in a ~520px container, where
-   auto-fit fits more than two. Equal specificity, later file, so this one wins. */
+/* Qualified by .w-root to match the specificity of the base collapse rule. */
 .w-root .w-regions { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 @container (max-width: 288px) {
-  /* 288px = two 140px tracks plus the 8px gap, i.e. exactly where auto-fit drops to
-     one column on its own. Needed because a 244px bubble is still under the base
-     rule's 700px viewport query, which would otherwise force two ~118px columns. */
+  /* 288px is where auto-fit drops to one column on its own. */
   .w-root .w-regions { grid-template-columns: 1fr; }
 }
-/* A 140px column ellipsised "microtask queue" down to "microtask q…". A label on two
-   lines is readable; a truncated one is not. */
+/* Region labels wrap instead of truncating in a narrow column. */
 .w-region-title {
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
 }
 
-/* ── Step dots: a real hit area, and a shape channel ──────────────────────────
-   9x9px with padding: 0 and a 5px gap is a 9px target, well under the 24px floor, and
-   current-vs-done was carried by background-colour alone. The button is 25px with its
-   8px padding pulled back out by a negative margin, so the row keeps its original
-   rhythm; the visible dot is a pseudo-element inset to the content box, which is the
-   only way to keep a 1px ring at 9px while the border box is 25px.
-
-   The reset below is 0-2-0 and that is now enough: styles.css expresses the done and
-   current fills as --dot-bg / --dot-border rather than as `background` at 0-3-0, so
-   `background: none` here clears all three states instead of pending ones only. */
+/* Step dots need a 24px target, so the visible 9px dot is a pseudo-element. */
 .w-tl-dots {
-  gap: var(--s-4); /* 25px targets tile edge-to-edge at 16px; at 5px they overlapped */
+  gap: var(--s-4); /* 16px, or the 25px targets overlap */
   row-gap: var(--s-4);
   flex-wrap: wrap;
 }
@@ -133,8 +82,7 @@
   position: absolute;
   inset: var(--s-2);
   border-radius: var(--r-pill);
-  /* --ink-soft, not --rule-strong: this ring is the whole of a control, and
-     --rule-strong measures 2.56:1 on white, under the 3:1 floor for a UI boundary. */
+  /* --ink-soft, not --rule-strong: this ring is the whole boundary of a control. */
   border: 1.5px solid var(--ink-soft);
   background: var(--surface);
   transition: transform var(--dur-fast) var(--ease);
@@ -144,12 +92,9 @@
   background: var(--ink-soft);
   border-color: var(--ink-soft);
 }
-/* An INSET ring, not an outer halo: measured, an outer box-shadow on the pseudo-element
-   widens the button's own hit rect and eats 3-4px out of each neighbour. A donut plus
-   the size step is the shape channel, so "here" survives with no colour at all. */
+/* An inset ring, not an outer halo, which would widen the hit rect into its neighbours. */
 .w-tl-dots .dot.on {
-  /* The base rule scales the BUTTON, which now scales the 25px hit area to 31px and
-     overlaps both neighbours. Measured: the emphasis belongs on the visible dot. */
+  /* Cancels the base scale, which would grow the hit area into its neighbours. */
   transform: none;
 }
 .w-tl-dots .dot.on::before {
@@ -163,18 +108,10 @@
   .w-tl-dots .dot::before { transition: none; }
 }
 
-/* aria-disabled rather than disabled, so the press that reaches the last step does not
-   blur focus to <body>. The dimming and the cursor come from the one global
-   [aria-disabled="true"] rule in styles.css; only the hover colour is left here, because
-   that global resets border-color and `button:hover` would still turn a dead control's
-   label amber. */
+/* Only the hover colour: `button:hover` would still turn an inert label amber. */
 .w-tl-head button[aria-disabled="true"]:hover { color: var(--ink); }
 
-/* ── Quiz options: an outcome that survives greyscale ─────────────────────────
-   Was border-colour plus text-colour only, with a raw #b3261e that never got a dark
-   override (2.6:1) and --m-functional used as text in light mode (3.30:1). Both now
-   route through the tokens that carry both themes, and the glyph plus its .sr-only
-   twin carry the outcome when hue is gone. */
+/* Quiz options: the glyph and its .sr-only twin carry the outcome without hue. */
 .w-root .w-opt {
   display: flex;
   align-items: flex-start;
@@ -195,16 +132,12 @@
   line-height: inherit;
 }
 .w-root .w-opt-label { min-width: 0; }
-/* Every option gains aria-disabled once answered, so the global rule for it fades the
-   CHOSEN one — glyph, border and verdict colour — to 0.55. An answered option is inert,
-   not blocked, so neither the dimming nor the not-allowed cursor applies here. */
+/* An answered option is inert, not blocked, so the global fade is undone here. */
 .w-root .w-opt[aria-disabled="true"] {
   opacity: 1;
   cursor: default;
 }
-/* 0.4 put the unchosen options below every contrast floor while they are still the
-   text a learner re-reads to see what they missed. Declared after the rule above, at
-   equal specificity, so the unchosen ones keep their fade. */
+/* Must follow the rule above at equal specificity to keep the unchosen fade. */
 .w-root .w-opt.dim { opacity: 0.62; }
 .w-root .w-opt.dim:hover {
   border-color: var(--rule-strong);
@@ -212,14 +145,9 @@
 }
 .w-root .w-feedback.right { color: var(--positive-text); }
 
-/* ── Build log ────────────────────────────────────────────────────────────────
-   Four event kinds were never given a colour, so a hard failure mid-build rendered in
-   the same neutral grey as the most common success. 110px also wrapped the two longest
-   labels onto a second line. */
+/* Build log. 150px, or the two longest event labels wrap. */
 .ev { grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1.4fr); }
-/* Both success kinds through --positive-text. concept_created was --m-functional as
-   text, measured 3.30:1 on white; the label already says which kind it is, so the hue
-   only has to carry the succeeded/failed axis. */
+/* Hue only carries succeeded/failed; the label already names the kind. */
 .ev.concept_created .ev-kind,
 .ev.milestone_written .ev-kind { color: var(--positive-text); }
 .ev.name_rejected .ev-kind,
@@ -230,8 +158,6 @@
   box-shadow: inset 3px 0 0 var(--danger);
   background: var(--danger-bg);
 }
-/* nowrap + ellipsis threw away the substance: a created concept's sense, why an edge
-   was demoted, and the whole text of a milestones_failed error. Two lines, clamped. */
 .ev-detail {
   white-space: normal;
   overflow-wrap: anywhere;
@@ -241,8 +167,7 @@
   line-clamp: 2;
 }
 @media (max-width: 700px) {
-  /* Repeats the single-column rule from styles.css, which the un-queried .ev above
-     would otherwise outrank on source order. */
+  /* Repeats the base single-column rule, which the .ev above would outrank. */
   .ev { grid-template-columns: 1fr; }
   .ev-detail {
     -webkit-line-clamp: 4;
@@ -250,7 +175,5 @@
   }
 }
 
-/* ── Model tables ─────────────────────────────────────────────────────────────
-   A flat 320px min-width forced a scrollbar inside a two-column table in a 244px
-   bubble on a phone, where the table would have fitted. */
+/* Model tables: min-width must not exceed the bubble the table renders in. */
 .md-table { min-width: min(320px, 100%); }

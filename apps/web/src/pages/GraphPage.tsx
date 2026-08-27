@@ -15,10 +15,7 @@ import { atLeast, MASTERY_MEANING, MASTERY_ORDER } from "../vocabulary";
 
 const nodeTypes = { concept: ConceptNode };
 
-/**
- * One fit for every layout change, with a ceiling above 1 so "fit" on a wide screen can
- * enlarge rather than leaving a 78-node graph at 0.2 in the middle of 2000px of space.
- */
+/** maxZoom above 1 so "fit" can enlarge a small graph on a wide screen. */
 const FIT = { padding: 0.14, maxZoom: 1.6, duration: 200 };
 
 /** Below this the legend and the counts become a disclosure instead of four more rows. */
@@ -59,8 +56,7 @@ function DeepenButton({
 }: { conceptId: string; conceptName: string; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ text: string; ok: boolean } | null>(null);
-  // A relayout mid-read moves the thing you were reading, so the summary has to be
-  // dismissed before the graph is allowed to redraw.
+  // The graph may only redraw once the summary is dismissed.
   const relayoutPending = useRef(false);
 
   const run = async () => {
@@ -132,8 +128,7 @@ function Legend({
 }) {
   return (
     <div className="legend">
-      {/* The legend used to document the one encoding that does not work and omitted the
-          three that do. Every mark below is a miniature of the real one. */}
+      {/* Each mark here is a miniature of the real encoding. */}
       {mode === "explore" && (
         <span className="lg">
           <span className="lg-orbs" aria-hidden="true">
@@ -347,9 +342,7 @@ function Inspector({
             {e.failureMode && <div className="fm">Without it: {e.failureMode}</div>}
           </div>
         ))}
-        {/* A topic expansion goes one level deep, so the graph's depth is whatever that
-            first pass produced. This asks for one more level under this concept only, and
-            sits below the list it extends rather than above it. */}
+        {/* Topic expansion only goes one level deep; this adds one more here. */}
         <DeepenButton conceptId={node.id} conceptName={node.name} onDone={onStateChanged} />
       </section>
 
@@ -378,10 +371,7 @@ function Inspector({
   );
 }
 
-/**
- * useReactFlow and useStore both need a provider above the consumer, and the layout
- * effect has to call fitView from outside <ReactFlow>. Hence the split.
- */
+/** Split because useReactFlow needs a provider above the component calling fitView. */
 export function GraphPage() {
   return (
     <ReactFlowProvider>
@@ -391,15 +381,7 @@ export function GraphPage() {
 }
 
 function Graph() {
-  /**
-   * The view lives in the URL.
-   *
-   * Picking a topic, a learner and a node is several deliberate choices, and a refresh
-   * threw all of them away and came back showing every concept in the graph for nobody.
-   * The URL is the right place for it rather than localStorage: refresh keeps the view,
-   * the back button undoes a hop, and the address bar is now something you can send to
-   * someone — "look at this node" was previously impossible to say.
-   */
+  /** The whole view lives in the URL so refresh, back and sharing work. */
   const [params, setParams] = useSearchParams();
   const [graph, setGraph] = useState<GraphPayload | null>(null);
   const [layout, setLayout] = useState<LaidOut | null>(null);
@@ -408,9 +390,7 @@ function Graph() {
   const topicId = params.get("topic") ?? "";
   const [stickyLearner, setStickyLearner] = useStickyLearner();
   const [learners, setLearners] = useState<any[]>([]);
-  // A link that names a learner wins; otherwise whoever this session was last using.
-  // Trusted optimistically before the roster arrives, then dropped if they no longer
-  // exist — unlike the other pages, "nobody" is a legitimate state for the graph.
+  // A learner in the URL wins over the sticky one, and "nobody" is valid here.
   const stickyKnown = learners.length === 0 || learners.some((l) => l.id === stickyLearner);
   const learnerId = params.get("learner") ?? (stickyKnown ? stickyLearner : "");
   const selection: Selection | null = params.get("node")
@@ -445,11 +425,7 @@ function Graph() {
   const mounted = useRef(false);
   const narrow = useNarrow(LEGEND_BREAKPOINT);
 
-  /**
-   * `replace` rather than `push` for everything except a node hop: filters are
-   * adjustments to one view, while hopping between concepts is navigation and the back
-   * button should undo it.
-   */
+  /** Only a node hop pushes history; a filter change replaces it. */
   const patch = useCallback(
     (next: Record<string, string | null>, opts: { push?: boolean } = {}) => {
       setParams(
@@ -488,13 +464,7 @@ function Graph() {
 
   useEffect(() => { void api.learners().then(setLearners).catch(() => undefined); }, []);
 
-  /**
-   * A refresh that fails must not delete what you were reading.
-   *
-   * The 3s poll called the same loader as the first paint, and a failure replaced the
-   * canvas AND the inspector with one line of raw HTTP text — so one transient 500 took
-   * the graph, the selection and a half-written assessment answer with it.
-   */
+  /** A failed refresh must leave the graph and the selection in place. */
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -517,8 +487,7 @@ function Graph() {
 
   useEffect(() => { void load(); }, [load]);
 
-  // Poll a cheap stamp instead of refetching the graph: the view follows real changes
-  // (an expansion finishing, a lesson updating mastery) without hammering the API.
+  // Poll a cheap stamp rather than refetching the whole graph.
   useEffect(() => {
     if (!live) return;
     const timer = setInterval(async () => {
@@ -537,9 +506,7 @@ function Graph() {
   const focusNode = focusId ? graph?.nodes.find((n) => n.id === focusId) ?? null : null;
 
   const visible = useMemo(() => {
-    // A ?focus= naming a concept this graph does not contain used to dim every real node
-    // to opacity 0.18 with no message — which is what any shared link to a since-removed
-    // concept, and any focus/topic mismatch, produced.
+    // A focus id this graph does not contain must not dim every node.
     if (!graph || !focusId || !focusNode) return null;
     return neighborhood(focusId, graph.edges, hops);
   }, [graph, focusId, focusNode, hops]);
@@ -554,17 +521,14 @@ function Graph() {
 
   const selectedNodeId = selection?.kind === "node" ? selection.id : null;
 
-  // Layout is the expensive step, so it only reruns when the graph or mode changes —
-  // not when selection or focus does.
+  // Layout is expensive, so it reruns only on a graph or mode change.
   useEffect(() => {
     if (!graph) return;
     let cancelled = false;
     setLayingOut(true);
 
     void (async () => {
-      // Measured, not assumed: the simulation was handed a hardcoded 900x620 while the
-      // canvas is whatever the window gives it, so the spread never matched the space it
-      // had to be read in.
+      // Size the simulation from the real canvas, not a fixed guess.
       const box = canvasRef.current?.getBoundingClientRect();
       const size = {
         width: Math.max(640, Math.round(box?.width ?? 1000)),
@@ -587,10 +551,7 @@ function Graph() {
         if (e.type === "prerequisite_of") unlocks.set(e.source, (unlocks.get(e.source) ?? 0) + 1);
       }
 
-      // d3-force reports centres and elk reports top-left corners, and both used to be
-      // fed straight into position, which react-flow reads as top-left. Every orb was
-      // drawn 65px right and half its height low, so forceCollide's non-overlap guarantee
-      // did not describe the drawn geometry at all.
+      // d3-force reports centres; elk and react-flow use top-left corners.
       const geometry =
         mode === "explore"
           ? { initialWidth: ORB_W, initialHeight: ORB_H, origin: [0.5, 0.5] as [number, number] }
@@ -609,12 +570,7 @@ function Graph() {
             unlocks: opens,
             degree: degree.get(n.id) ?? 0,
             mode,
-            // Applied here as well as in the dimming effect below, because this layout
-            // is asynchronous — elk in teach mode — and lands after that effect has
-            // already run. Nodes built without the flags stayed undimmed with a focus
-            // active, which was invisible while focusing was only reachable by clicking
-            // a node on an already-loaded graph, and obvious the moment a focus could
-            // arrive from the URL on first paint.
+            // Set here too: the async elk layout lands after the dimming effect runs.
             dimmed: visible ? !visible.has(n.id) : false,
             isFocus: n.id === focusId,
           };
@@ -628,8 +584,7 @@ function Graph() {
             // A ghost must not be a tab stop or a click target.
             focusable: !data.dimmed,
             selectable: !data.dimmed,
-            // The only thing react-flow said about a node was the drag description it
-            // generates for a draggable one. This says what the node is.
+            // react-flow's own node label only describes dragging.
             ariaLabel:
               `${n.name}. ${n.state ? n.state.mastery : "not assessed"}. ` +
               `${need} prerequisite${need === 1 ? "" : "s"}, unlocks ${opens}.`,
@@ -646,25 +601,17 @@ function Graph() {
       });
       setLayingOut(false);
 
-      // The two modes do not share a coordinate space — explore settles around the canvas
-      // centre while elk's layered pass starts at (0,0) and runs thousands of pixels down
-      // — so a one-shot fitView on mount left teach mode looking at blank canvas.
+      // The two modes use different coordinate spaces, so refit after each layout.
       requestAnimationFrame(() => {
         if (!cancelled && graph.nodes.length > 0) void fitView(FIT);
       });
     })();
 
     return () => { cancelled = true; };
-    // `visible`, `focusId` and `selectedNodeId` are deliberately not dependencies:
-    // relaying out the whole graph on a focus change would be a visible jolt, and the
-    // effect below handles that case. They are read here only to seed nodes that are
-    // created after a load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, mode, fitView]);
+  }, [graph, mode, fitView]); // Adding visible/focusId/selectedNodeId here relayouts on every hop.
 
-  // Dimming and selection are cheap data updates, kept separate so focusing or hopping
-  // never triggers a relayout. Selection is driven from the URL here, so react-flow's own
-  // click selection, the keyboard and a shared link all agree on one selected node.
+  // Dimming and selection stay out of layout so hopping never relayouts.
   useEffect(() => {
     setLayout((prev) =>
       prev === null
@@ -698,15 +645,12 @@ function Graph() {
 
   const hopTo = useCallback(
     (id: string, opts: { keepFocus?: boolean } = {}) => {
-      // Re-selecting the node you are already on must not push a history entry, or the
-      // back button walks a stack of identical states. The flag is set after the guard so
-      // a no-op hop cannot leave it armed.
+      // Re-selecting the current node must not push an identical history entry.
       if (selectedRef.current === id) return;
       if (opts.keepFocus) keepCanvasFocus.current = true;
       setSelection({ kind: "node", id }, { push: true });
       setTrail((t) => {
-        // A breadcrumb is a stack, not a log: re-clicking A on A › B › C used to give
-        // A › B › C › A, drawn with separators that promise ancestry.
+        // The trail is a stack, not a log: revisiting a node truncates back to it.
         const at = t.lastIndexOf(id);
         return at >= 0 ? t.slice(0, at + 1) : [...t, id];
       });
@@ -714,20 +658,7 @@ function Graph() {
     [setSelection],
   );
 
-  /**
-   * Arrow-key traversal along edges plus Enter/Space to commit, handled on the canvas
-   * rather than on the node: the focused element is react-flow's own wrapper, so a
-   * handler inside the node never sees its keydown. With nodesDraggable off these keys
-   * were otherwise inert.
-   *
-   * Enter/Space has to be handled here too. react-flow gives every node tabIndex=0 and
-   * its own Enter/Space handler, but that handler routes into the store's
-   * addSelectedNodes -> triggerNodeChanges, which only writes anything when the graph is
-   * uncontrolled (`defaultNodes`) or an `onNodesChange` is supplied. This page owns the
-   * node array — selection is derived from the URL — so react-flow drops the change
-   * silently, onSelectionChange never fires, and Enter did nothing at all. Hopping here
-   * is what hands focus to the inspector heading.
-   */
+  /** Handled on the canvas because focus sits on react-flow's own node wrapper. */
   const onCanvasKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const g = graph;
     if (!g) return;
@@ -740,9 +671,7 @@ function Graph() {
     if (commit) {
       // Space on a focused node would otherwise scroll the page under the canvas.
       event.preventDefault();
-      // Already selected means hopTo is a no-op, and the effect that moves focus is
-      // keyed on the selection — so send focus across directly. Either way Enter is the
-      // one gesture that leaves the canvas.
+      // The focus effect only fires on a selection change.
       if (from === selectedRef.current) headingRef.current?.focus();
       else hopTo(from);
       return;
@@ -756,8 +685,7 @@ function Graph() {
     if (event.key === "ArrowUp") next = up[0];
     else if (event.key === "ArrowDown") next = down[0];
     else {
-      // Left/right move between concepts that share a prerequisite — the ones you would
-      // actually compare — falling back to document order when nothing sits above.
+      // Left/right move between concepts sharing a prerequisite, else document order.
       const parent = up[0];
       const peers = (
         parent
@@ -784,12 +712,7 @@ function Graph() {
     });
   };
 
-  /**
-   * React reuses the inspector's DOM element, so clicking a link in a hub concept's
-   * Unlocks list landed you 600–1000px down the *new* concept's panel, having never seen
-   * its name. Reset the scroll, and move focus to the heading so the keyboard follows the
-   * selection into the panel that holds everything.
-   */
+  /** React reuses the inspector element, so reset scroll and focus per selection. */
   useEffect(() => {
     inspectorRef.current?.scrollTo({ top: 0 });
     if (!mounted.current) { mounted.current = true; return; }
@@ -813,16 +736,13 @@ function Graph() {
   return (
     <div className="page flush graph-page">
       <h2 className="sr-only">Concept graph</h2>
-      {/* A grid, not a wrapping row with a flex spacer: the spacer collapsed inside the
-          wrap container, so the auto-refresh control landed somewhere different at every
-          width and the toolbar grew to six rows before any graph was visible. */}
+      {/* A grid, not a wrapping row: a flex spacer collapses inside a wrap container. */}
       <div className="toolbar graph-toolbar">
         <div className="gt-filters">
           <label className="field">
             view
             <select value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
-              {/* The one-line explanation of each mode lives in the inspector's Modes
-                  section, so these stay short enough not to set the column width. */}
+              {/* Keep these short; the inspector's Modes section explains each one. */}
               <option value="explore">Explore</option>
               <option value="teach">Teach</option>
             </select>
@@ -846,10 +766,6 @@ function Graph() {
         <div className="gt-status">
           <button onClick={() => void load()} aria-disabled={loading}>reload</button>
           {loading && graph && <Busy label="refreshing" clock={false} />}
-          {/* "live" said nothing about what it did. It watches for changes made elsewhere
-              — an expansion finishing, a lesson or an assessment moving mastery — and
-              redraws when it finds one. Naming the behaviour, and showing when it last
-              fired, explains it better than a tooltip nobody hovers. */}
           <span className={live ? "live" : "live off"} title={
             live
               ? "Checks every 3s for changes made elsewhere — a graph expansion finishing, " +
@@ -930,8 +846,7 @@ function Graph() {
         <div className="graph-wrap">
           <div className="canvas" ref={canvasRef} onKeyDown={onCanvasKeyDown}>
             {!graph ? (
-              // "We have not asked yet" is a different claim from "there is nothing here",
-              // and this page used to render the same blank grid for both.
+              // Loading and empty must not look the same.
               <div className="canvas-loading" aria-busy="true">
                 <div className="skeleton canvas-skeleton" />
                 <Busy label="loading the graph" block />
@@ -960,9 +875,7 @@ function Graph() {
             ) : (
               <>
                 {focusNode && (
-                  // The hop-depth select used to render only on the focused node's own
-                  // panel, so a focus became unsteerable after the first hop — and the
-                  // button on the next node still read "Focus neighbourhood".
+                  // The focus bar renders for any selection, not just the focused node.
                   <div className="focus-bar panel panel--tight">
                     <span className="eyebrow">focused on</span>
                     <strong className="focus-name">{focusNode.name}</strong>
@@ -992,17 +905,10 @@ function Graph() {
                   onNodeClick={(_, n) => hopTo(n.id)}
                   onEdgeClick={(_, e) => setSelection({ kind: "edge", id: e.id })}
                   onPaneClick={() => { setSelection(null); setTrail([]); }}
-                  // This graph is authored by the model, so nothing here is editable by
-                  // dragging. Draggable nodes meant every orb carried react-flow's `nopan`
-                  // class (dragging a 130px orb refused to pan the canvas), both invisible
-                  // handles took a crosshair cursor and offered a connection the app has
-                  // no endpoint to accept, arrow keys translated positions instead of
-                  // traversing, and the one assertive announcement the DAG ever made was a
-                  // false "Moved selected node left" about a change that did not happen.
+                  // The graph is model-authored, so nothing on the canvas is editable.
                   nodesDraggable={false}
                   nodesConnectable={false}
-                  // ~50 unlabelled tab stops. The dependency structure is reachable as
-                  // text through the inspector's Requires and Unlocks buttons instead.
+                  // Edges would be unlabelled tab stops; the inspector exposes them as text.
                   edgesFocusable={false}
                   deleteKeyCode={null}
                   fitView
@@ -1024,8 +930,7 @@ function Graph() {
               </>
             )}
           </div>
-          {/* Rendered whether or not the graph has arrived, so the canvas does not resize
-              under the pointer the moment the first response lands. */}
+          {/* Always rendered so the canvas does not resize when the first response lands. */}
           <aside className="inspector" ref={inspectorRef} aria-label="concept detail">
             {graph ? (
               <Inspector
@@ -1069,20 +974,15 @@ function toFlowEdge(e: GraphEdge, dim: boolean, sourceName: string, targetName: 
     id: e.id,
     source: e.source,
     target: e.target,
-    // Clickable and thick enough to hit — an unclickable edge hides the failure mode,
-    // which is the most useful thing on it.
     interactionWidth: 18,
     // Names, not ids: the generated description was a pair of uuids.
     ariaLabel: `${sourceName} is a ${e.strength} prerequisite of ${targetName}`,
     focusable: false,
-    // Direction was completely invisible before this: a prerequisite graph drawn
-    // without arrowheads cannot be read at all.
     markerEnd: {
       type: MarkerType.ArrowClosed,
       width: 16,
       height: 16,
-      // Deliberately higher contrast than the line: the arrowhead is what carries
-      // direction, and direction is the thing that was unreadable before.
+      // Higher contrast than the line; the arrowhead carries direction.
       color: e.provisional ? "var(--accent)" : "var(--ink-soft)",
     },
     style: {

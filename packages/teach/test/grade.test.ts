@@ -2,15 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { CompletionRequest, LLMProvider } from "@kg/llm";
 import { gradeResponse } from "../src/grade.js";
 
-/**
- * The grader receives the item's code, not just its prompt.
- *
- * Items store code in its own field so it renders as a block instead of one joined line.
- * The grading path never reassembled the two, so a question about four functions reached
- * the grader with no functions in it — and the grader said exactly that: "I cannot see
- * the functions a, b, c, and d". A learner who had answered correctly was recorded as a
- * failed check.
- */
+/** The grader must receive the item's code, not just its prompt. */
 describe("gradeResponse", () => {
   /** Records exactly what the grader was asked, which is the thing under test. */
   const capture = () => {

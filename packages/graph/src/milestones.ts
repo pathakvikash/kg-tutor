@@ -2,19 +2,7 @@ import { z } from "zod";
 import type { PrismaClient } from "@kg/db";
 import { completeJson, type LLMProvider } from "@kg/llm";
 
-/**
- * Capability claims for a topic, written after its concepts exist.
- *
- * MilestoneTemplate rows were only ever produced by the seed script, so every topic a
- * learner expanded themselves had none — and `attachMilestones` reads templates, so
- * their roadmap rendered as one flat list of every concept. Data Structures came out at
- * 37. The Roadmap component groups by milestone precisely because "a flat list of
- * nineteen concepts reads as a wall", and nothing was grouping.
- *
- * A milestone is not a heading over some concepts. It is the thing the learner can do
- * once they hold them, stated so they could check it themselves — which is what makes it
- * worth finishing, and what makes "2 of 4" mean something.
- */
+/** A milestone is what the learner can do once they hold a group of concepts, not a heading. */
 
 const milestoneSchema = z.object({
   milestones: z
@@ -58,10 +46,7 @@ export interface MilestoneReport {
   rejected: { claim: string; reason: string }[];
 }
 
-/**
- * Writes capability claims for a topic. Idempotent: a topic that already has templates
- * is left alone, so re-expanding does not duplicate them.
- */
+/** Idempotent: a topic that already has templates is left alone. */
 export async function generateMilestones(
   prisma: PrismaClient,
   llm: LLMProvider,
@@ -108,9 +93,7 @@ export async function generateMilestones(
       .filter((c): c is NonNullable<typeof c> => Boolean(c));
     const unique = [...new Map(matched.map((c) => [c.id, c])).values()];
 
-    // A claim resting on one concept is that concept. A claim resting on none is a
-    // hallucinated group, and attaching it would hand out a completion for nothing —
-    // which is the malformed case `trimMilestone` already refuses to attach.
+    // A claim resting on one concept is that concept, and one resting on none is invented.
     if (unique.length < 2) {
       report.rejected.push({
         claim: m.claim,

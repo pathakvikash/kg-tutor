@@ -3,12 +3,7 @@ import type { PrismaClient } from "@kg/db";
 import { DEFAULT_THRESHOLDS, checkFailureMode, type Thresholds } from "@kg/shared";
 import { evaluateClaim, type ControlledClaim } from "./control.js";
 
-/**
- * Promotion is tiered by blast radius, not by one global threshold. (11)
- *
- * `auto` changes are local and self-correcting. `review` changes alter what every
- * future learner is taught, permanently, and never happen without a human.
- */
+/** Tiered by blast radius: `auto` is local and self-correcting, `review` needs a human. (11) */
 export type PromotionTier = "auto" | "review";
 
 export function tierFor(kind: string): PromotionTier {
@@ -30,13 +25,7 @@ export interface MissingEdgeCandidate {
   misconceptions: number;
 }
 
-/**
- * Finds edges the graph does not have but learners keep behaving as though it should.
- *
- * A spontaneous prerequisite request is the cleanest signal available: the learner named
- * their own gap while attempting the target, so it carries none of the selection
- * confound the control arm exists to handle. (19)
- */
+/** Finds absent edges learners behave as though exist; a spontaneous request has no selection confound. (19) */
 export async function findMissingEdgeCandidates(
   prisma: PrismaClient,
 ): Promise<MissingEdgeCandidate[]> {
@@ -81,10 +70,7 @@ export interface ProposalResult {
   created: boolean;
 }
 
-/**
- * Turns a candidate into a reviewable proposal, with the full evidence packet attached.
- * Never writes an edge — a structural change is a proposal, always. (11)
- */
+/** Writes a proposal with its evidence packet, never an edge; structural changes are proposals. (11) */
 export async function proposeNewHardEdge(
   prisma: PrismaClient,
   candidate: MissingEdgeCandidate,
@@ -142,11 +128,7 @@ export async function proposeNewHardEdge(
   return { proposalId: proposal.id, claim, created: true };
 }
 
-/**
- * Applies an approved proposal. Promoted edges stay `provisional` and carry the packet
- * that promoted them, because reversal has to be a normal operation rather than an
- * incident — this is observational inference and some of it will be wrong. (11)
- */
+/** Promoted edges stay `provisional` and keep their packet, so reversal stays routine. (11) */
 export async function applyProposal(
   prisma: PrismaClient,
   proposalId: string,
@@ -161,16 +143,7 @@ export async function applyProposal(
     prisma.concept.findUnique({ where: { id: p.srcId } }),
     prisma.concept.findUnique({ where: { id: p.dstId } }),
   ]);
-  /**
-   * Both ends must still be live concepts.
-   *
-   * findUniqueOrThrow already stopped an edge being written against a deleted row, but
-   * it said nothing about deprecation — and a compound concept that has since been split
-   * is deprecated, not deleted. So a proposal raised before the split would still apply
-   * cleanly and write a hard edge onto a node the planner and the resolver both ignore:
-   * an edge that exists, claims a prerequisite, and can never be reached. Proposals can
-   * sit open for a long time, which is exactly how they outlive their own endpoints.
-   */
+  // Both ends must still be live; an open proposal can outlive the concepts it names.
   const dead = [
     !src ? "the source concept no longer exists" : null,
     !dst ? "the target concept no longer exists" : null,

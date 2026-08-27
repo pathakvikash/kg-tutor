@@ -21,13 +21,7 @@ export interface GraphReuse {
   reuseRate: number;
 }
 
-/**
- * The earliest and cheapest falsification signal for the whole premise. (14)
- *
- * If the second topic expanded creates 95% new nodes, the shared graph is not being
- * shared and that shows up in week one rather than month twelve. Worth watching before
- * the teaching loop even works.
- */
+/** The earliest and cheapest falsification signal for the shared-graph premise. (14) */
 export async function graphReuseRate(prisma: PrismaClient, w: Window = {}): Promise<GraphReuse> {
   const where = { outcome: { not: null }, ...(w.from || w.to ? { createdAt: range(w) } : {}) };
   const [bound, created] = await Promise.all([
@@ -71,14 +65,7 @@ export interface WastedTeaching {
   wasteRate: number;
 }
 
-/**
- * What assessment plus planning is supposed to buy over a chatbot that starts from
- * scratch every session. (14)
- *
- * Both halves matter and they pull in opposite directions: teaching what they knew is
- * wasted time, teaching before they were ready is wasted effort, and a system can only
- * look good on one by being bad at the other.
- */
+/** Read both halves together: a system can look good on one by being bad at the other. (14) */
 export async function wastedTeaching(
   prisma: PrismaClient,
   learnerId?: string,
@@ -122,10 +109,7 @@ export interface PersistenceResult {
   persistenceRate: number;
 }
 
-/**
- * Does a learner returning after a break get placed correctly? The baseline tutor has
- * no answer here at all, which makes this the clearest structural advantage. (14)
- */
+/** Whether a learner returning after a break is still placed correctly. (14) */
 export async function crossSessionPersistence(
   prisma: PrismaClient,
   minGapDays = 7,
@@ -166,12 +150,7 @@ export interface OutcomeCost {
   byPurpose: { purpose: string; costUsd: number; calls: number }[];
 }
 
-/**
- * Cost per verified outcome, not cost per hour. (17)
- *
- * The hypothesis under test is that this falls as the graph, item bank and explanation
- * library accumulate, while the baseline arm holds flat forever.
- */
+/** Cost per verified outcome, not per hour; expected to fall as the graph accumulates. (17) */
 export async function costPerOutcome(
   prisma: PrismaClient,
   w: Window = {},

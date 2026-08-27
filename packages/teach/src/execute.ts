@@ -25,18 +25,7 @@ function clip(s: string): string {
   return s.length > MAX_OUTPUT ? `${s.slice(0, MAX_OUTPUT)}\n…output truncated` : s;
 }
 
-/**
- * Runs learner code so `functional` and `solid` mean "did it correctly" rather than
- * "described it correctly". Without this the loop measures verbalization, and every
- * downstream mechanism inherits that weakness. (16)
- *
- * SECURITY: this is an isolation measure, not a sandbox. It uses a fresh temp
- * directory, a stripped environment, no stdin, a hard timeout and a killed process
- * group — enough to stop runaway loops and accidental damage. It does NOT stop
- * deliberately hostile code: a child process can still reach the filesystem and the
- * network. Before running code from untrusted learners this must move behind a real
- * boundary (container, VM, or a JS isolate with no host bindings).
- */
+/** Isolation, not a sandbox: hostile code still reaches the filesystem and the network. (16) */
 export async function executeJs(req: ExecuteRequest): Promise<ExecuteResult> {
   const timeoutMs = req.timeoutMs ?? 5_000;
   const dir = await mkdtemp(join(tmpdir(), "kg-exec-"));

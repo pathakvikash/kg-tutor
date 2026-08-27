@@ -1,13 +1,4 @@
-/**
- * Seeds a small, real JavaScript graph through the resolver — same write path as a live
- * expansion, so nothing here bypasses dedup, the failure-mode rule or acyclicity.
- *
- * Exists because the UI is unusable against an empty database, and no model key is
- * configured on this machine. The concepts and failure modes are hand-written, not
- * generated: they are seed data, not evidence of what a model would produce.
- *
- *   pnpm --filter @kg/api seed
- */
+/** Seeds a small JavaScript graph through the resolver: pnpm --filter @kg/api seed. */
 import { db } from "@kg/db";
 import { DeterministicEmbedding, proposeConcept, proposeEdge } from "@kg/graph";
 import type { Adjudicator } from "@kg/graph";
@@ -128,8 +119,7 @@ async function main(): Promise<void> {
       where: { topicId: topic.id, claim },
       include: { concepts: true },
     });
-    // Re-seeding used to skip an existing template entirely, so a template whose
-    // concepts had been cascaded away by a Concept delete stayed permanently empty.
+    // An existing template is refilled, not skipped: its concepts may have been cascaded away.
     const t =
       existing ??
       (await prisma.milestoneTemplate.create({

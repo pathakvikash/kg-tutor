@@ -4,14 +4,7 @@ import { Busy } from "./Busy";
 import { Markdown } from "./Markdown";
 import { DEPTH_LABEL } from "../vocabulary";
 
-/**
- * Builds the learner has walked away from.
- *
- * There is no cancel endpoint, so the job carries on server-side; what this stops is the
- * reattachment pulling them back into a build they abandoned — which after a reload
- * could mean the old topic instead of the one they just started. Session-scoped, and a
- * blocked storage just means the reattachment behaves as it did before.
- */
+// No cancel endpoint exists; this only stops reattaching to an abandoned build.
 const DISMISSED_BUILDS = "kg.dismissedBuilds";
 
 function dismissedBuilds(): string[] {
@@ -34,14 +27,7 @@ function dismissBuild(id: string): void {
   } catch { /* nothing to remember it in */ }
 }
 
-/**
- * The initial assessment, conversational. (07)
- *
- * Three things are asked, not probed — goal, depth and what they already know are not
- * knowledge and cannot be tested. Everything after is a handful of binary-search
- * probes, capped, because the objective is a defensible first step and not an accurate
- * model of the learner.
- */
+/** The initial assessment. Probes are capped: the goal is a defensible first step. (07) */
 export function Intake({
   learnerId, topics, onComplete, onCancel, initialGoal = null,
 }: {
@@ -60,14 +46,7 @@ export function Intake({
   const [buildQueue, setBuildQueue] = useState<string[]>([]);
   const [resumedFrom, setResumed] = useState<{ topic: string | null; depth: string } | null>(null);
   const [topicId, setTopicId] = useState("");
-  /**
-   * The topic list this component actually chooses from.
-   *
-   * It rendered the `topics` prop, which the parent fetched on mount, while `topicId`
-   * came from a list fetched after a build that can run for nineteen minutes. So the
-   * just-built topic was selected and unlisted: the field looked blank or showed the
-   * wrong subject, and touching it discarded the build.
-   */
+  // Held in state, not read from the prop, which is stale once a build finishes.
   const [topicList, setTopicList] = useState<any[]>(topics);
   const [depth, setDepth] = useState("use");
   const [goalText, setGoalText] = useState("");
@@ -97,10 +76,7 @@ export function Intake({
     } catch { return null; }
   };
 
-  /**
-   * Pick up an assessment that was interrupted. The rows survived a refresh all along;
-   * without this the UI silently restarted a half-finished assessment from question one.
-   */
+  // Resume an interrupted assessment instead of restarting from question one.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -115,15 +91,7 @@ export function Intake({
         }
       } catch { /* fall through to the expansion check */ }
 
-      /**
-       * Nothing to resume, so look for a graph build still running.
-       *
-       * Expansion takes minutes — nineteen of them for "Data Structures" — and the job
-       * id lived only in this component's state. A reload during the build orphaned it:
-       * the work carried on server-side, finished, and nothing was listening. A learner
-       * who asked for a roadmap got no roadmap and no sign anything had happened, which
-       * is the same failure as an interrupted assessment and needs the same answer.
-       */
+      // A build outlives a reload, so reattach to it instead of orphaning the job.
       try {
         const jobs = await api.expansions();
         if (cancelled) return;
@@ -138,11 +106,7 @@ export function Intake({
     return () => { cancelled = true; };
   }, [learnerId]);
 
-  /**
-   * Free text in, a plan out. A goal is resolved to a topic, anything missing is built,
-   * and only then does probing start — so "I want to master backend development" works
-   * even when the graph has never heard of it.
-   */
+  // Free text in, a plan out: resolve, build what is missing, then probe.
   const resolve = async () => {
     setBusy("working out what that means"); setError(null);
     try {
@@ -182,9 +146,7 @@ export function Intake({
     finally { setBusy(null); }
   };
 
-  /* Derived, rather than set from inside the setPollFails updater: StrictMode
-     double-invokes updaters, and an impure one stops being harmless the moment a second
-     piece of state depends on it. */
+  /* Derived here because StrictMode double-invokes state updaters. */
   useEffect(() => { if (pollFails >= 5) setLostContact(true); }, [pollFails]);
 
   const startBuilding = () => {
@@ -193,16 +155,14 @@ export function Intake({
 
   // Build topics one at a time; each expansion is minutes of model calls.
   useEffect(() => {
-    // A failed job stops the clock: it has nothing left to report, and re-setting the
-    // same error every 1.2s only re-renders the page under the learner.
+    // A failed job stops the clock; it has nothing left to report.
     if (stage !== "building" || !job || lostContact || job.status === "failed") return;
     const timer = setInterval(async () => {
       try {
         const j = await api.expansion(job.id);
         setPollFails(0);
         setJob(j);
-        // A failed build stays here with the goal text intact and a retry, rather than
-        // dumping the learner back on an empty form having lost what they asked for.
+        // A failed build stays on this stage, so the goal text survives.
         if (j.status === "failed") { setError(j.error ?? "the build failed"); return; }
         if (j.status !== "done") return;
 
@@ -216,10 +176,7 @@ export function Intake({
         if (id) setTopicId(id);
         setStage("goal");
       } catch (e) {
-        // A 404 means this job is gone, not slow, and is a verdict on its own. Anything
-        // else only becomes one after a run of them: a frozen progress bar at 5% forever
-        // is the one outcome the learner cannot act on, so count the misses and
-        // eventually say so.
+        // A 404 means the job is gone; anything else only counts after a run of them.
         const fatal = e instanceof HttpError && e.isMissing;
         setPollFails((n) => n + 1);
         if (fatal) setLostContact(true);
@@ -230,8 +187,7 @@ export function Intake({
 
   const retryBuild = async () => {
     if (!job) return;
-    // Cleared here, not only on success: the reason the last attempt failed is not the
-    // reason this one is running.
+    // Cleared on start, not only on success.
     setBusy("restarting the build"); setError(null);
     try {
       const j = await api.retryExpansion(job.id);
@@ -243,9 +199,7 @@ export function Intake({
 
   /** Back to the goal box with the text still in it. */
   const startOver = () => {
-    // The build itself cannot be called off from here, so at least stop it claiming the
-    // learner again: without this, the next mount or reload reattached to the very job
-    // they just said was not what they meant.
+    // The build cannot be cancelled, so at least stop it reattaching.
     if (job?.id) dismissBuild(job.id);
     setStage("ask"); setJob(null); setBuildQueue([]); setResolved(null);
     setError(null); setPollFails(0); setLostContact(false);
@@ -269,13 +223,9 @@ export function Intake({
     try {
       const r = await api.answerIntake(session.intakeId, text);
       setSession(r);
-      // The answer is only cleared once it has actually been recorded. It used to be
-      // wiped before the await, so a failed request took the learner's writing with it.
+      // Cleared only once recorded, so a failed request keeps the learner's text.
       setAnswer("");
-      // Deliberately NOT calling onComplete() here. The parent hides this component when
-      // it fires, so doing both in one tick unmounted the summary before it rendered:
-      // the learner submitted a final answer and landed back on the lesson page having
-      // been told nothing. "Start learning" is what finishes the assessment now.
+      // onComplete() belongs to "Start learning": the parent unmounts this on it.
       if (r.status === "complete") setStage("done");
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(null); }
@@ -331,9 +281,7 @@ export function Intake({
   if (stage === "building") {
     const report = job?.report ?? {};
     const events: { kind: string; name: string; detail: string }[] = report.events ?? [];
-    // Newest first, and keyed by what the event IS rather than where it sits. Keyed on
-    // the reversed index, every row's key changed on every poll, so all 40 remounted and
-    // the entry animation replayed two or three times a second — nothing could be read.
+    // Newest first, keyed by content: a reversed index changes key on every poll.
     const recent = [...events].reverse().slice(0, 40);
     const failed = job?.status === "failed";
 
@@ -347,8 +295,7 @@ export function Intake({
         </p>
 
         {pollFails > 1 && !lostContact && (
-          // Said before it becomes a verdict: a frozen bar with no explanation is what
-          // made a lost build indistinguishable from a slow one.
+          // Said before it becomes a verdict, so a slow build is not read as a lost one.
           <p className="muted build-hint" role="status">
             Not hearing back from the build — still asking.
           </p>
@@ -361,9 +308,7 @@ export function Intake({
               It stopped answering. The work may still be running server-side, or the job
               may be gone — either way nothing more will appear here on its own.
             </p>
-            {/* A lost job is exactly the case where the retry 404s too, and this block
-                rendered no error at all: the button cleared its spinner, nothing changed,
-                and no reason was given. */}
+            {/* The retry can 404 too, so its own failure needs somewhere to show. */}
             {error && (
               <p className="retry-failed">
                 <strong>That retry did not take:</strong> {error}
@@ -480,8 +425,7 @@ export function Intake({
           </select>
         </label>
 
-        {/* A fieldset, not a <label> around three <button>s: <button> is labelable, so
-            clicking "How deeply?" activated the first option. */}
+        {/* A fieldset, not a label: <button> is labelable and would be activated. */}
         <fieldset className="intake-field depth-set">
           <legend>How deeply?</legend>
           <div className="depth-choice">
@@ -569,24 +513,18 @@ export function Intake({
           </div>
         )}
         {session.lastAnswer && (
-          /* An assessment that never says what it made of an answer reads as a form,
-             not a diagnosis. Framed as a finding rather than a mark: being wrong here
-             is the signal the binary search is looking for, not a failure. */
+          /* Framed as a finding, not a mark: a wrong answer is the signal here. */
           <div className={session.lastAnswer.correct ? "verdict ok" : "verdict gap"}>
             <strong>
               {session.lastAnswer.correct
                 ? `${session.lastAnswer.conceptName} — solid.`
                 : `${session.lastAnswer.conceptName} — not yet.`}
             </strong>{" "}
-            {/* The grader writes markdown — backticked identifiers, bold, sometimes a
-                list. Rendered as plain text it arrived with the punctuation showing. */}
+            {/* The grader writes markdown, so this must not render as plain text. */}
             <span className="verdict-why"><Markdown text={session.lastAnswer.reasoning} /></span>
           </div>
         )}
         {roadmap && (
-          /* The learner asked for a roadmap and then met a run of questions. Saying the
-             roadmap already exists, and what these questions are for, is the difference
-             between an assessment and an unexplained quiz. */
           <p className="muted probe-hint">
             Your roadmap is built — <b>{roadmap.steps}</b> concepts
             {roadmap.milestones > 0 ? ` across ${roadmap.milestones} milestones` : ""}. These
@@ -604,8 +542,6 @@ export function Intake({
         <p className="muted">{session.question.why}</p>
         <div className="bubble probe-prompt">
           <Markdown text={session.question.prompt} />
-          {/* Rendered as raw text before, so a question about a snippet arrived as one
-              unreadable line — the same paragraph-joining problem as the lesson. */}
           {session.question.code && (
             <Markdown
               text={`\`\`\`${session.question.codeLanguage ?? ""}\n${session.question.code}\n\`\`\``}

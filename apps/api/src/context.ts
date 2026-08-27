@@ -15,11 +15,7 @@ export interface ModelSettings {
 
 const SETTING_KEY = "model";
 
-/**
- * Runtime model selection. Reading it from env alone means changing model requires
- * editing a file and restarting, which is not a thing anyone should have to do to try
- * a different tier. A stored setting overrides env; env remains the default.
- */
+/** A stored setting overrides env, so switching model needs no restart. */
 export async function loadModelSettings(): Promise<ModelSettings> {
   const row = await prisma.appSetting.findUnique({ where: { key: SETTING_KEY } });
   if (row) return row.value as unknown as ModelSettings;
@@ -75,8 +71,7 @@ export function getLlm(): LLMProvider | null {
   if (llm === undefined) {
     llm = settingsCache ? buildFromSettings(settingsCache) : llmFromEnv();
     if (llm) {
-      // Every call is costed, so `cost per verified outcome` is measured rather than
-      // assumed. Writes are fire-and-forget: a metrics failure must not fail a lesson.
+      // Writes are fire-and-forget: a metrics failure must not fail a lesson.
       llm.onUsage = (usage, req) => {
         void prisma.usageRecord
           .create({
@@ -105,8 +100,7 @@ function purposeOf(system: string): string {
   if (system.includes("classify a learner")) return "route_chat";
   if (system.includes("write assessment items")) return "generate_items";
   if (system.includes("excellent tutor")) return "baseline_turn";
-  // These four were a fifth of all spend, filed as "other" — so the most expensive
-  // single purpose in the system was invisible to the very report meant to find it.
+  // An unmatched prompt is filed as "other", so keep this list in step with the prompts.
   if (system.includes("You explain one concept")) return "explain";
   if (system.includes("Answer the learner's question")) return "answer_chat";
   if (system.includes("capabilities a learner gains")) return "milestones";

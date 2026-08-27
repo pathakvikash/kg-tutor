@@ -192,12 +192,7 @@ describe("proposals", () => {
     expect(after.retiredReason).toBe("effect did not hold");
   });
 
-  /**
-   * A proposal can sit open for a long time, which is how it outlives its own endpoints.
-   * Deprecation is the case findUniqueOrThrow never covered: a compound concept that has
-   * since been split still has a row, so the edge applied cleanly onto a node that both
-   * the planner and the resolver ignore — a hard prerequisite nothing could ever reach.
-   */
+  /** A deprecated concept still has a row, so findUniqueOrThrow does not catch this. */
   it("refuses to approve a proposal whose endpoint has since been deprecated", async () => {
     const s = await passingScenario();
     const [candidate] = await findMissingEdgeCandidates(prisma);

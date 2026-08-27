@@ -33,13 +33,7 @@ reach it. Real subjects that can be taught, not phases of a career.
 Respond with JSON: {"kind","canonicalName","description","depth","components"}`;
 
 export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
-  /**
-   * The front door: free text in, a structured goal out. (08)
-   *
-   * Without this the only way in was a dropdown of topics that already existed, which
-   * meant a learner could never ask for something the graph had not already been told
-   * about — the opposite of the premise.
-   */
+  /** The front door: free text in, a structured goal out. (08) */
   app.post("/api/roadmap/resolve", async (req, reply) => {
     const body = z.object({ goal: z.string().min(2) }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
@@ -53,8 +47,7 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
       resolveSchema,
     );
 
-    // An existing topic is reused rather than duplicated — same principle as the
-    // concept resolver, one level up.
+    // An existing topic is reused rather than duplicated, as with the concept resolver.
     const existing = await prisma.topic.findFirst({
       where: { name: { equals: parsed.canonicalName, mode: "insensitive" } },
       include: { _count: { select: { concepts: true } } },
@@ -69,10 +62,7 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  /**
-   * An outcome goal decomposes into subjects, each of which is a topic in its own
-   * right. "Backend Development" is not itself teachable; the things it contains are.
-   */
+  /** An outcome decomposes into subjects; the outcome itself is not teachable. */
   app.post("/api/roadmap/outcome", async (req, reply) => {
     const body = z
       .object({
@@ -102,14 +92,10 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
     return { outcome: { id: outcome.id, name: outcome.name }, components };
   });
 
-  /**
-   * Everything a learner would call a roadmap: the ordered path, the milestones, and
-   * what is already behind them.
-   */
+  /** The ordered path, the milestones, and what is already behind the learner. */
   app.get("/api/roadmap/:learnerId", async (req, reply) => {
     const { learnerId } = req.params as { learnerId: string };
-    // Mastery reached outside a lesson still completes a step. Reconciling on read is
-    // what stops the header disagreeing with the rows directly beneath it.
+    // Mastery reached outside a lesson still completes a step, so reconcile on read.
     await reconcilePlan(prisma, learnerId);
     const plan = await prisma.plan.findFirst({
       where: activePlanWhere(learnerId),

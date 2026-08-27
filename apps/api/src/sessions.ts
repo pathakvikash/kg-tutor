@@ -1,23 +1,7 @@
 import { assignVariant } from "@kg/teach";
 import { prisma } from "./context.js";
 
-/**
- * Session and transcript writes, shared by every route that produces a turn.
- *
- * These lived inside the lesson routes, so the grading endpoint — which is in a
- * different file — had no way to record anything. It recorded nothing: not the learner's
- * answer, not the verdict. The client pushed both into local state, then refreshed from
- * the transcript, and the screen reverted to the moment before the answer was given.
- */
-/**
- * A lesson and a review pass are different activities that both write turns.
- *
- * This returned the newest un-ended session whatever it was for, so a review question
- * was written into the open lesson transcript — appearing under concepts the lesson had
- * never covered — and the lesson's "has anything been answered since the last question?"
- * scan could read a review answer as the reply to its own pending check. Scoping by kind
- * keeps them apart without ending either one.
- */
+/** Lesson and review are separate activities, so an open session is scoped by kind. */
 export type SessionKind = "lesson" | "review";
 
 export async function openSession(

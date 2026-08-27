@@ -41,28 +41,14 @@ type Feedback = {
 
 const NONE = "none";
 
-/**
- * Fallback per-provider defaults.
- *
- * The tiers were assigned positionally — models[0] and models[length - 1] — so picking a
- * provider promoted the strong tier to the most expensive entry in its catalogue, and did
- * it again every time you glanced at another provider and came back. The route now sends
- * defaultSmall/defaultStrong and those win; this map only covers an older API.
- */
+/** Fallback defaults; the route's defaultSmall/defaultStrong win when it sends them. */
 const DEFAULTS: Record<string, { small: string; strong: string }> = {
   "claude-code": { small: "haiku", strong: "sonnet" },
   anthropic: { small: "claude-haiku-4-5-20251001", strong: "claude-sonnet-5" },
   openai: { small: "gpt-4o-mini", strong: "gpt-4o" },
 };
 
-/**
- * What to actually do about a provider that saved but did not load.
- *
- * The route's own 422 remedy wins over these. They stay as the fallback for an API build
- * that sends `error` alone, since a bare problem statement names neither the variable nor
- * the restart — and the restart is required, the key being read when the provider is
- * constructed.
- */
+/** Fallback only: the route's own 422 remedy wins when it sends one. */
 const REMEDY: Record<string, string> = {
   anthropic:
     "Set ANTHROPIC_API_KEY in the API's environment and restart it — e.g. ANTHROPIC_API_KEY=… pnpm dev. " +
@@ -102,13 +88,7 @@ function describe(e: unknown): { title: string; remedy: string | null } {
   };
 }
 
-/**
- * The provider's own name string, "anthropic:small/strong".
- *
- * It is the only evidence of what the running process actually constructed, which is a
- * different claim from what is on disk — and the two disagree in exactly the case this
- * page exists to repair.
- */
+/** The live name string is the only evidence of what the process actually constructed. */
 function parseLive(llm: string | null): Tiers | null {
   if (!llm) return null;
   const [provider = "", models = ""] = llm.split(":");
@@ -116,14 +96,7 @@ function parseLive(llm: string | null): Tiers | null {
   return { provider, small, strong };
 }
 
-/**
- * The server's "no model configured — … return 503" caveat, dropped everywhere.
- *
- * Every branch that renders caveats renders it while status.llm is null, and
- * providerStatus() always emits that line then — so it would repeat, in a phrasing that
- * names an HTTP status the learner never sees, whatever the notice above it already says
- * in plain terms.
- */
+/** Drops the "no model configured" caveat, which the notices above already state. */
 function otherCaveats(caveats?: string[]): string[] {
   return (caveats ?? []).filter((c) => !c.startsWith("no model configured"));
 }
@@ -151,13 +124,7 @@ function StateRow({
   );
 }
 
-/**
- * Where the model configuration is repaired.
- *
- * Ordered status-first: the page is reached from a badge reading "no model — click to
- * set", so what the API is running on is the reason anyone is here. The form is second,
- * and the two-tier rationale — worth keeping — is third, behind a disclosure.
- */
+/** Ordered status first: the page is reached from a badge saying no model is set. */
 export function SettingsPage() {
   const [data, setData] = useState<Settings | null>(null);
   /** Distinct from `data === null`: "we have not asked yet" is not "the read failed". */
@@ -169,8 +136,7 @@ export function SettingsPage() {
   const [freeform, setFreeform] = useState({ small: false, strong: false });
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  /** Tiers chosen for a provider the user then navigated away from, so coming back
-      restores that edit rather than resetting it. */
+  /** Per-provider tier edits, so returning to a provider restores that edit. */
   const drafts = useRef<Record<string, { small: string; strong: string }>>({});
   const [learnerId] = useLearner();
   const [learners, setLearners] = useState<any[] | "loading" | "failed">("loading");
@@ -200,8 +166,7 @@ export function SettingsPage() {
   }, [busy, load]);
 
   useEffect(() => {
-    // Without a failure path the page that exists to repair a broken model configuration
-    // showed "Loading…" for ever, exactly when the backend is the broken thing.
+    // Without a failure path a dead API leaves this page loading for ever.
     void (async () => {
       try {
         await load();
@@ -227,9 +192,7 @@ export function SettingsPage() {
   };
 
   const tiersFor = (next: string): { small: string; strong: string } => {
-    // What the user last had for this provider wins, then what is on disk. Either way an
-    // environment-pinned id survives a look at another provider rather than being
-    // silently overwritten by a positional default.
+    // A remembered edit wins over disk, so an env-pinned id survives a browse.
     const remembered = drafts.current[next];
     if (remembered) return remembered;
     if (data && next === data.current.provider) {
@@ -272,8 +235,7 @@ export function SettingsPage() {
       };
     }
     if (!fresh.status.llm) {
-      // A 2xx is not evidence of a working model, so the copy must not promise one:
-      // "no restart needed" is only true when a provider actually came back.
+      // A 2xx is not evidence of a working model, so the copy must not promise one.
       return {
         kind: "partial",
         title: "Saved, but not usable yet.",
@@ -290,9 +252,7 @@ export function SettingsPage() {
   };
 
   const save = async () => {
-    // aria-disabled plus an early return, not disabled: disabling the control that was
-    // just pressed blurs focus to <body>. The early return is what stops a no-op from
-    // reporting success against a form nobody changed.
+    // aria-disabled rather than disabled: disabling the pressed control drops focus to body.
     if (busy || !dirty) return;
     setBusy(true);
     setFeedback(null);
@@ -310,10 +270,7 @@ export function SettingsPage() {
       );
     } catch (e) {
       if (e instanceof HttpError && e.status === 422) {
-        // The route persists first and reports the missing key second, so by the time
-        // this arrives the provider on disk has already changed. Collapsing it into a
-        // failure left the form showing the new provider, the table showing the old one,
-        // and every model route returning 503.
+        // The route persists first, so a 422 means the provider on disk already changed.
         const fresh = await load().catch(() => null);
         setFeedback({
           kind: "partial",
@@ -388,8 +345,7 @@ export function SettingsPage() {
     const models = entry?.models ?? [];
     const savedHere = data.current.provider === provider ? data.current[tier] : "";
     const options = models.map((m) => ({ id: m, label: m }));
-    // A <select> with no matching <option> renders blank, which is how an id pinned
-    // through the environment showed as nothing while the table below printed it.
+    // A select with no matching option renders blank, so pinned and custom ids are added.
     if (savedHere && !models.includes(savedHere)) {
       options.push({ id: savedHere, label: `${savedHere} — from the environment` });
     }
@@ -537,9 +493,7 @@ export function SettingsPage() {
           >
             <div className="set-field">
               <label htmlFor="set-provider">Provider</label>
-              {/* Outside the label on purpose: as part of the accessible name this was
-                  announced on every focus and every change, and clicking the variable
-                  name — the one string anyone wants to copy — opened the dropdown. */}
+              {/* Outside the label so it is not part of the accessible name. */}
               {entry?.note && (
                 <p className="set-hint" id="set-provider-hint">
                   {entry.note}
@@ -587,12 +541,7 @@ export function SettingsPage() {
               </>
             )}
 
-            {/* Two regions, one source of truth. Both exist before anything is put in
-                them — a live region inserted together with its text is not reliably
-                announced, and one that was display:none is worse — and the single
-                `feedback` state makes it impossible for a stale success to sit next to a
-                fresh failure. The wrapper is the flex item, so an empty slot costs one
-                gap rather than two. */}
+            {/* A live region inserted together with its text is not reliably announced. */}
             <div className="set-feedback">
               <div role="status" aria-live="polite" aria-atomic="true">
                 {feedback && feedback.kind !== "error" && (

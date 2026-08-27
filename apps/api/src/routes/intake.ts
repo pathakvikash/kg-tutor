@@ -26,13 +26,7 @@ async function questionFor(
     : null;
 }
 
-/**
- * What the last answer was judged to be, carried into the next response.
- *
- * The grader produces this on every answer and it was being dropped on the floor, so a
- * learner submitted four answers and was told nothing about any of them. Three of the
- * four were wrong, which is exactly the information an assessment exists to surface.
- */
+/** What the last answer was judged to be, carried into the next response. */
 export interface AnswerVerdict {
   conceptName: string;
   correct: boolean;
@@ -61,11 +55,7 @@ async function advance(intakeId: string, lastAnswer?: AnswerVerdict): Promise<un
   }
 
   const concept = await prisma.concept.findUniqueOrThrow({ where: { id: probe.conceptId } });
-  // Deliberately not writing `state` here. `nextProbe` does not modify it, so this was a
-  // read-modify-write of unchanged data — and `advance` runs on the resume GET as well as
-  // after an answer. A GET that read the state before an answer landed would write that
-  // stale copy back on top of it, and the answer vanished: graded, recorded, erased. The
-  // question pointer below is the only thing this path legitimately changes.
+  // Never write state here: a resume GET would put a stale copy over a fresh answer.
   await prisma.intakeSession.update({
     where: { id: intakeId },
     data: { currentConceptId: probe.conceptId, currentItemId: q.itemId },
@@ -84,21 +74,13 @@ async function advance(intakeId: string, lastAnswer?: AnswerVerdict): Promise<un
       prompt: q.prompt,
       code: q.code,
       codeLanguage: q.codeLanguage,
-      // Shown to the learner so a question about something unfamiliar does not feel
-      // arbitrary — the point is to find where knowledge stops, not to catch anyone out.
+      // Shown to the learner so a question about something unfamiliar is not arbitrary.
       why: `Finding where your knowledge stops — this is step ${probe.position + 1} of ${probe.chainLength} in this chain.`,
     },
   };
 }
 
-/**
- * The active goal for this topic and depth, created if it does not exist yet.
- *
- * Shared by start and finish so both plan against the same goal: `buildPlan` supersedes
- * the previous plan for a goal and bumps the version, so reusing it turns the assessment
- * into a *revision* of the roadmap — v1 to v2 with a diff — instead of a second goal
- * with an unrelated plan hanging off it.
- */
+/** Shared by start and finish so both plan against one goal, making the later plan a revision. */
 async function activeGoalFor(
   learnerId: string, topicId: string, depth: "use" | "debug" | "build",
 ): Promise<string> {
@@ -134,8 +116,7 @@ async function finish(intakeId: string): Promise<unknown> {
     intake.learnerId, intake.topicId, intake.depth as "use" | "debug" | "build",
   );
   const plan = await buildPlan({ prisma, learnerId: intake.learnerId, goalId });
-  // The intake just established mastery for concepts nobody will teach. Without this the
-  // fresh plan opens at 0% with half its steps already satisfied.
+  // Reconcile now, or the fresh plan opens with already-satisfied steps still pending.
   await reconcilePlan(prisma, intake.learnerId);
 
   await prisma.intakeSession.update({
@@ -143,8 +124,7 @@ async function finish(intakeId: string): Promise<unknown> {
     data: { status: "complete", currentConceptId: null, currentItemId: null },
   });
 
-  // Named, not counted. "Found 3 concepts you already have" is not a result a learner
-  // can check; "closures, scope, callbacks" is.
+  // Named, not counted: a count is not a result a learner can check.
   const knownIds = beliefs.filter((b) => b.mastery !== "unknown").map((b) => b.conceptId);
   const knownConcepts = await prisma.concept.findMany({
     where: { id: { in: knownIds } },
@@ -202,8 +182,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    // Self-report is recorded as a low-confidence prior. It can redirect probing; it
-    // can never cause a skip. (07)
+    // Self-report is a low-confidence prior: it can redirect probing, never cause a skip. (07)
     if (body.data.alreadyKnow?.trim()) {
       const named = await prisma.concept.findMany({
         where: { id: { in: conceptIds } },
@@ -217,15 +196,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    /**
-     * The roadmap exists before a single question is answered.
-     *
-     * It was only built at the end, so a learner who asked for "a roadmap to master data
-     * structures", waited out several minutes of graph building, and then met a run of
-     * questions had nothing to show for any of it — the thing they asked for did not
-     * exist yet and nothing said so. The graph is what the roadmap needs; the assessment
-     * only decides what to *skip*. So plan now, and let the assessment revise it.
-     */
+    // Plan up front so the roadmap exists from the start; the assessment only revises it.
     const goalId = await activeGoalFor(body.data.learnerId, body.data.topicId, body.data.depth);
     const provisional = await buildPlan({
       prisma, learnerId: body.data.learnerId, goalId,
@@ -270,7 +241,6 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
 
     const grade = await gradeResponse(llm, {
       prompt: item?.prompt ?? "",
-      // The probe's snippet, which was being dropped here too.
       code: item?.code ?? null,
       codeLanguage: item?.codeLanguage ?? null,
       response: body.data.answer,
@@ -304,23 +274,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  /**
-   * Resumes an assessment that was interrupted.
-   *
-   * The IntakeSession row survived a refresh all along; the UI just never looked for
-   * it, so a reload silently restarted a half-finished assessment from the first
-   * question. Progress that is stored but unreachable is not persisted in any sense
-   * the user cares about.
-   */
-  /**
-   * Is there an assessment to pick up, and if so, what is it asking?
-   *
-   * `withQuestion` is off by default because deriving the question is not free: it runs
-   * the probe selection and, when a concept has no usable item, generates a fresh bank
-   * on the strong tier. Two separate components ask this on mount purely to decide
-   * whether to show the assessment at all, and each was paying for a question neither
-   * of them read.
-   */
+  /** Is there an assessment to pick up? withQuestion costs a probe selection, so it is opt-in. */
   app.get("/api/intake/open/:learnerId", async (req) => {
     const { learnerId } = req.params as { learnerId: string };
     const withQuestion = (req.query as { withQuestion?: string }).withQuestion === "1";
@@ -334,8 +288,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     const head = { intake: { id: intake.id, topic: topic?.name ?? null, depth: intake.depth } };
     if (!withQuestion) return { ...head, intakeId: intake.id, status: intake.status };
 
-    // Re-derive the current question rather than trusting a stored one: the item may
-    // have been retired since.
+    // Re-derive the question rather than trust a stored one: the item may have been retired.
     const resumed = await advance(intake.id);
     return { ...head, ...(resumed as object) };
   });
@@ -393,13 +346,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     return { sessionId: id, open: session.endedAt === null, turns };
   });
 
-  /**
-   * Deleting a session removes its transcript, not what was learned from it.
-   *
-   * Evidence rows carry a nullable sessionId precisely so a transcript can be cleared
-   * without rewriting history: mastery was earned, and forgetting the conversation
-   * should not silently un-earn it.
-   */
+  /** Deleting a session clears its transcript; evidence detaches so mastery survives. */
   app.delete("/api/sessions/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const session = await prisma.session.findUnique({ where: { id } });

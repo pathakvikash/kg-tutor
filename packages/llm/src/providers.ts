@@ -108,14 +108,9 @@ const ANTHROPIC_DEFAULTS: TierModels = {
 };
 const OPENAI_DEFAULTS: TierModels = { small: "gpt-4o-mini", strong: "gpt-4o" };
 
-/**
- * Returns null when no key is configured, rather than a mock that silently produces
- * plausible-looking graph content. A fabricated concept is worse than a clear failure.
- */
+/** Returns null with no key configured, never a mock that fabricates graph content. */
 export function llmFromEnv(env: NodeJS.ProcessEnv = process.env): LLMProvider | null {
-  // Explicit opt-in: a developer machine with Claude Code installed can back the whole
-  // system with no API key. See the caveats on ClaudeCodeLLM before trusting any
-  // latency or cost number produced this way.
+  // Explicit opt-in only; see the caveats on ClaudeCodeLLM.
   if (env.LLM_PROVIDER === "claude-code") {
     return new ClaudeCodeLLM({
       ...(env.LLM_MODEL_SMALL || env.LLM_MODEL_STRONG

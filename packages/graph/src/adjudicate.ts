@@ -19,11 +19,7 @@ const rawDecision = z.object({
   reasoning: z.string(),
 });
 
-/**
- * A model asked to pick from a list will occasionally return an id that was not on it.
- * Binding to a hallucinated id would attach a learner's mastery to the wrong concept,
- * so an unknown id is downgraded to `distinct` rather than trusted. (05)
- */
+/** An id that was never offered is downgraded to `distinct` rather than trusted. (05) */
 export function validateDecision(
   raw: unknown,
   candidates: ResolverCandidate[],
@@ -96,10 +92,7 @@ export function buildAdjudicationPrompt(input: AdjudicationInput): string {
   return lines.join("\n");
 }
 
-/**
- * No candidates means nothing to compare against, so no model call is warranted.
- * Adjudication is a narrow structured task and belongs on the small model tier. (17)
- */
+/** No candidates means nothing to compare against, so no model call is warranted. (17) */
 export function trivialDecision(input: AdjudicationInput): ResolverDecision | null {
   if (input.candidates.length === 0) {
     return { verdict: "distinct", relatedConceptId: null, reasoning: "no candidates found" };

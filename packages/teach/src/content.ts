@@ -69,13 +69,7 @@ mid-sentence goes in backticks.
 
 Respond with JSON: {"items":[{"prompt","code","codeLanguage","targetsLevel","requiresTransfer","mustDemonstrate"}]}`;
 
-/**
- * Items are stored, versioned objects on the Concept — not regenerated per learner. (07)
- *
- * Fresh questions every session would make cross-learner statistics impossible, and
- * those statistics are the only way an item bank improves. Generated items enter as
- * candidates and earn `canonical` through use, like everything else.
- */
+/** Items are stored, versioned objects on the Concept, never regenerated per learner. (07) */
 export async function generateItems(
   prisma: PrismaClient,
   llm: LLMProvider,
@@ -87,9 +81,7 @@ export async function generateItems(
     where: { dstId: conceptId, type: "prerequisite_of", strength: "hard", retiredAt: null },
     include: { src: true },
   });
-  // Items are shared across learners, so this cannot come from the learner's goal. It
-  // comes from the topics the concept belongs to, which are shared too — "functions"
-  // under "Asynchronous JavaScript" is a JavaScript item for everyone who reaches it.
+  // Items are shared across learners, so context comes from the topics, not the goal.
   const topics = await prisma.topicConcept.findMany({
     where: { conceptId },
     include: { topic: true },
@@ -107,9 +99,7 @@ export async function generateItems(
           : "",
         // The strongest signal available, and the only one that was missing.
         opts.language ? `Write every item in: ${opts.language}` : "",
-        // Named as the bar, not the subject. Headed "failure modes to probe for", this
-        // list became the topic: a binary-search-tree item came back asking about
-        // shallow-copy aliasing, because that is its prerequisite's failure mode.
+        // Framed as the bar the item must clear, never as its subject.
         prereqs.length > 0
           ? `A learner who has NOT mastered the prerequisites fails in these specific ways.\n` +
             `Write items that such a learner cannot answer — but keep every question about\n` +
@@ -136,8 +126,7 @@ export async function generateItems(
         conceptId,
         prompt: item.prompt,
         code: item.code ?? null,
-        // The requested language wins over whatever the model labelled it, so selection
-        // can rely on the tag actually meaning something.
+        // The requested language wins over the model's label, so the tag stays reliable.
         codeLanguage: item.code ? (opts.language ?? item.codeLanguage ?? null) : null,
         rubric: { mustDemonstrate: item.mustDemonstrate } as Prisma.InputJsonValue,
         targetsLevel: item.targetsLevel as MasteryLevel,
@@ -150,10 +139,6 @@ export async function generateItems(
   return { created };
 }
 
-/**
- * Picks an item for the level being tested. Prefers canonical over candidate, then the
- * item that best separates learners who understand from those who do not. (07)
- */
 /** Languages close enough that an item written in one reads fine to the other. */
 const SAME_FAMILY: Record<string, string[]> = {
   javascript: ["javascript", "js", "typescript", "ts", "jsx", "tsx", "node"],
@@ -167,16 +152,7 @@ const SAME_FAMILY: Record<string, string[]> = {
   sql: ["sql", "postgres", "postgresql"],
 };
 
-/**
- * Picks an item for the level being tested. Prefers canonical over candidate, then the
- * item that best separates learners who understand from those who do not. (07)
- *
- * `language` sorts before all of that, because a mismatch does not make the item weaker,
- * it makes it measure something else: a JavaScript learner asked to diagnose a `realloc`
- * bug is being tested on C. An item with no code at all is language-neutral and always
- * acceptable. A wrong-language item is returned only when there is nothing else — better
- * a hard question than no question — and the caller can generate a variant instead.
- */
+/** Picks an item for the level, ranking language first, then canonical, then discrimination. (07) */
 export async function selectItem(
   prisma: PrismaClient,
   conceptId: string,
@@ -213,17 +189,7 @@ export async function selectItem(
   )[0]!;
 }
 
-/**
- * True when the best available item is not in a language the learner writes.
- *
- * An untagged item counts as wrong, not as neutral. That distinction is the whole bug:
- * a question reading "a student declares `int scores[100];` in C" carries its C inline
- * in the prompt, so the `code` field is empty and `codeLanguage` is null — and treating
- * null as "prose, therefore fine for everyone" served exactly that question to a learner
- * who had said they write JavaScript. The generator now tags "none" for genuinely
- * language-free items, so null means untagged rather than neutral, and an untagged item
- * gets one tagged replacement generated rather than being trusted.
- */
+/** True when the item is not in a language the learner writes; untagged counts as wrong. */
 export function isWrongLanguage(
   item: { codeLanguage: string | null },
   language: string | null | undefined,
@@ -244,14 +210,7 @@ export interface ItemStatsUpdate {
   action: "kept" | "retired" | "promoted";
 }
 
-/**
- * Item statistics are the one tier that promotes automatically: local, purely
- * statistical, and self-correcting if wrong. (11)
- *
- * Discrimination is measured against whether getting the item right predicts later
- * success on concepts that depend on this one. An item everyone passes tells you
- * nothing; an item that passing predicts nothing about tells you less.
- */
+/** Item stats are the one tier that promotes automatically: local, statistical, self-correcting. (11) */
 export async function updateItemStats(
   prisma: PrismaClient,
   conceptId: string,
@@ -316,10 +275,7 @@ export async function updateItemStats(
   return out;
 }
 
-/**
- * Explanation candidates earn `canonical` the same way, but on a different signal:
- * whether the learners who saw them went on to pass. (12)
- */
+/** Explanation candidates promote on whether the learners who saw them went on to pass. (12) */
 export async function promoteExplanations(
   prisma: PrismaClient,
   conceptId: string,

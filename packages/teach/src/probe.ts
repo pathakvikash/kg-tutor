@@ -25,16 +25,7 @@ export interface ProbePlanInput {
   thresholds?: Thresholds;
 }
 
-/**
- * Re-probes get no budget of their own — they ride the hook slot of the next concept
- * attempt, so they consume time that was already being spent. (20)
- *
- * The split is what does the work:
- *   - readiness: on a hard prerequisite of what is about to be taught. Skipping one
- *     means teaching into a gap, so it is not optional and not budgeted.
- *   - review: maintenance on decayed confidence elsewhere. First thing cut when the
- *     session runs short, because new material is why the learner showed up.
- */
+/** Readiness probes are unbudgeted; review probes come out of the session budget. (20) */
 export async function selectProbes(input: ProbePlanInput): Promise<Probe[]> {
   const t = input.thresholds ?? DEFAULT_THRESHOLDS;
   const now = input.now ?? new Date();
@@ -104,10 +95,7 @@ export async function selectProbes(input: ProbePlanInput): Promise<Probe[]> {
   );
 }
 
-/**
- * What survives when a session runs short. Readiness probes always survive; review
- * probes are dropped first. (20)
- */
+/** Readiness probes always survive a short session; review probes are dropped first. (20) */
 export function trimToTimeBudget(probes: Probe[], slots: number): Probe[] {
   const required = probes.filter((p) => !p.optional);
   if (required.length >= slots) return required;

@@ -1,19 +1,7 @@
 import type { PrismaClient } from "@kg/db";
 import type { LLMProvider } from "@kg/llm";
 
-/**
- * The control arm of the product experiment: a good tutor prompt on a strong model,
- * with no graph, no learner model and no plan. (14)
- *
- * It is deliberately a *fair* baseline, not a strawman — a strong system prompt on the
- * strong tier, given the same conversation history. If the graph cannot beat this, the
- * graph is not earning its complexity, and that is a result worth having early.
- *
- * What it structurally cannot do is the point:
- *   - no cross-session memory of what the learner knows
- *   - no ordering derived from real dependencies
- *   - nothing accumulates, so quality and cost per outcome stay flat forever
- */
+/** The control arm: keep it a fair baseline, on the strong tier with the same history. (14) */
 export const BASELINE_SYSTEM_PROMPT = `You are an excellent tutor. Teach the learner what they ask about.
 
 Explain clearly, use concrete examples, check their understanding with questions, and
@@ -40,8 +28,7 @@ export async function baselineTurn(input: BaselineTurnInput): Promise<string> {
     temperature: 0.7,
   });
 
-  // The baseline records usage so the two arms are cost-comparable, and nothing else.
-  // No evidence, no mastery, no plan — that asymmetry IS the experiment.
+  // Usage only, so the arms stay cost-comparable: no evidence, no mastery, no plan.
   await input.prisma.usageRecord.create({
     data: {
       sessionId: input.sessionId,

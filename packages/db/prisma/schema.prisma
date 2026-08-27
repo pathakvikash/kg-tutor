@@ -1,5 +1,4 @@
-// Knowledge Graph Tutor — canonical data model.
-// Every table here traces to a numbered decision in ../../../context/decisions.md.
+// Canonical data model; every table traces to a numbered decision in ../../../context/decisions.md.
 
 generator client {
   provider        = "prisma-client-js"
@@ -12,12 +11,9 @@ datasource db {
   extensions = [vector]
 }
 
-// ─────────────────────────────────────────────────────────────
 // Enums
-// ─────────────────────────────────────────────────────────────
 
-/// Topic-side relations. `contains` organizes; `applied_in` is what answers
-/// "what comes after JavaScript, given that I want backend development". (02, 08)
+/// Topic-side relations: `contains` organizes, `applied_in` is what a topic leads to. (02, 08)
 enum TopicRelation {
   contains
   applied_in
@@ -68,8 +64,7 @@ enum ResolverVerdict {
   distinct
 }
 
-/// Recorded rather than inferred from timestamps: graph reuse rate is the earliest
-/// falsification signal for the whole shared-graph premise. (14)
+/// Recorded rather than inferred from timestamps, so graph reuse rate stays measurable. (14)
 enum ProposalOutcome {
   created
   bound
@@ -88,9 +83,7 @@ enum ContentStatus {
   retired
 }
 
-// ─────────────────────────────────────────────────────────────
 // The shared graph  (02, 03, 05, 13)
-// ─────────────────────────────────────────────────────────────
 
 /// Container and goal target. Never taught, never mastered. (02)
 model Topic {
@@ -148,8 +141,7 @@ model Concept {
   @@index([deprecatedAt])
 }
 
-/// Topic->Concept containment. `Edge` joins Concepts only, so this cannot live there,
-/// and containment is a different relation anyway: Topics organize, Concepts depend. (02)
+/// Topic->Concept containment; `Edge` joins Concepts only, so it cannot live there. (02)
 model TopicConcept {
   id        String   @id @default(uuid())
   topicId   String
@@ -157,8 +149,7 @@ model TopicConcept {
   conceptId String
   concept   Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
   relation  TopicRelation @default(contains)
-  /// True when the concept came from expanding this topic directly, rather than being
-  /// pulled in as a prerequisite of one that did.
+  /// True when expanding this topic produced the concept, not a prerequisite pull-in.
   direct    Boolean  @default(true)
   /// How central this concept is to the topic — the goal-relevance tie-breaker. (09)
   relevance Float    @default(0.5)
@@ -189,8 +180,7 @@ model Edge {
   type      EdgeType
   strength  EdgeStrength @default(soft)
 
-  /// REQUIRED for hard edges — the concrete misunderstanding that occurs without the
-  /// prerequisite. Serves as hallucination filter, grading rubric, and failure router. (03, 07, 10, 15)
+  /// Required on hard edges: the misunderstanding that occurs without the prerequisite. (03, 07, 10, 15)
   failureMode String?    @db.Text
 
   confidence  Float      @default(0.5)
@@ -216,9 +206,7 @@ model ConceptProposal {
   proposedName  String
   proposedSense String           @db.Text
   context       String?          @db.Text
-  /// Concepts this was discovered next to — the target it was proposed as a
-  /// prerequisite of, or the topic being expanded. A proposal has no edges of its
-  /// own yet, so this is what neighborhood overlap is measured against. (05)
+  /// Concepts this was discovered next to; a proposal has no edges to overlap against yet. (05)
   expectedNeighborIds String[]   @default([])
   verdict       ResolverVerdict?
   outcome       ProposalOutcome?
@@ -245,9 +233,7 @@ model MergeRecord {
   @@index([loserId])
 }
 
-// ─────────────────────────────────────────────────────────────
 // Assessment and content  (07, 12)
-// ─────────────────────────────────────────────────────────────
 
 model AssessmentItem {
   id         String        @id @default(uuid())
@@ -255,8 +241,7 @@ model AssessmentItem {
   concept    Concept       @relation(fields: [conceptId], references: [id], onDelete: Cascade)
   version    Int           @default(1)
   prompt     String        @db.Text
-  /// Code the question is about, kept out of `prompt`. Embedded in prose it loses its
-  /// newlines to markdown paragraph joining and arrives as one unreadable line.
+  /// Code the question is about, kept out of `prompt` so its newlines survive markdown.
   code       String?       @db.Text
   codeLanguage String?
   /// Rubric is expressed as failure modes to detect, not open-ended answer quality. (07)
@@ -308,9 +293,7 @@ model ExplanationContent {
   @@index([conceptId, status, bucket])
 }
 
-// ─────────────────────────────────────────────────────────────
 // The learner overlay  (06)
-// ─────────────────────────────────────────────────────────────
 
 model Learner {
   id        String   @id @default(uuid())
@@ -318,14 +301,7 @@ model Learner {
   name      String?
   /// Background bucket drives analogy selection and explanation caching. (12, 17)
   background String? @db.Text
-  /// The language this learner actually writes code in.
-  ///
-  /// Concepts are shared and many are language-neutral: "memory addresses" under
-  /// "Data Structures" implies nothing, so the item generator picked one — reasonably,
-  /// C — and a learner working through JavaScript was handed `realloc` and asked to
-  /// diagnose a dangling pointer. Nothing anywhere recorded what they write in, so
-  /// nothing could have done better. Items are tagged with the language they are
-  /// written in and selected against this. (07)
+  /// The language this learner writes code in; items are selected against it. (07)
   workingLanguage String?
   /// Raw evidence is private by default; only aggregates may reach the graph. (policy D)
   orgId     String?
@@ -386,9 +362,7 @@ model Misconception {
   @@index([conceptId, resolvedAt])
 }
 
-// ─────────────────────────────────────────────────────────────
 // Evidence  (10, 11, 19)
-// ─────────────────────────────────────────────────────────────
 
 enum EvidenceKind {
   restated
@@ -444,8 +418,7 @@ model PromotionProposal {
 
   distinctLearners Int   @default(0)
   effectSize       Float @default(0)
-  /// Failure rate at target among learners who DID know the prerequisite. Without this
-  /// the system promotes difficulty as prerequisite. (11)
+  /// Control arm: failure rate at target among learners who did know the prerequisite. (11)
   controlFailureRate Float?
   treatmentFailureRate Float?
   distinctGoals    Int   @default(0)
@@ -462,9 +435,7 @@ model PromotionProposal {
   @@index([status, effectSize])
 }
 
-// ─────────────────────────────────────────────────────────────
 // Goals, milestones, plans  (08, 09, 18)
-// ─────────────────────────────────────────────────────────────
 
 model Goal {
   id        String    @id @default(uuid())
@@ -563,9 +534,7 @@ model MilestoneInstance {
   @@unique([planId, position])
 }
 
-// ─────────────────────────────────────────────────────────────
 // Sessions and observability  (10, 20, 14)
-// ─────────────────────────────────────────────────────────────
 
 model Session {
   id        String   @id @default(uuid())
@@ -573,13 +542,7 @@ model Session {
   learner   Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
   /// Which arm this learner is in — graph-planned vs baseline tutor. (14)
   variant   String   @default("graph")
-  /// lesson | review
-  ///
-  /// A review pass and a lesson are different activities that both write turns, and
-  /// openSession returned the newest un-ended session regardless — so review questions
-  /// landed in the lesson transcript for concepts the lesson never covered, and the
-  /// lesson's "has anything been answered since the last question?" scan could read a
-  /// review answer as the reply to its own pending check.
+  /// lesson | review; separate activities, so one session never serves both.
   kind      String   @default("lesson")
   startedAt DateTime @default(now())
   endedAt   DateTime?
@@ -592,8 +555,7 @@ model Session {
   @@index([learnerId, kind, endedAt])
 }
 
-/// One row per model call. Cost per verified outcome is half the case for the
-/// architecture, and it is cheap to measure. (17)
+/// One row per model call, so cost per verified outcome stays measurable. (17)
 model UsageRecord {
   id            String   @id @default(uuid())
   sessionId     String?
@@ -639,8 +601,7 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 }
 
-/// Chat and lesson turns, so a reload does not discard the lesson. Also the record of
-/// what was actually said, which the transcript-derived evidence refers back to.
+/// Chat and lesson turns; the transcript that derived evidence refers back to.
 model LessonTurn {
   id        String   @id @default(uuid())
   sessionId String
@@ -658,8 +619,7 @@ model LessonTurn {
   @@index([learnerId, createdAt])
 }
 
-/// Expansion takes minutes over dozens of model calls, so it cannot sit inside a
-/// request. This is the job record the UI polls for progress.
+/// Job record the UI polls; expansion runs too long to sit inside a request.
 model ExpansionJob {
   id          String    @id @default(uuid())
   topicName   String

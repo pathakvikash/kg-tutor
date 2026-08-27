@@ -13,34 +13,16 @@ const KINDS = Object.keys(DUE_KIND) as (keyof typeof DUE_KIND)[];
 /** How many rows the list draws before deferring to the review session itself. */
 const ROWS = 8;
 
-/**
- * Cost of being ignored, highest first. Also the fallback order when nothing leads.
- */
+/** Cost of being ignored, highest first; also the fallback order when nothing leads. */
 const CARDS = ["intake", "due", "plan"] as const;
 
-/**
- * How long a finished build stays on the page.
- *
- * Tracking ids seen live is not enough on its own: a build that reached done or failed
- * before this mount — you started it and navigated away, you reloaded, or the server
- * restarted and failStrandedJobs() marked it failed at boot — was never observed by a
- * poll, so filtering to the tracked set hid exactly the outcomes worth reading,
- * including the restart explanation the API writes out in full.
- */
+/** How long a finished build stays on the page, including ones this mount never polled. */
 const RECENT_MS = 12 * 60 * 60 * 1000;
 
 /** Finished builds pile up; the newest few are the ones anyone still reads. */
 const JOBS = 4;
 
-/**
- * The outcome of one read, not just its value.
- *
- * Every read on this page used to be `.catch(() => null)` and every null branch was
- * written as a positive assertion of emptiness, so a dead backend rendered "nothing has
- * faded and no wrong beliefs are on record" — the app telling you there is no work
- * because it could not find out. "Not asked yet", "asked, nothing there" and "asked, it
- * failed" are three different claims and each needs its own branch.
- */
+/** The outcome of one read: pending, ok, absent and failed are four different claims. */
 type Outcome<T> =
   | { kind: "pending" }
   | { kind: "ok"; data: T }
@@ -64,10 +46,7 @@ function settle<T>(r: PromiseSettledResult<T>): Outcome<T> {
   return { kind: "failed", ...describe(e) };
 }
 
-/**
- * api.ts owns every other call. It has no create, and POST /api/learners was reachable
- * from nothing in the web app, which is why an empty roster was a dead end.
- */
+/** api.ts has no create, and POST /api/learners was otherwise unreachable. */
 async function createLearner(email: string): Promise<{ id: string }> {
   const res = await fetch("/api/learners", {
     method: "POST",
@@ -97,14 +76,7 @@ function Failed({ what, at, onRetry }: { what: string; at: Failure; onRetry: () 
   );
 }
 
-/**
- * The card's own heading, plus its rank.
- *
- * Priority used to be asserted three times and communicated none: the grid flattened DOM
- * order, both top cards got the same accent rail, and all three calls to action were
- * primary. The lead card is the only one that is wide, serif and primary, and "now" /
- * "next" states the order in words so it survives without colour or position.
- */
+/** "now" / "next" states the rank in words, so it survives without colour or position. */
 function CardHead({ title, lead, rank }: { title: string; lead: boolean; rank: string | null }) {
   return (
     <div className="row row--baseline home-card-head">
@@ -119,15 +91,7 @@ function CardHead({ title, lead, rank }: { title: string; lead: boolean; rank: s
   );
 }
 
-/**
- * Where a session starts.
- *
- * Every other page assumed you already knew what you wanted: the lesson page opens on
- * whatever the plan says, the graph opens on everything at once. Nothing ever said "two
- * concepts are due, one assessment is unfinished, and the next step is X" — so deciding
- * what to do meant checking three pages, and the review queue in particular was
- * invisible because nothing rendered it at all.
- */
+/** Where a session starts: what is due, what is unfinished and what is next. */
 export function HomePage() {
   const [roster, setRoster] = useState<Outcome<any[]>>(PENDING);
   const [learnerId, setLearnerId] = useStickyLearner();
@@ -156,9 +120,6 @@ export function HomePage() {
     const [r] = await Promise.allSettled([api.learners()]);
     const outcome = settle(r);
     setRoster(outcome);
-    // Guarded, because an empty roster or a failed request used to leave the page
-    // spinning behind a <select> with no options while two cards asserted there was
-    // nothing to do.
     if (outcome.kind === "ok") setLearnerId(resolveLearner(getLearner(), outcome.data));
   }, [setLearnerId]);
 
@@ -166,13 +127,10 @@ export function HomePage() {
 
   const load = useCallback(async (id: string) => {
     const mine = ++flight.current;
-    // Cleared first: the previous learner's due rows used to sit under the new learner's
-    // name, stamped with the new learner's id, so one click produced a URL that was
-    // wrong in both halves.
+    // Cleared first so the previous learner's rows never sit under the new name.
     setDue(PENDING); setPlan(PENDING); setIntake(PENDING);
     if (!id) return;
-    // Independent reads, so one slow or missing answer must not hide the rest — settled
-    // rather than raced, so each card knows which of the three things happened to it.
+    // Settled, not raced: one failed read must not hide the other cards.
     const [d, p, i] = await Promise.allSettled([api.due(id), api.plan(id), api.openIntake(id)]);
     if (flight.current !== mine) return;
     setDue(settle(d)); setPlan(settle(p)); setIntake(settle(i));
@@ -180,14 +138,7 @@ export function HomePage() {
 
   useEffect(() => { void load(learnerId); }, [learnerId, load]);
 
-  /**
-   * Builds are global, not per learner, and they outlive their own success.
-   *
-   * The card was a frozen snapshot: it only refetched when the learner changed and it
-   * filtered to queued/running, so a finished build never reported success and a failed
-   * one vanished — including the server-restart explanation the API goes out of its way
-   * to write.
-   */
+  /** Builds are global, not per learner, and they outlive their own success. */
   const syncJobs = useCallback(async () => {
     const [r] = await Promise.allSettled([api.expansions()]);
     if (r.status !== "fulfilled") {
@@ -201,9 +152,7 @@ export function HomePage() {
       const at = Date.parse(j.finishedAt ?? j.createdAt ?? "");
       return Number.isFinite(at) && now - at < RECENT_MS;
     });
-    // Everything shown is tracked from here on, so it stays for the rest of the session
-    // even once it ages out of the window, and so `tracked.size` means "this browser
-    // knows about at least one build".
+    // Tracked so it survives ageing out, and so tracked.size means a build was seen.
     for (const j of keep) tracked.current.add(j.id);
     // The route answers newest-first, so this keeps the newest.
     setJobs(keep.slice(0, JOBS));
@@ -221,8 +170,7 @@ export function HomePage() {
 
   const retryJob = useCallback(async (id: string) => {
     setRetrying(id);
-    // Retry writes a fresh job, so its id has to be tracked or the new build is not the
-    // one being watched.
+    // Retry writes a fresh job, so its new id has to be tracked.
     const [r] = await Promise.allSettled([api.retryExpansion(id)]);
     if (r.status === "fulfilled" && r.value?.id) tracked.current.add(r.value.id);
     if (r.status === "rejected") setJobsFailed({ kind: "failed", ...describe(r.reason) });
@@ -233,16 +181,13 @@ export function HomePage() {
   const learners: any[] = roster.kind === "ok" ? roster.data : [];
   const noLearners = roster.kind === "absent" || (roster.kind === "ok" && learners.length === 0);
   const hasRoster = roster.kind === "ok" && learners.length > 0;
-  // The roster failing must not blank the cards: a remembered learner is still enough
-  // to ask the other three endpoints, and one dead endpoint hiding the rest is the
-  // whole reason these reads are independent.
+  // A remembered learner is enough to ask the other endpoints when the roster fails.
   const canShow = !!learnerId && !noLearners && roster.kind !== "pending";
   const serverLang: string = learners.find((l) => l.id === learnerId)?.workingLanguage ?? "";
 
   useEffect(() => {
     const record = learners.find((l) => l.id === learnerId);
-    // Adopted once per learner. Keying this on `learners` meant the refetch after a
-    // successful save unset the confirmation in the next commit, so it had never worked.
+    // Adopted once per learner; keying on `learners` would undo it after each save.
     if (!record || langFor === learnerId) return;
     setLang(record.workingLanguage ?? "");
     setLangFor(learnerId);
@@ -290,18 +235,14 @@ export function HomePage() {
   const ready = due.kind !== "pending" && plan.kind !== "pending" && intake.kind !== "pending";
   const broken = due.kind === "failed" || plan.kind === "failed" || intake.kind === "failed";
 
-  // Ordered by what it costs to ignore: an unresolved wrong belief gets applied, an
-  // unfinished assessment blocks a plan, a due review quietly rots. The auto-fit grid
-  // used to flatten this, so the order was documented and then thrown away.
+  // Ordered by what it costs to ignore, and the grid renders in this order.
   const present = [
     openIntake ? "intake" : "",
     dueTotal > 0 ? "due" : "",
     nextStep ? "plan" : "",
   ].filter(Boolean);
   const firstRun = ready && !broken && present.length === 0;
-  // With nothing to offer and a read that failed, the card that says so leads. Without
-  // this the whole lead treatment — the span, the serif, the rail — silently left the
-  // page in exactly the state where the learner most needs something to act on.
+  // With nothing to offer, the card reporting a failed read is what leads.
   const failedLead = CARDS.find((k) =>
     (k === "intake" ? intake : k === "due" ? due : plan).kind === "failed") ?? "";
   const lead: string = ready ? present[0] ?? (firstRun ? "plan" : failedLead) : "";
@@ -353,8 +294,7 @@ export function HomePage() {
       ) : (
         <>
           <p><b>{dueTotal}</b> concept{dueTotal === 1 ? "" : "s"} waiting.</p>
-          {/* One line per kind rather than a joined sentence: two of the three shared
-              labels are clauses, so the join read "1 confidence has faded". */}
+          {/* One line per kind: the shared labels are clauses and do not join. */}
           <ul className="home-kinds">
             {KINDS.filter((k) => (dueData.byKind?.[k] ?? 0) > 0).map((k) => (
               <li key={k}>
@@ -398,9 +338,7 @@ export function HomePage() {
           <Link className={ctaClass("plan")} to="/learn">Continue</Link>
         </>
       ) : planData ? (
-        // Two real destinations rather than prose naming them: this branch can be the
-        // lead card, and a full-width lead whose only content is a sentence about
-        // things elsewhere is a dead end.
+        // This branch can be the lead card, so it needs real destinations, not prose.
         <>
           <p className="muted">
             Every step on the current plan is satisfied. Nothing is finished for good —
@@ -426,9 +364,7 @@ export function HomePage() {
     </article>
   );
 
-  // The read runs on every mount, so a dead /api/expansions used to put a build-queue
-  // error on the page of someone who has never expanded a topic. The failure is only
-  // reported once this browser has actually seen a build.
+  // A build failure is only reported once this browser has actually seen a build.
   const buildCard = (jobs.length > 0 || (jobsFailed && tracked.current.size > 0)) && (
     <article key="build" className="panel stack home-card">
       <CardHead title="Building" lead={false} rank={null} />
@@ -464,10 +400,7 @@ export function HomePage() {
                       >
                         <div className="bar" style={{ width: `${pct}%` }} />
                       </div>
-                      {/* The live region carries the phase and nothing else. With the
-                          percentage in it, a 3-second poll announced a new number for
-                          the whole of a multi-minute build; the number is on the
-                          progressbar, which is queried rather than announced. */}
+                      {/* The live region carries the phase only; the percentage is queried, not announced. */}
                       <div className="row row--baseline home-job-tick">
                         <Busy label={j.phase ?? "working"} clock={false} />
                         <span className="mono muted" aria-hidden="true">{pct}%</span>
@@ -511,14 +444,7 @@ export function HomePage() {
     </article>
   );
 
-  /**
-   * The lead card is rendered first, whatever it is.
-   *
-   * The grid turns DOM order into position, so a full-width lead could sit underneath a
-   * third-width card with nothing in it — "now" asserted in the pill and denied by the
-   * layout, which is the contradiction the pill exists to remove. Reachable whenever
-   * nothing is due and a next step exists.
-   */
+  /** The grid turns DOM order into position, so the lead card renders first. */
   const byKey: Record<string, ReactNode> = {
     intake: intakeCard, due: dueCard, plan: planCard,
   };
@@ -608,8 +534,7 @@ export function HomePage() {
                 {buildCard}
               </>
             ) : (
-              /* Skeletons, not an empty state: nothing has been asked yet, and the two
-                 cards that always exist are the ones drawn so the layout holds still. */
+              /* Skeletons, not an empty state: nothing has been asked yet. */
               <>
                 <article className="panel stack home-card">
                   <CardHead title="Due for review" lead={false} rank={null} />
@@ -631,10 +556,7 @@ export function HomePage() {
               <ul className="home-due-rows">
                 {rows.map((it: any) => (
                   <li key={it.conceptId} className="home-due">
-                    {/* A real link, and the belief lives outside it: <Markdown> emits
-                        blocks and target="_blank" links, and inside a <button> a belief
-                        containing a URL was a keyboard trap that both opened a tab and
-                        fired the row's own navigation. */}
+                    {/* The belief stays outside the link: <Markdown> emits blocks and its own links. */}
                     <Link
                       className="btn--bare home-due-open"
                       to={
@@ -668,14 +590,7 @@ export function HomePage() {
             </section>
           )}
 
-          {/* Below the cards, and collapsed. It steers every generated example, which is
-              why it is on this page rather than in settings — many concepts are
-              language-neutral ("memory addresses" under "Data Structures" implies
-              nothing), so without it the item generator picks, and it picked C for a
-              learner working through JavaScript. But it is configuration, and three
-              sentences of it were the first thing on the page.
-              Needs the roster: the field's current value comes from the learner record,
-              so with no roster there is nothing to show as saved or unsaved. */}
+          {/* Needs the roster: the field's current value comes from the learner record. */}
           {hasRoster && (
           <details className="panel home-lang">
             <summary className="home-lang-summary">
@@ -701,8 +616,7 @@ export function HomePage() {
                       .map((l) => <option key={l} value={l} />)}
                   </datalist>
                 </label>
-                {/* aria-disabled, not disabled: disabling the control the user just
-                    pressed blurs focus to <body>. */}
+                {/* aria-disabled, not disabled: disabling the pressed control blurs focus. */}
                 <button
                   aria-disabled={langInert}
                   onClick={() => { if (!langInert) void saveLang(); }}

@@ -33,10 +33,7 @@ describe("candidate generation", () => {
     const hits = await search("closure", "A function together with the scope it captured.");
     expect(hits[0]?.conceptId).toBe(id);
     expect(hits[0]?.arms).toContain("ann");
-    // The exact figure is a property of the deterministic stub, not of the design:
-    // `closures` and `closure` are distinct tokens in a hash bag, so the shared sense
-    // carries the score and the differing name costs the rest. A real embedding model
-    // would score this higher. Asserting rank is the meaningful part.
+    // The figure is a property of the deterministic stub; the rank is what matters.
     expect(hits[0]?.vectorScore).toBeGreaterThan(0.85);
   });
 
@@ -51,8 +48,7 @@ describe("candidate generation", () => {
   });
 
   it("finds a synonym with no shared wording through the graph-local arm", async () => {
-    // The case cosine similarity cannot solve: same concept, nothing in common
-    // lexically, and a sense phrased completely differently.
+    // The case cosine similarity cannot solve: same concept, no shared wording.
     const promises = await seed("promises", "A value that settles later.");
     const eventLoop = await seed(
       "the event loop",

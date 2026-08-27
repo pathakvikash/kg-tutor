@@ -1,16 +1,6 @@
-/* Page-scoped styles for: home
- *
- * One file per page so that page work can happen in parallel without two people
- * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
- * NOT redefined here — if something belongs to more than one page, it belongs there.
- */
+/* Page-scoped styles for home; shared tokens and primitives live in styles.css. */
 
-/* ── Two names that belong in styles.css ──────────────────────────────────────
-   .btn--primary and .btn--bare are the foundation's naming for treatments the
-   shared sheet only has as `.btn.primary` and as three separately copy-pasted
-   `color: inherit` patches. They are declared here because styles.css is not this
-   pass's file to edit; both should move up, and `.btn.primary` should retire in
-   favour of --on-accent (it still hard-codes #fff, which measured 2.11:1). */
+/* Shared button treatments; these belong in styles.css, not in a page sheet. */
 .btn--primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -19,9 +9,7 @@
 }
 .btn--primary:hover { color: var(--on-accent); opacity: 0.9; }
 
-/* `button:hover` sets color: var(--accent), so every row-shaped control turned
-   entirely amber on hover. Three of them defuse that one at a time; this is the
-   reusable version. */
+/* button:hover in styles.css paints accent, so bare controls reset the colour. */
 .btn--bare {
   border: none;
   background: none;
@@ -34,28 +22,19 @@
 }
 .btn--bare:hover { color: var(--ink); }
 
-/* Inert but still focusable: the convention is aria-disabled rather than disabled,
-   because disabling a focused control blurs it to <body>. styles.css owns the look
-   (opacity, cursor, hover border); the only gap left is `button:hover`, which repaints
-   an inert control amber. */
+/* Inert controls use aria-disabled, so hover colour is neutralised by hand. */
 .home [aria-disabled="true"]:hover { color: var(--ink); }
 .home .btn--primary[aria-disabled="true"]:hover {
   border-color: var(--accent);
   color: var(--on-accent);
 }
 
-/* ── Head and single-panel states ─────────────────────────────────────────────
-   .home-head is shared with ReviewSession, which is losing the control that made
-   it overflow; Home uses the .head primitive instead so neither page can restyle
-   the other's header. */
+/* Head and single-panel states */
 .home-top { margin-bottom: var(--s-5); }
 .home-top h2 { margin-bottom: var(--s-1); }
 .home-solo { margin-bottom: var(--s-5); }
 
-/* ── Cards ────────────────────────────────────────────────────────────────────
-   .home-cards keeps its auto-fit grid from styles.css; the lead card spans it, so
-   rank reads as size and position rather than living only in a DOM order the grid
-   was free to flatten. */
+/* Cards; the auto-fit grid itself lives in styles.css. */
 .home-card { gap: var(--s-2); }
 .home-card > p { margin: 0; font-size: var(--t-body); line-height: 1.55; }
 .home-card--lead { grid-column: 1 / -1; }
@@ -71,8 +50,6 @@
 .home-card--lead .home-card-title { font-size: var(--t-h); }
 .home-card--lead > p { font-size: var(--t-lead); }
 
-/* The rank, in words. It was previously carried by position in a grid that
-   reflows and by an accent rail applied to two cards at once. */
 .home-rank {
   font-family: var(--font-mono);
   font-size: var(--t-micro);
@@ -109,9 +86,7 @@
 
 .home-fail-why { margin: 0 0 var(--s-2); }
 
-/* ── Builds ───────────────────────────────────────────────────────────────────
-   Done and failed jobs stay for the session, so this list can be several entries
-   long even when nothing is running. */
+/* Builds; finished jobs stay for the session, so this list can grow. */
 .home-jobs {
   list-style: none;
   margin: 0;
@@ -123,17 +98,11 @@
 .home-job { min-width: 0; }
 .home-job > .row { justify-content: space-between; }
 .home-job-state { font-size: var(--t-meta); }
-/* Phase on the left, percentage on the right: the percentage is decoration beside a
-   progressbar that already carries the value. */
 .home-job-tick { justify-content: space-between; gap: var(--s-3); }
 .home-job-tick .mono { font-size: var(--t-meta); }
 .home-job-report, .home-job-note { font-size: var(--t-small); }
 
-/* ── The due list ─────────────────────────────────────────────────────────────
-   The rows were a grid with a 128px + minmax(120px, 200px) floor and no
-   breakpoint, so below ~360px they turned a <button> into a nested horizontal
-   scroller inside a page that was itself scrolling sideways. The kind track is
-   max-content now, and the whole row collapses rather than overflowing. */
+/* The due list; tracks are max-content so a narrow row collapses instead of overflowing. */
 .home-list { margin-top: var(--s-6); }
 .home-list-head { margin-bottom: var(--s-2); }
 .home-due-rows { list-style: none; margin: 0; padding: 0; }
@@ -151,8 +120,7 @@
   border-radius: var(--r-sm);
 }
 .home-due-open:hover { background: var(--surface-alt); }
-/* Sentence case rather than uppercase: these are the shared vocabulary's own
-   phrases, and "WRONG BELIEF ON RECORD" as a pill is a shout. */
+/* Overrides the shared due-kind uppercase; these labels are whole phrases. */
 .home-due .due-kind {
   text-transform: none;
   letter-spacing: 0.01em;
@@ -168,8 +136,6 @@
   box-shadow: inset 2px 0 0 var(--rule-strong);
 }
 .home-due-belief .eyebrow { display: block; margin-bottom: var(--s-1); }
-/* One recorded sentence, so its paragraph should not add a gap the row then has
-   to absorb. */
 .home-due-belief .md-p { margin: 0; }
 .home-more { margin: var(--s-3) 0 0; font-size: var(--t-small); }
 
@@ -179,13 +145,9 @@
   .home-due-open .due-kind { justify-self: start; }
 }
 
-/* ── Working language ─────────────────────────────────────────────────────────
-   A configuration field with three sentences of microcopy was the first thing on
-   the page. It is last now, and closed, with its current value on the summary so
-   the common case needs no expansion. */
+/* Working language */
 .home-lang { margin-top: var(--s-6); }
-/* Left as a list-item so the disclosure triangle survives — display: flex on a
-   <summary> removes the marker in Chrome, taking the only affordance with it. */
+/* Not a flex container: Chrome drops the disclosure marker on a flex summary. */
 .home-lang-summary { cursor: pointer; font-size: var(--t-small); }
 .home-lang-summary .eyebrow { display: inline; }
 .home-lang-value { font-weight: 600; margin-left: var(--s-2); }
@@ -199,5 +161,4 @@
   color: var(--positive-text);
   max-width: var(--measure-narrow);
 }
-/* Kept in the DOM even when empty — an empty <p> has no line box, so it costs no
-   space, and a live region that is added only on success announces unreliably. */
+/* Kept in the DOM when empty; a live region added on success announces unreliably. */

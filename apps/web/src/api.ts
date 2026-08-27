@@ -23,15 +23,7 @@ export interface GraphPayload {
   edges: GraphEdge[];
 }
 
-/**
- * A failure that callers can reason about.
- *
- * `get` used to throw `${status} ${await res.text()}`, so a JSON error body arrived as a
- * raw blob and got rendered as prose — on Metrics, on Graph, and inside the lesson
- * transcript. And with no status attached, a page could not tell "404, this learner has
- * no plan yet" from "500, the backend is broken", so both were shown as the same
- * confident wrong sentence.
- */
+/** Carries the status, so a caller can tell "absent" from "broken". */
 export class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -68,8 +60,7 @@ async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
   return res.json() as Promise<T>;
 }
 async function send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", url: string, body?: unknown): Promise<T> {
-  // Declaring a JSON content-type with no body makes Fastify reject the request
-  // outright, so the header only goes on when there is something to send.
+  // Fastify rejects a JSON content-type sent with no body.
   const res = await fetch(url, {
     method,
     ...(body === undefined
@@ -93,13 +84,7 @@ export interface AskStreamHandlers {
   onFailed?: (error: string) => void;
 }
 
-/**
- * Server-sent events over POST, so the request can carry a body.
- *
- * EventSource would be simpler but is GET-only, which would mean putting the learner's
- * question in a query string. A fetch reader costs a few more lines and keeps it in the
- * body where it belongs.
- */
+/** SSE read by hand: EventSource is GET-only and the question belongs in a body. */
 export async function askStream(
   learnerId: string,
   conceptId: string,
@@ -169,13 +154,7 @@ export const api = {
   /** The language every example and item should be written in. */
   updateLearner: (id: string, patch: Record<string, unknown>) =>
     send<any>("PATCH", `/api/learners/${id}`, patch),
-  /**
-   * What has decayed, was never demonstrated, or has an unresolved misconception.
-   *
-   * One limit for every surface. Four call sites asked with three different limits while
-   * the route computed `total` *after* slicing, so a 25-item backlog read as 25 in the
-   * nav, 20 on the card, 8 rows in the list and "1 of 10" in the session.
-   */
+  /** What has decayed, was never demonstrated, or has an open misconception. */
   due: (id: string, limit = DUE_LIMIT) => get<any>(`/api/learners/${id}/due?limit=${limit}`),
   /** One more level of prerequisites under a single concept. */
   deepen: (conceptId: string) => post<any>(`/api/concepts/${conceptId}/deepen`, {}),
@@ -189,11 +168,7 @@ export const api = {
   scan: () => post<any>("/api/review/scan"),
   explain: (learnerId: string, conceptId: string) =>
     post<any>("/api/lesson/explain", { learnerId, conceptId }),
-  /**
-   * `kind` decides which transcript the question is written into. A review pass must say
-   * "review" or its questions land in the open lesson session, where the lesson's
-   * answered-since scan can mistake a review answer for the reply to its own check.
-   */
+  /** `kind` picks which transcript this is written into; a review pass must say "review". */
   check: (learnerId: string, conceptId: string, level = "functional", kind: "lesson" | "review" = "lesson") =>
     post<any>("/api/lesson/check", { learnerId, conceptId, level, kind }),
   ask: (learnerId: string, conceptId: string, question: string) =>

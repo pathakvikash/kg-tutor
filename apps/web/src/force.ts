@@ -12,14 +12,7 @@ export interface ForceNode extends SimulationNodeDatum {
 }
 type ForceLink = SimulationLinkDatum<ForceNode> & { strength: "hard" | "soft" };
 
-/**
- * Explore-mode orb geometry, in one place.
- *
- * The simulation, the react-flow node box and the drawn dot all have to agree, or
- * forceCollide's non-overlap guarantee describes circles nobody can see: the label box is
- * 130px wide while the collide radius was 34, so labels overlapped by construction and
- * the text-shadow halo was covering for it.
- */
+/** Orb geometry: the simulation, the node box and the dot must all agree. */
 export const ORB_W = 130;
 /** Dot (34 at most) + gap + two lines of 11px label. */
 export const ORB_H = 70;
@@ -34,10 +27,7 @@ export interface ForceResult {
   simulation: Simulation<ForceNode, ForceLink>;
 }
 
-/**
- * Longest prerequisite chain behind each concept. Foundations are 0 and everything
- * else is one past its deepest prerequisite.
- */
+/** Longest prerequisite chain behind each concept; foundations are 0. */
 export function prerequisiteDepth(nodes: GraphNode[], edges: GraphEdge[]): Map<string, number> {
   const incoming = new Map<string, string[]>();
   for (const e of edges) {
@@ -64,18 +54,7 @@ export function prerequisiteDepth(nodes: GraphNode[], edges: GraphEdge[]): Map<s
   return depth;
 }
 
-/**
- * Force-directed layout with a vertical bias by prerequisite depth.
- *
- * A pure force layout clusters beautifully and reads terribly: with no orientation, a
- * chain like call stack → event loop → promises could be drawn in any direction, and a
- * reader cannot tell where to start. That was the actual complaint about this view.
- *
- * So: horizontal position comes from the simulation (clustering, hubs, density) while
- * vertical position is pulled toward the concept's depth. Foundations settle at the top,
- * everything that depends on them below. Organic clustering, readable direction —
- * neither the hairball nor the rigid diagram.
- */
+/** Horizontal position comes from the simulation, vertical from prerequisite depth. */
 export function runForceLayout(
   nodes: GraphNode[],
   edges: GraphEdge[],
@@ -96,8 +75,7 @@ export function runForceLayout(
     id: n.id,
     degree: degree.get(n.id) ?? 0,
     depth: depth.get(n.id) ?? 0,
-    // Seed on a circle rather than at the origin: a symmetric start makes the layout
-    // reproducible instead of depending on how the simulation happens to break ties.
+    // Seeding on a circle keeps the layout reproducible across runs.
     x: opts.width / 2 + Math.cos((i / nodes.length) * Math.PI * 2) * 180,
     y: depthY(n.id),
   }));
@@ -118,16 +96,13 @@ export function runForceLayout(
     // Hubs repel more, so dense areas open up instead of collapsing into a knot.
     .force("charge", forceManyBody<ForceNode>().strength((d) => -230 - d.degree * 45))
     .force("center", forceCenter(opts.width / 2, opts.height / 2))
-    // The bias that makes direction readable. Strong enough to hold the ordering,
-    // weak enough that clustering still does the horizontal work.
+    // Strong enough to hold the depth ordering, weak enough to leave clustering horizontal.
     .force("depth", forceY<ForceNode>((d) => depthY(d.id)).strength(0.85))
-    // Sized from the drawn label box, not from the dot: a 34px radius let two 130px
-    // labels sit on top of each other while the simulation reported no collision.
+    // Radius comes from the label box, not the dot, or labels overlap.
     .force("collide", forceCollide<ForceNode>().radius((d) => ORB_W / 2 + orbDotSize(d.degree) / 2))
     .stop();
 
-  // Run to completion synchronously: an animated settle looks alive but makes the graph
-  // unusable while it moves, and the user is here to read it.
+  // Ticked to completion synchronously; an animated settle is unreadable.
   sim.tick(opts.ticks ?? 320);
 
   const out = new Map<string, { x: number; y: number }>();

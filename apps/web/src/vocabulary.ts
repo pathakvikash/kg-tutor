@@ -1,14 +1,6 @@
 import type { Mastery } from "./api";
 
-/**
- * One vocabulary for the domain.
- *
- * Five files taught the user five vocabularies for three concepts: the mastery colour map
- * was duplicated in ConceptNode, LearnerPage and Roadmap; the depth labels differed
- * between Intake, LearnerPage and Roadmap; and HomePage defined a KIND_LABEL map and then
- * ignored it in its own chips. If the same state is called different things on different
- * pages, the learner cannot tell it is the same state.
- */
+// Shared names for mastery, depth and due kinds; pages must not redefine them.
 
 export const MASTERY_ORDER: Mastery[] = ["unknown", "familiar", "functional", "solid"];
 

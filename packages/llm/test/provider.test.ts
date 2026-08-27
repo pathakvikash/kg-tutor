@@ -105,8 +105,7 @@ describe("startStream", () => {
     };
 
     const s = startStream(provider, { system: "s", user: "u", tier: "small" });
-    // The whole point. An async generator is lazy: kicking one off "in parallel" with
-    // another await does not overlap anything, it just starts the call late.
+    // An async generator is lazy, so one kicked off in parallel just starts late.
     await new Promise((r) => setTimeout(r, 0));
     expect(started).toBe(true);
 
@@ -173,12 +172,7 @@ describe("startStream", () => {
 });
 
 describe("extractJson tolerance", () => {
-  /**
-   * The real failure this exists for. `example.code` is specified as multi-line plain
-   * code inside a JSON string, so a model that forgets to escape one newline destroys a
-   * document whose prose fields were correct — and the learner sees "failed schema
-   * validation twice" for a lesson that was written properly.
-   */
+  // `example.code` is multi-line code inside a JSON string, so one missed escape breaks it.
   it("recovers a document whose code field has raw newlines", () => {
     const raw = '{"hook":"You already use them.","explanation":"A **higher-order function** takes a function.","example":{"language":"javascript","code":"const nums = [1, 2, 3];\nconst doubled = nums.map(n => n * 2);\nconsole.log(doubled);","walkthrough":"map is higher-order."}}';
     expect(() => JSON.parse(raw)).toThrow(); // genuinely invalid JSON
@@ -210,8 +204,7 @@ describe("extractJson tolerance", () => {
   });
 
   it("points at the character that broke the parse", () => {
-    // An unescaped quote mid-prose: complete document, invalid JSON, and the position
-    // is the only thing that makes it diagnosable.
+    // A complete document with an unescaped quote; only the position makes it diagnosable.
     const broken = '{"a":"he said "hi" to me","b":2}';
     expect(() => extractJson(broken)).toThrow(/⟪HERE⟫/);
     expect(() => extractJson(broken)).toThrow(/\d+-char response/);
@@ -260,11 +253,7 @@ describe("completeJson local repairs", () => {
 });
 
 describe("extractJson fence handling", () => {
-  /**
-   * The observed failure: an explanation that bridges from Python opens with a ```python
-   * block, and the old fence regex claimed it as the document and discarded the JSON
-   * that followed. Two in ten explanation calls died this way.
-   */
+  // A leading non-JSON fence must not be claimed as the document.
   it("ignores a code fence that is not the JSON", () => {
     const raw = [
       "Here is the bridge from what they know:",

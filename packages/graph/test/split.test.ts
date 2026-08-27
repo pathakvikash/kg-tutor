@@ -77,10 +77,7 @@ describe("splitCompoundConcept", () => {
     }
   });
 
-  /**
-   * A level recorded against a compound was never a measurement of one thing. Copying it
-   * onto both halves would assert twice over what the learner never demonstrated once.
-   */
+  // A level recorded against a compound was never a measurement of one thing.
   it("does not carry mastery onto the halves, and records that it did not", async () => {
     const learner = await prisma.learner.create({ data: { email: `s${Date.now()}@x.test` } });
     const id = await compound("Arrays or Linked Lists");

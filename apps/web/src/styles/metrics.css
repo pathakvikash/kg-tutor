@@ -1,19 +1,9 @@
-/* Page-scoped styles for: metrics
- *
- * One file per page so that page work can happen in parallel without two people
- * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
- * NOT redefined here — if something belongs to more than one page, it belongs there.
- */
+/* Page-scoped styles for metrics; shared tokens and primitives live in styles.css. */
 
-/* ── The metric card ──────────────────────────────────────────────────────────
-   Was .card / .cards, shared with Home's navigation cards, so each page's tuning
-   restyled the other. Own names, own grid; the surface repeats the shared .panel
-   treatment rather than nesting under .card, so the two can diverge without a
-   fight. */
+/* Metric cards keep their own names so Home's card tuning cannot reach them. */
 .metrics .stats {
   display: grid;
-  /* auto-fit, not auto-fill: at 2560px auto-fill held ten phantom tracks and left
-     four cards huddled in the leftmost 1000px. */
+  /* auto-fit, not auto-fill: empty tracks would strand the cards at the left. */
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: var(--s-3);
   margin: 0;
@@ -48,8 +38,7 @@
   font-size: var(--t-small);
   line-height: 1.45;
 }
-/* "no data yet" is a sentence, not a magnitude, so it does not get the 26px serif
-   treatment that makes a reader assume a measurement exists. */
+/* Empty values drop the display treatment so they do not read as a measurement. */
 .metrics .stat[data-empty] .v {
   font-family: var(--font-sans);
   font-size: var(--t-lead);
@@ -60,7 +49,7 @@
   margin: var(--s-1) 0 var(--s-2);
 }
 
-/* ── Page head ───────────────────────────────────────────────────────────────── */
+/* Page head */
 .metrics .metrics-head {
   margin-bottom: var(--s-5);
 }
@@ -72,11 +61,7 @@
   margin: 0 0 var(--s-3);
 }
 
-/* ── Section rhythm ──────────────────────────────────────────────────────────
-   Scoped to this page: .section-title is shared with four others. A dashboard of
-   eight sections needs the break to be visible without reading, so it gains a
-   hairline rule and the step above --t-section. The brief asked for 17px, measured
-   before the fonts loaded; 16px is the token that exists. */
+/* Section rhythm, scoped here: .section-title is shared with four other pages. */
 .metrics .section-title {
   margin: var(--s-6) 0 var(--s-3);
   padding-bottom: var(--s-2);
@@ -87,19 +72,15 @@
 .metrics .section-title:first-child {
   margin-top: 0;
 }
-/* Replaces three inline marginTop values. */
 .metrics .note {
   margin: var(--s-3) 0 0;
 }
-/* The two paragraphs carrying the argument for why these metrics exist ran ~200
-   characters a line at 1280px and ~400 at 2560px. */
+/* These paragraphs need a measure of their own; the page has none. */
 .metrics .prose {
   max-width: 68ch;
 }
 
-/* ── Numbers ─────────────────────────────────────────────────────────────────
-   There was no numeric-cell rule anywhere, so on the one page built for comparing
-   magnitudes the Calls column was ragged-left. */
+/* Numbers */
 .metrics td.num,
 .metrics th.num {
   text-align: right;
@@ -119,9 +100,7 @@
   color: var(--ink);
 }
 
-/* ── Tables ──────────────────────────────────────────────────────────────────
-   The five-column tables need more than the primitive's 520px floor before their
-   trailing columns collapse; .table-wrap keeps the scroll local either way. */
+/* Tables: five columns need more than the shared 520px floor before collapsing. */
 .metrics .t-purpose,
 .metrics .t-arms {
   min-width: 640px;
@@ -146,7 +125,7 @@
   color: var(--ink-soft);
 }
 
-/* ── Notices and empty states ───────────────────────────────────────────────── */
+/* Notices and empty states */
 .metrics .notice p {
   margin: 0 0 var(--s-2);
 }
@@ -170,8 +149,6 @@
   color: var(--ink-mid);
   overflow-wrap: anywhere;
 }
-/* Radius follows the panel scale rather than the shared .empty's 6px, and the copy
-   is a clause now, so it needs a measure. */
 .metrics .metrics-empty {
   max-width: var(--measure-wide);
   padding: var(--s-5);

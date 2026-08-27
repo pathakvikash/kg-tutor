@@ -1,18 +1,8 @@
-/* Page-scoped styles for: graph
- *
- * One file per page so that page work can happen in parallel without two people
- * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
- * NOT redefined here — if something belongs to more than one page, it belongs there.
- */
+/* Graph page styles; shared tokens and primitives live in styles.css. */
 
 .graph-page { flex-direction: column; }
 
-/* ── Toolbar ──────────────────────────────────────────────────────────────────
-   Was a wrapping flex row with a `flex: 1` spacer in it. The spacer collapses
-   inside a wrap container, so the auto-refresh control landed in a different place
-   at every width, and the bar measured 87px at 1600px, 186px at 500px and 241px at
-   320px — six rows before any graph was visible. A grid puts filters and status on
-   one row and the legend on its own, at every width. */
+/* Grid, not a wrapping flex row: a flex spacer collapses once the row wraps. */
 .graph-toolbar {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -33,13 +23,12 @@
 }
 .gt-legend { grid-area: legend; min-width: 0; }
 @media (max-width: 620px) {
-  /* Two columns cannot hold three selects and a status cluster; stacking is honest. */
+  /* Two columns cannot hold three selects and the status cluster. */
   .graph-toolbar { grid-template-columns: 1fr; grid-template-areas: "filters" "status" "legend"; }
   .gt-status { justify-content: flex-start; }
 }
 
-/* An unbounded model-generated topic name used to push the toolbar past .page's
-   overflow and slide the whole layout sideways at 320–375px. */
+/* Cap the select: an unbounded topic name slides the layout sideways. */
 .gt-filters select { min-width: 0; max-width: min(40vw, 260px); }
 .gt-filters label.field { min-width: 0; }
 
@@ -49,10 +38,7 @@
 }
 .gt-legend--fold[open] > summary { margin-bottom: var(--s-2); }
 
-/* ── Legend ───────────────────────────────────────────────────────────────────
-   It documented the one encoding that does not work — four mastery swatches, two of
-   them 1.13:1 apart — and omitted the three that do. Every mark here is a miniature
-   of the real one. */
+/* Legend: every mark here is a miniature of the real one. */
 .lg { display: inline-flex; align-items: center; gap: var(--s-2); white-space: nowrap; }
 .lg-mastery { gap: var(--s-3); flex-wrap: wrap; }
 .lg-level { display: inline-flex; align-items: center; gap: var(--s-1); }
@@ -65,15 +51,14 @@
 .lg-orb--sm { width: 7px; height: 7px; }
 .lg-orb--lg { width: 13px; height: 13px; }
 
-/* The label was on a title attribute, which no keyboard or screen-reader user ever
-   receives; the pulse and the timestamp live in .live in styles.css. */
+/* The pulse and the timestamp live in .live in styles.css. */
 .live-toggle {
   border: none; background: none; padding: 0; color: inherit; cursor: pointer;
   font: inherit;
 }
 .live-toggle:hover { color: var(--accent); }
 
-/* ── Canvas ─────────────────────────────────────────────────────────────────── */
+/* Canvas */
 .canvas { position: relative; }
 
 .graph-notices {
@@ -83,8 +68,7 @@
 }
 .graph-notices .notice p { margin: 0 0 var(--s-2); }
 
-/* Three different situations used to render the same blank grid: first paint, a
-   genuinely empty graph, and a topic filter that matched nothing. */
+/* First paint, an empty graph and a filter that matched nothing must look different. */
 .canvas-loading {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -92,8 +76,7 @@
 }
 .canvas-skeleton { width: min(560px, 70%); height: 40%; border-radius: var(--r-lg); }
 
-/* elk runs asynchronously, so the previous mode's orbs used to sit there wearing the
-   previous mode's labels until it returned. */
+/* elk lays out asynchronously; this covers the stale layout until it returns. */
 .canvas-veil {
   position: absolute; inset: 0; z-index: var(--z-panel);
   display: flex; align-items: center; justify-content: center;
@@ -101,19 +84,15 @@
   background: color-mix(in srgb, var(--ground) 72%, transparent);
 }
 
-/* A ghost at opacity 0.18 measures ~1.2:1, so it is not readable — and it was still
-   swallowing clicks and tab stops aimed at the graph behind it. `focusable: false`
-   handles the tab stop; this handles the pointer. */
+/* Dimmed marks must not take the pointer; `focusable: false` handles tab stops. */
 .orb.dimmed, .node.dimmed { pointer-events: none; }
 
-/* Nothing here is connectable, so the handles must not take the pointer: a click near
-   an orb's edge used to start drawing an edge the app can never accept. */
+/* Nothing here is connectable, so the handles must not take the pointer. */
 .orb .react-flow__handle, .node .react-flow__handle {
   opacity: 0; pointer-events: none; cursor: default;
 }
 
-/* Counter-scaled to a constant screen size, so it stays 11px at any zoom above the
-   level-of-detail tier. Scaling out of flow keeps the orb's box height fixed. */
+/* Counter-scaled in JS; scaling out of flow keeps the orb box height fixed. */
 .orb-label { transform-origin: top center; }
 /* An unstated concept is "no learner selected", not "assessed as unknown". */
 .orb-dot--unstated { box-shadow: 0 0 0 1.5px var(--rule-strong); }
@@ -121,10 +100,7 @@
   border: 1.5px dotted var(--rule-strong); background: none;
 }
 
-/* ── Focus bar ────────────────────────────────────────────────────────────────
-   The hop-depth select rendered only inside the focused node's own panel, so a focus
-   became unsteerable after the first hop, and the button on the next node still read
-   "Focus neighbourhood" while a focus was active. */
+/* Focus bar: hop depth has to stay steerable from outside the focused node. */
 .focus-bar {
   position: absolute; z-index: var(--z-panel);
   top: var(--s-3); left: var(--s-3); right: var(--s-3);
@@ -134,11 +110,7 @@
 .focus-bar .focus-name { font-family: var(--font-serif); font-size: var(--t-section); }
 .focus-bar .eyebrow { flex: none; }
 
-/* ── MiniMap ──────────────────────────────────────────────────────────────────
-   A 202x152 opaque panel showing nothing (the node rects need declared dimensions,
-   which the nodes now carry) that covered 63% of canvas width at 320px and 72% of
-   canvas height at 740x420, and swallowed drag and wheel because it is pannable and
-   zoomable. Below 900px the Controls fit-view button already covers the need. */
+/* MiniMap: clamped, and hidden where it would cover the canvas and swallow drag. */
 .canvas .react-flow__minimap {
   width: clamp(120px, 15vw, 200px);
   height: clamp(84px, 11vw, 150px);
@@ -147,17 +119,13 @@
   .canvas .react-flow__minimap { display: none; }
 }
 
-/* ── Inspector ────────────────────────────────────────────────────────────────
-   At 2560px the canvas was handed 2160px it could not use while a panel holding
-   2275px of content stayed at 400px. Scoped to .graph-wrap so the lesson page's own
-   inspector is untouched. */
+/* Scoped to .graph-wrap so the lesson page inspector is untouched. */
 .graph-wrap .inspector { width: clamp(320px, 26vw, 620px); }
 @media (max-width: 760px) {
   .graph-wrap .inspector { width: auto; }
 }
 
-/* The two panel-level titles were 10.5px mono eyebrows rendered smaller than the 13px
-   prose beneath them, while a node's identity next door was a 16px serif h3. */
+/* Panel titles must not be smaller than the prose under them. */
 .insp-title, .insp-name { font-size: var(--t-lead); line-height: 1.3; margin-bottom: var(--s-1); }
 .insp-name:focus-visible, .insp-title:focus-visible { border-radius: var(--r-sm); }
 .insp-pair { margin: 0 0 var(--s-2); font-size: var(--t-body); line-height: 1.4; }
@@ -178,17 +146,14 @@
 .deepen-result { margin-top: var(--s-2); }
 .deepen-result p { margin: 0 0 var(--s-1); }
 
-/* ── Coach ────────────────────────────────────────────────────────────────────
-   The active tab was a colour change only, which is the whole reason a user could
-   believe they were asking a question while being graded. */
+/* Coach: the active tab needs more than a colour change. */
 .coach-tabs button[aria-selected="true"] { border-bottom: 2px solid var(--accent); }
 .coach-note { font-size: var(--t-small); margin: 0; }
 .coach .chips { margin-top: var(--s-2); }
 .coach .verdict-again { margin-top: var(--s-2); }
 .coach .notice { margin-top: var(--s-2); }
 
-/* The recovery path from the panel's most important warning was a read-only-looking
-   chip at a 14px hit area, indistinguishable from the chips in the verdict. */
+/* This chip is a control, so it needs a real hit area. */
 .chip--action {
   min-height: 24px; display: inline-flex; align-items: center; gap: var(--s-1);
   padding: 0 var(--s-2); cursor: pointer;
@@ -197,9 +162,6 @@
 .chip--action::after { content: " →"; font-size: var(--t-micro); }
 .chip--action:hover { background: var(--accent-bg); }
 
-/* styles.css owns the inert look (opacity + not-allowed) for every aria-disabled
-   control. Two base hover rules out-specify it, though: `button:hover` still repaints
-   the label accent, and `button.primary:hover` sets opacity back to 0.9 — so hovering
-   an inert Answer or Ask button made it look pressable again. */
+/* Two base hover rules out-specify the global aria-disabled look. */
 .graph-page button[aria-disabled="true"]:hover { color: var(--ink); }
 .graph-page button.primary[aria-disabled="true"]:hover { opacity: 0.55; color: #fff; }

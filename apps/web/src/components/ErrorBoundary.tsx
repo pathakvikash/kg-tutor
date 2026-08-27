@@ -1,13 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
-/**
- * Keeps the app shell alive when a page throws.
- *
- * The only boundary in the app was around model-authored widgets, and every page
- * dereferences an untyped payload the same way — `plan.steps.find(...)`,
- * `result.state.after.mastery`, `due.byKind[k]` — so one missing field white-screened
- * the whole application with no way back except the browser's own reload.
- */
+/** Wraps each route, so one page's throw cannot white-screen the shell. */
 export class ErrorBoundary extends Component<
   { children: ReactNode; where: string },
   { error: Error | null }

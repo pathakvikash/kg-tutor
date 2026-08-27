@@ -134,19 +134,11 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
     return { goal, plan };
   });
 
-  /**
-   * What this learner owes attention to, plan or no plan.
-   *
-   * Confidence decays on a 45-day half life whether or not they open the next step, and
-   * until now nothing told them anything had gone stale — the decay was computed and
-   * discarded. This is also the only place a recorded misconception gets acted on.
-   */
+  /** What this learner owes attention to, plan or no plan; also where misconceptions surface. */
   app.get("/api/learners/:id/due", async (req) => {
     const { id } = req.params as { id: string };
     const limit = Number((req.query as { limit?: string }).limit ?? 20);
-    // The full queue first, then the page of it. `total` was computed after slicing, so
-    // it reported the cap rather than the backlog: 25 items due read as "20", and the
-    // review session's "1 of 10" implied ten was all there was.
+    // Count the whole queue before slicing, so total reports the backlog and not the cap.
     const all = await dueForReview(prisma, id);
     const items = all.slice(0, Math.min(Math.max(limit, 1), 50));
     return {
@@ -186,8 +178,7 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
     if (!plan) return reply.code(404).send({ error: "no active plan" });
 
     const mastery = await loadMastery(prisma, id);
-    // Not "the first step nobody marked done" — that offered a lesson on a concept the
-    // intake had already established, which is the wasted teaching the metrics measure.
+    // The next step is the first one not yet mastered, not the first one left unmarked.
     const nextStep = plan.steps.find(
       (s) => !atLeast(mastery.get(s.conceptId) ?? "unknown", s.requiredLevel),
     );

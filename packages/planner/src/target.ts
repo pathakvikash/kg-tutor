@@ -10,13 +10,7 @@ export interface TargetConcept {
   goalFacing: boolean;
 }
 
-/**
- * Depth sets the bar, and it is the reason depth lives on the goal rather than on every
- * edge. (03, 08)
- *
- * `use` wants working knowledge of the goal-facing concepts. `build` wants solid
- * understanding, which is also what pulls soft prerequisites into scope.
- */
+/** Depth sets the bar, which is why it lives on the goal rather than on every edge. (03, 08) */
 const REQUIRED: Record<GoalDepth, { goalFacing: MasteryLevel; support: MasteryLevel }> = {
   use: { goalFacing: "functional", support: "familiar" },
   debug: { goalFacing: "solid", support: "functional" },
@@ -36,21 +30,12 @@ export interface ResolveGoalInput {
   mastery: Map<string, MasteryLevel>;
 }
 
-/**
- * A goal resolves into an explicit target set at plan time — never stored on the Topic,
- * because two learners aiming at the same topic with different depths must get
- * different targets. (08)
- *
- * The backwards closure stops at concepts the learner already knows: the floor is the
- * learner, not the graph. (04)
- */
+/** Resolved at plan time, never stored: one topic at two depths is two target sets. (04, 08) */
 export async function resolveGoal(input: ResolveGoalInput): Promise<TargetConcept[]> {
   const { prisma, topicId, depth, mastery } = input;
   const bar = REQUIRED[depth];
 
-  // A deprecated concept is one the graph has decided is not a concept — usually a
-  // compound that has since been split. The resolver and the graph view already exclude
-  // them; the planner did not, so deprecating one changed nothing about what got taught.
+  // Exclude deprecated concepts here too, matching the resolver and the graph view.
   const links = await prisma.topicConcept.findMany({
     where: { topicId, relation: "contains", concept: { deprecatedAt: null } },
   });

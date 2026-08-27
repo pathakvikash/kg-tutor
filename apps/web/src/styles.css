@@ -7,16 +7,14 @@
   --ink-mid: #3c4c4a;
   --ink-soft: #63706e;
   --rule: #dae2e0;
-  /* Was #bcc8c6 at 1.72:1 — and this border is the only thing separating a
-     field from the card behind it. */
+  /* Only separator between a field and the card behind it; keep it visible. */
   --rule-strong: #96a5a2;
   --accent: #a96400;
   --accent-bg: #f7ecd9;
   --structure: #1d5b57;
 
   --m-unknown: #c2ccca;
-  /* Was #9ec6c0: 1.13:1 against --m-unknown, i.e. two of the four mastery
-     levels were indistinguishable. */
+  /* Must stay distinguishable from --m-unknown. */
   --m-familiar: #79b1a9;
   --m-functional: #4f9a90;
   --m-solid: #1d5b57;
@@ -50,27 +48,13 @@
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════════
-   Foundation: tokens
-   ───────────────────────────────────────────────────────────────────────────────
-   :root used to declare fifteen custom properties and all fifteen were colour, so
-   every other dimension in the app was a literal. An audit of this file counted 20
-   distinct spacing values, 13 border-radii and 19 font sizes — including 9.5px,
-   10.5px, 11.5px, 12.5px and 13.5px, which is what hand-tuning without a scale
-   looks like. These are the other axes.
-
-   The contrast values quoted below were measured against the real token values in
-   both themes; several were outright WCAG failures rather than matters of taste.
-   ═══════════════════════════════════════════════════════════════════════════════ */
+/* Foundation: tokens */
 :root {
-  /* Type. One definition each, replacing 44 repeated font stacks — one of which
-     (the mono at :51) had silently drifted from the other 33. */
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-serif: "Zilla Slab", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
 
-  /* Spacing. A 4px base, six steps. Anything outside this is a bug or a one-off
-     with a comment explaining itself. */
+  /* 4px base, six steps; nothing outside this scale. */
   --s-1: 4px;
   --s-2: 8px;
   --s-3: 12px;
@@ -78,21 +62,13 @@
   --s-5: 24px;
   --s-6: 32px;
 
-  /* Radius, by what the thing is: control, inline surface, panel, pill. The app
-     had drifted to nine numeric radii with no rule for choosing between them. */
+  /* Radius named by what the thing is: control, inline surface, panel, pill. */
   --r-sm: 4px;
   --r-md: 6px;
   --r-lg: 8px;
   --r-pill: 999px;
 
-  /* Type scale.
-     Raised roughly 14% from the original values, and every font size in the app now
-     resolves through these — there were 86 px literals in this file alone, so the old
-     scale could only be adjusted by hand, 86 times.
-     The original sizes were tuned against the fallback faces, because the real fonts
-     had never loaded: Menlo is 26% wider than IBM Plex Mono at the same size, so the
-     mono metadata looked substantial at 10.5px and turned spindly the moment the
-     intended face arrived. 10.5px uppercase mono is too small to read regardless. */
+  /* Every font size in the app resolves through this scale. */
   --t-micro: 12px;
   --t-meta: 13px;
   --t-small: 14px;
@@ -102,27 +78,21 @@
   --t-h: 24px;
   --t-display: 32px;
 
-  /* Text ON the accent. White on this amber measured 2.11:1 — the primary button,
-     app-wide, was below the 4.5:1 floor for its own label. */
+  /* White text fails contrast on this amber. */
   --on-accent: #ffffff;
-  /* The accent AS text is 3.98:1 here, and it is used as text in nine places, so
-     it needs a darker sibling rather than a caveat. */
+  /* Use this, not --accent, when the accent is text. */
   --accent-text: #8a5100;
 
   --danger: #b3261e;
   --danger-bg: #fdecea;
-  /* --m-functional as text measures 3.30:1; used as text in three places. */
   --positive-text: #3c7c74;
 
   --focus-outline-width: 2px;
   --focus-outline-offset: 2px;
   --focus-color: var(--accent);
 
-  /* The app's one elevation was a black shadow, invisible on the dark ground. */
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06);
 
-  /* There was no z-index and no position rule anywhere, so nothing could be
-     layered on purpose — which a skip link and a sticky heading both need. */
   --z-canvas: 0;
   --z-panel: 10;
   --z-sticky: 20;
@@ -133,14 +103,12 @@
   --dur-slow: 400ms;
   --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
 
-  /* Line length. Three pages set none at all and ran ~2500px lines at 2560px. */
   --measure-narrow: 620px;
   --measure: 720px;
   --measure-wide: 940px;
   --measure-table: 1080px;
 
-  /* Per-primitive knobs, so a variant overrides a variable instead of restating
-     the whole rule. */
+  /* Variants override one of these instead of restating the whole rule. */
   --panel-pad: var(--s-4);
   --panel-bg: var(--surface);
   --bubble-pad: var(--s-3) var(--s-4);
@@ -148,9 +116,6 @@
   --chip-size: var(--t-micro);
 }
 
-/* .step / .steps / .milestone were deleted here: the Learner page now renders the
-   Roadmap component and the lesson uses step-row / rm-step / milestone-turn, so the
-   bare selectors had no consumer left in apps/web/src. */
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
@@ -165,19 +130,13 @@ code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 
 
 .app { display: flex; flex-direction: column; height: 100%; }
 
-/* At 380px, .nav overflowed the bar with no document scroll, so Learner, Curate,
-   Metrics and Settings were simply unreachable — half the app, on a phone. The
-   brand was starting the squeeze: "kg-tutor" has a soft-wrap opportunity at its
-   hyphen, so it rendered as "kg-" / "tutor" at every width from 320 to 860px. */
 .topbar {
   display: flex; align-items: center; gap: var(--s-5);
   padding: 0 var(--s-4); min-height: 52px; flex: none;
   background: var(--surface); border-bottom: 1px solid var(--rule);
 }
 .brand, .badge { flex: none; white-space: nowrap; }
-/* The nav scrolls rather than overflowing invisibly. Momentum scrolling on iOS,
-   and the scrollbar is hidden because the fade plus the active-link auto-scroll
-   already communicate that there is more. */
+/* The nav scrolls rather than overflowing; the fade signals there is more. */
 .nav {
   flex: 1 1 auto; min-width: 0;
   overflow-x: auto; overflow-y: hidden;
@@ -225,8 +184,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .graph-wrap { flex: 1; display: flex; min-width: 0; min-height: 0; }
 .canvas { flex: 1; min-width: 0; }
 .inspector {
-  /* Wider than it was: it now holds a code snippet and a conversation, and 320px
-     wrapped a two-token line of JavaScript into three. */
+  /* Wide enough that a short line of code does not wrap. */
   width: 400px; flex: none; border-left: 1px solid var(--rule);
   background: var(--surface); padding: 16px; overflow: auto;
 }
@@ -263,9 +221,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .mdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-/* The base surface is .panel now. `.card` survives only as an alias so the eight
-   pages that use the name keep working; the block that used to be here silently
-   lost to a later redefinition for the whole app. */
 .card .k {
   font-family: "IBM Plex Mono", monospace; font-size: var(--t-micro); letter-spacing: 0.09em;
   text-transform: uppercase; color: var(--ink-soft);
@@ -274,8 +229,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .card .sub { color: var(--ink-soft); font-size: var(--t-small); margin-top: 4px; }
 
 table { border-collapse: collapse; width: 100%; font-size: var(--t-body); }
-/* A wrapped two-word column header is taller than its own rows and reads as two
-   columns. Every data page in the app wants this, so it belongs here. */
+/* Headers never wrap; a wrapped header reads as two columns. */
 th {
   white-space: nowrap;
   text-align: left; font-family: "IBM Plex Mono", monospace; font-size: var(--t-micro);
@@ -305,9 +259,7 @@ tr:last-child td { border-bottom: none; }
 .err { color: #b3261e; }
 @media (prefers-color-scheme: dark) { .err { color: #f2b8b5; } }
 
-/* The verdict on the previous probe, shown above the next question. Deliberately quiet:
-   in a binary search a wrong answer is the signal being looked for, not a failure, and
-   styling it like an error would make a diagnostic feel like a test being failed. */
+/* A wrong answer is the signal, not a failure, so this stays quiet. */
 .verdict {
   padding: 9px 12px; border-radius: 6px; margin-bottom: 14px;
   font-size: var(--t-body); line-height: 1.5;
@@ -355,7 +307,7 @@ tr:last-child td { border-bottom: none; }
   font-family: "IBM Plex Mono", monospace; font-size: var(--t-micro); letter-spacing: 0.09em;
   text-transform: uppercase; color: var(--structure); margin-bottom: 4px;
 }
-/* Diagnostics are shown, not hidden — what the system believes should be inspectable. */
+/* Diagnostics are shown, not hidden; what the system believes stays inspectable. */
 .turn.note .bubble {
   background: transparent; border: none; padding: 2px 0;
   font-family: "IBM Plex Mono", monospace; font-size: var(--t-meta); color: var(--ink-soft);
@@ -395,8 +347,7 @@ tr:last-child td { border-bottom: none; }
   width: 7px; height: 7px; border-radius: 50%; background: var(--m-functional);
   animation: pulse 2.4s ease-in-out infinite;
 }
-/* Paused has to look paused. The animation ran regardless of state before — only the
-   colour changed — so a stopped watcher still blinked at you. */
+/* Paused has to look paused, so the animation stops too. */
 .live.off .pulse { background: var(--rule-strong); animation: none; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .live .pulse { animation: none; } }
@@ -554,8 +505,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .ev.dropped .ev-name { text-decoration: line-through; }
 @media (max-width: 700px) { .ev { grid-template-columns: 1fr; gap: 2px; } }
 
-/* Interactive widgets. Sequencing is the thing prose cannot show, so the timeline
-   controls are the most prominent element rather than a decorative flourish. */
+/* Interactive widgets: the timeline controls are the primary element. */
 .turn.widget .bubble { padding: 0; background: none; border: none; }
 .w-root {
   border: 1px solid var(--rule); border-radius: 8px; background: var(--surface);
@@ -580,10 +530,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   background: var(--dot-bg, var(--surface)); border-color: var(--dot-border, var(--rule-strong));
   cursor: pointer;
 }
-/* These set `background` at 0-3-0, so a page-scoped `.dot { background: none }` at
-   0-2-0 could never win — the timeline's larger hit area landed for pending dots and
-   silently did not for done or current ones. Expressed as custom properties instead,
-   so a page can restyle the dot without having to out-specify it. */
+/* Custom properties, so a page can restyle the dot without out-specifying it. */
 .w-tl-dots .dot { --dot-bg: var(--surface); --dot-border: var(--rule-strong); }
 .w-tl-dots .dot.done { --dot-bg: var(--rule-strong); }
 .w-tl-dots .dot.on { --dot-bg: var(--accent); --dot-border: var(--accent); transform: scale(1.25); }
@@ -637,9 +584,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   .spinner { animation: none; border-top-color: var(--rule-strong); }
 }
 
-/* Responsive. The composer previously laid out in one non-wrapping row, so at narrow
-   widths its trailing buttons rendered past the edge of the pane — present in the DOM,
-   unreachable with a mouse. */
+/* Responsive. The composer must wrap or its trailing buttons render off-pane. */
 .composer { flex-wrap: wrap; }
 .composer input { min-width: 180px; }
 
@@ -648,8 +593,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   .lesson .inspector { width: 240px; }
 }
 @media (max-width: 760px) {
-  /* Below this the side-by-side split leaves neither pane usable, so the inspector
-     moves under the content instead of competing with it. */
+  /* Below this the side-by-side split leaves neither pane usable. */
   .graph-wrap, .lesson { flex-direction: column; }
   .inspector {
     width: auto; max-height: 44vh; border-left: none; border-top: 1px solid var(--rule);
@@ -662,7 +606,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   .toolbar { gap: 8px; padding: 8px 10px; }
 }
 
-/* Roadmap. Grouped by milestone: a flat list of nineteen concepts reads as a wall. */
+/* Roadmap, grouped by milestone: a flat list of concepts reads as a wall. */
 .rm {
   border: 1px solid var(--rule); border-radius: 8px; background: var(--surface);
   padding: 16px; max-width: 640px;
@@ -714,9 +658,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   padding: 0; background: none; border: none;
 }
 
-/* Simulation: several regions under one clock. Frames could draw one stack; nothing
-   could show a call stack draining while a microtask queue fills, which is the event
-   loop and the thing prose is worst at. */
+/* Simulation: several regions under one clock. */
 .w-sim { border: 1px solid var(--rule); border-radius: 6px; padding: 12px; }
 .w-regions { display: grid; gap: 8px; margin: 12px 0 10px; }
 .w-region {
@@ -735,9 +677,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 }
 @keyframes dropIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .w-frame.fresh { animation: none; } }
-/* Was `!important`, which meant the only way for a page to choose a different
-   collapse was to shout back. The widget grid is authored per-region, so the base
-   rule now yields to whatever the page sets. */
+/* The :not() lets a page set its own grid-template-columns. */
 @media (max-width: 700px) {
   .w-regions:not([style*="grid-template-columns"]) { grid-template-columns: 1fr 1fr; }
 }
@@ -764,8 +704,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 @keyframes blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .caret { animation: none; opacity: 0.6; } }
 
-/* Tables. The model produces them, so they have to render as tables rather than
-   falling through to a paragraph and being joined into one line. */
+/* Model output contains tables, so they must render as tables. */
 .md-table-wrap { overflow-x: auto; margin: 0 0 12px; }
 .md-table { border-collapse: collapse; width: 100%; font-size: var(--t-small); min-width: 320px; }
 .md-table th {
@@ -782,7 +721,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   border-left: 2px solid var(--rule-strong); color: var(--ink-mid);
 }
 
-/* Syntax highlighting, themed off our own tokens rather than a stock hljs stylesheet. */
+/* Syntax highlighting themed off the app's own tokens, not a stock hljs sheet. */
 .hljs-keyword, .hljs-built_in, .hljs-literal { color: var(--accent); }
 .hljs-string, .hljs-regexp { color: var(--m-functional); }
 .hljs-title, .hljs-title.function_, .hljs-section { color: var(--structure); }
@@ -791,16 +730,13 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .hljs-attr, .hljs-property, .hljs-variable { color: var(--ink); }
 .hljs-punctuation, .hljs-operator { color: var(--ink-mid); }
 
-/* The grader's rationale is markdown, so it arrives as block elements. Keep it flowing
-   inline with the verdict rather than starting a new paragraph under it. */
+/* The rationale arrives as markdown blocks; keep it inline with the verdict. */
 .verdict-why > :first-child { margin-top: 0; }
 .verdict-why > :last-child { margin-bottom: 0; }
 .verdict-why p { display: inline; }
 .verdict-why code { font-size: var(--t-small); }
 
-/* ── Assess / Ask, on the selected node ───────────────────────────────────────
-   The graph could show that a concept was unknown and do nothing about it. These
-   two panels are what let a node change state without leaving the page. */
+/* Assess / Ask, on the selected node */
 .coach {
   margin: 14px 0 18px; border: 1px solid var(--rule); border-radius: 8px;
   background: var(--ground); overflow: hidden;
@@ -817,8 +753,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .coach-body textarea { width: 100%; font-size: var(--t-body); }
 .coach-q { font-size: var(--t-body); line-height: 1.55; }
 .coach-q pre { font-size: var(--t-small); }
-/* Bounded, so a long exchange scrolls inside the panel instead of pushing
-   Requires/Unlocks off the bottom of the sidebar. */
+/* Bounded, so a long exchange scrolls here instead of pushing the sidebar. */
 .coach-chat {
   max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
 }
@@ -833,8 +768,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .coach-chat .bubble.tutor > :last-child { margin-bottom: 0; }
 .coach .verdict { margin-bottom: 0; }
 
-/* Said before an assessment, not after it: a wrong answer caused by a missing
-   prerequisite gets recorded against the wrong concept. */
+/* Shown before an assessment, so a missing prerequisite is not scored as a gap. */
 .prereq-warn {
   border: 1px solid var(--accent); border-left-width: 3px; border-radius: 6px;
   background: var(--accent-bg); padding: 9px 11px; font-size: var(--t-small); line-height: 1.5;
@@ -844,7 +778,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .prereq-warn .chip { cursor: pointer; }
 .prereq-warn .chip:hover { border-color: var(--accent); color: var(--accent); }
 
-/* ── Home: the "what now" surface ────────────────────────────────────────────── */
+/* Home: the "what now" surface */
 .home { max-width: 940px; }
 .home-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .home-head h2 { margin-bottom: 2px; }
@@ -856,8 +790,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   border: 1px solid var(--rule); border-radius: 8px; background: var(--surface);
   padding: 14px; display: flex; flex-direction: column; gap: 6px;
 }
-/* Only what costs something to ignore gets the accent. If everything is urgent,
-   nothing is. */
+/* Only what costs something to ignore gets the accent. */
 .card.urgent { border-left: 3px solid var(--accent); }
 .card h4 {
   font-family: "IBM Plex Mono", monospace; font-size: var(--t-micro); letter-spacing: 0.09em;
@@ -883,8 +816,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .due-name { font-weight: 600; }
 .due-why { color: var(--ink-soft); font-size: var(--t-small); }
 .due-belief { grid-column: 2 / -1; color: var(--ink-soft); font-size: var(--t-small); }
-/* Kind is the ranking, so it reads as a rank: red for a belief being applied, amber
-   for never demonstrated, quiet for ordinary fading. */
+/* Colour encodes rank: red for misconception, amber for inferred, quiet otherwise. */
 .due-kind {
   font-family: "IBM Plex Mono", monospace; font-size: var(--t-micro); letter-spacing: 0.07em;
   text-transform: uppercase; padding: 2px 7px; border-radius: 10px;
@@ -914,20 +846,9 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .lang-row .field input { min-width: 200px; }
 .lang-row .muted { flex: 1 1 240px; }
 
-/* ═══════════════════════════════════════════════════════════════════════════════
-   Foundation: primitives
-   ───────────────────────────────────────────────────────────────────────────────
-   Thirteen near-identical panel declarations, six button treatments and an
-   uppercase mono micro-label written thirteen times with nine different
-   size/tracking/weight triples. These are the shared versions. Page-specific
-   classes above are being migrated onto them; where an old name survives it is
-   kept as an alias so nothing breaks in a half-finished state.
-   ═══════════════════════════════════════════════════════════════════════════════ */
+/* Foundation: primitives */
 
-/* ── Focus. There was not one :focus, :focus-visible or outline declaration in
-   787 lines, so nothing in the app could be operated by keyboard with confidence.
-   Outline rather than box-shadow: it survives the react-flow viewport transform
-   and any overflow: hidden ancestor. ─────────────────────────────────────────── */
+/* Outline, not box-shadow: it survives the react-flow transform and overflow clipping. */
 :where(a, button, select, input, textarea, [tabindex], summary):focus-visible {
   outline: var(--focus-outline-width) solid var(--focus-color);
   outline-offset: var(--focus-outline-offset);
@@ -939,28 +860,15 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   outline-offset: var(--focus-outline-offset);
 }
 
-/* ── Visually hidden, and the skip target ─────────────────────────────────────
-   Retires six places where the only explanation was a title attribute, which no
-   keyboard or screen-reader user ever receives. */
+/* Visually hidden, and the skip target */
 .sr-only {
   position: absolute;
-  /* Pinned, not left at its static position.
-     The usual visually-hidden recipe omits top/left, which leaves the element at the
-     spot it would have occupied in flow. That is harmless in a short document and
-     wrong here: these labels sit inside the lesson transcript, which is a tall
-     scrolling box with no positioned ancestor, so the static position resolved against
-     the document — one label 13,637px down made the DOCUMENT 13,637px tall while the
-     body stayed 430px. The page then scrolled as a whole: the topbar scrolled out of
-     view, the composer ended up mid-screen, and everything below it was empty black.
-     Pinning to the origin makes the static position irrelevant. The element is 1px and
-     clipped, and assistive technology reads DOM order, not coordinates. */
+  /* Pinned to the origin: an unpinned static position inflates the document height. */
   top: 0; left: 0;
   width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
 }
-/* Belt and braces: the scrolling regions get a positioning context, so anything else
-   absolutely positioned inside them is contained by their overflow rather than
-   escaping to the document. */
+/* Positioning context, so absolute children stay inside these scroll regions. */
 .chat, .inspector, .page, .table-wrap { position: relative; }
 .skip-link {
   position: absolute; left: var(--s-2); top: -100px; z-index: var(--z-overlay);
@@ -970,7 +878,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 }
 .skip-link:focus { top: var(--s-2); }
 
-/* ── Surface ─────────────────────────────────────────────────────────────────── */
+/* Surface */
 .panel {
   background: var(--panel-bg);
   border: 1px solid var(--rule);
@@ -980,12 +888,10 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .panel--tight { --panel-pad: var(--s-3); }
 .panel--inset { background: var(--surface-alt); }
 .panel--dashed { border-style: dashed; }
-/* Alias: the pages still say .card. Deliberately carries no display value — the
-   flex-column that had leaked onto the base class was reshaping the Metrics stat
-   blocks, which were never designed for it. Use .stack for rhythm. */
+/* Alias for .panel, kept for pages that still say .card; no display value here. */
 .card { background: var(--panel-bg); border: 1px solid var(--rule); border-radius: var(--r-lg); padding: var(--panel-pad); }
 
-/* ── Layout utilities. Replaces ten hand-rolled inline flex rows. ───────────── */
+/* Layout utilities */
 .row { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
 .row--tight { gap: var(--s-1); }
 .row--baseline { align-items: baseline; }
@@ -993,33 +899,30 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .stack--tight { gap: var(--s-1); }
 .stack--loose { gap: var(--s-4); }
 
-/* ── Title-plus-action row that actually wraps ───────────────────────────────── */
+/* Title-plus-action row that wraps */
 .head {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: var(--s-4); flex-wrap: wrap; row-gap: var(--s-2);
 }
 @media (max-width: 620px) {
-  /* The trailing control goes full width and leads, rather than being squeezed
-     into a column too narrow to read its own value. */
+  /* The trailing control goes full width and leads at this width. */
   .head > :last-child:not(:only-child) { order: -1; width: 100%; }
 }
 
-/* ── The uppercase mono micro-label ─────────────────────────────────────────── */
+/* The uppercase mono micro-label */
 .eyebrow {
   font-family: var(--font-mono); font-size: var(--t-micro); font-weight: 500;
   letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft);
   margin: 0;
 }
 
-/* ── Emphasis rail. Emphasis was drawn three incompatible ways at eight sites;
-   an inset shadow does not change the box model, so it cannot shift text. ───── */
+/* Emphasis rail. An inset shadow cannot shift text the way a border would. */
 .rail { box-shadow: inset 3px 0 0 var(--rail, var(--accent)); }
 .rail--accent { --rail: var(--accent); }
 .rail--danger { --rail: var(--danger); }
 .rail--positive { --rail: var(--m-solid); }
 
-/* ── Callout, with tone. A failed irreversible write used to look exactly like a
-   success: both were .banner. ────────────────────────────────────────────────── */
+/* Callout, with tone: a failure must not look like a success. */
 .notice {
   border: 1px solid var(--rule); border-left: 3px solid var(--rule-strong);
   border-radius: var(--r-md); background: var(--surface-alt);
@@ -1032,9 +935,7 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .notice strong { display: block; margin-bottom: var(--s-1); }
 .notice > :last-child { margin-bottom: 0; }
 
-/* ── Loading placeholder, so a designed empty state stops being shown before the
-   first response has resolved — "nothing is due" and "we have not asked yet" are
-   different claims. ─────────────────────────────────────────────────────────── */
+/* Loading placeholder: not-yet-loaded must not render as an empty state. */
 .skeleton {
   background: var(--surface-alt); border-radius: var(--r-sm);
   height: 1em; animation: pulse 1.6s ease-in-out infinite;
@@ -1043,18 +944,15 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .skeleton--w40 { width: 40%; } .skeleton--w60 { width: 60%; } .skeleton--w80 { width: 80%; }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
 
-/* ── Busy: spinner + label + elapsed, announced. Replaces the {busy ?? "Label"}
-   pattern at eleven sites, which swapped a control's own name for its status and
-   so removed its accessible name exactly when it changed. ────────────────────── */
+/* Busy sits beside a control, so the control keeps its accessible name. */
 .busy { display: inline-flex; align-items: center; gap: var(--s-2); font-size: var(--t-small); color: var(--ink-soft); }
 .busy--block { display: flex; padding: var(--s-2) 0; }
 
-/* ── Tables scroll locally instead of dragging the page sideways ─────────────── */
+/* Tables scroll locally instead of dragging the page sideways */
 .table-wrap { overflow-x: auto; max-width: 100%; }
 .table-wrap > table { min-width: 520px; }
 
-/* ── Mastery, with a shape channel as well as a hue. Two of the four levels were
-   1.13:1 apart in light mode, so colour could not be the only encoding. ─────── */
+/* Mastery needs a shape channel; hue alone does not separate the levels. */
 .mastery-mark {
   display: inline-block; width: 10px; height: 10px; border-radius: 50%;
   flex: none; box-sizing: border-box;
@@ -1067,29 +965,23 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   border-radius: var(--r-sm); /* square-ish: readable with no colour at all */
 }
 
-/* ── Content measure. Three pages had no max-width and ran ~2500px lines. ───── */
+/* Content measure */
 .page--narrow { max-width: var(--measure-narrow); margin-inline: auto; }
 .page--measure { max-width: var(--measure); margin-inline: auto; }
 .page--wide { max-width: var(--measure-wide); margin-inline: auto; }
 .page--table { max-width: var(--measure-table); margin-inline: auto; }
 
-/* The transcript had no horizontal padding at narrow widths, so text touched
-   both edges of the screen. */
+/* Keeps transcript text off both screen edges at narrow widths. */
 @media (max-width: 760px) {
   .chat, .composer { padding-inline: var(--s-4); }
 }
 
-/* <main> was inserted between .app and the pages, so it has to be transparent to
-   the flex column the graph canvas measures itself against. */
+/* <main> must stay transparent to the flex column the canvas measures against. */
 .app-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .app-main:focus { outline: none; }
 .app-main:focus-visible { outline: none; }
 
-/* Below this, the provider badge is competing with navigation for the same row and
-   losing on priority: it is a status label, and the nav is how you move. Hidden
-   rather than shrunk, because the same information is on the Settings page it links
-   to. Measured at 380px: the nav went from 121px of usable width to 259px, i.e. from
-   two visible links to four. */
+/* The badge hides so the nav keeps its width; Settings carries the same status. */
 @media (max-width: 620px) {
   .topbar .badge { display: none; }
   .topbar { gap: var(--s-3); padding-inline: var(--s-3); }
@@ -1100,21 +992,13 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 }
 @media (min-width: 900px) { .nav { mask-image: none; } }
 
-/* The busy convention: a control keeps its accessible name and gains aria-disabled,
-   because `disabled` blurs focus to <body> and removes the name exactly when the
-   state changes. It therefore needs a look — four pages had each written their own. */
+/* aria-disabled, not disabled: `disabled` drops focus and the accessible name. */
 [aria-disabled="true"] {
   opacity: 0.55;
   cursor: not-allowed;
 }
 [aria-disabled="true"]:hover { border-color: var(--rule); }
 
-/* A page is a flex item inside .app-main, so its default min-width: auto makes it size
-   to its own min-content — and a table's min-width propagates all the way up, through
-   .table-wrap's overflow container, to here. Measured on Curate at a 550px viewport:
-   a 560px table made the document 588px wide, so the whole page scrolled sideways and
-   every paragraph clipped mid-word. This is the fix for the primitive, not for the page:
-   Learner and Metrics have tables too.
-   The scroll belongs to .table-wrap. Nothing above it should ever grow to fit a table. */
+/* min-width: 0, or a table's min-width propagates up and scrolls the whole page. */
 .page, .app-main { min-width: 0; max-width: 100%; }
 .page--narrow, .page--measure, .page--wide, .page--table { width: 100%; }

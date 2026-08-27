@@ -1,7 +1,4 @@
-/**
- * Identity embeddings are computed once from (canonicalName + sense) and never
- * recomputed, because sense is immutable. There is no drift and no reindexing. (05)
- */
+/** Identity vectors come from name plus sense, and sense is immutable, so never recompute. (05) */
 
 export const EMBEDDING_DIM = 1536;
 
@@ -27,15 +24,7 @@ function normalize(v: number[]): number[] {
   return v.map((x) => x / n);
 }
 
-/**
- * Deterministic local embedding — a hashed token bag, unit-normalized.
- *
- * This exists so the resolver's SQL, locking and write path can be exercised without
- * a network call or an API key. It captures lexical overlap and nothing else, so it is
- * emphatically NOT a semantic model: it will not rank "the event loop" near
- * "JavaScript's concurrency model". Use it for plumbing tests; never for judging
- * adjudication quality.
- */
+/** A hashed token bag for plumbing tests; it captures lexical overlap, not meaning. */
 export class DeterministicEmbedding implements EmbeddingProvider {
   readonly name = "deterministic";
 

@@ -2,18 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, HttpError, type Mastery } from "../api";
 import { atLeast, DEPTH_LABEL, MASTERY_MEANING } from "../vocabulary";
 
-/**
- * The roadmap, as a first-class component rather than a model-authored widget.
- *
- * The interactive lesson widgets are model-authored because their content is different
- * every time. A roadmap is not: it is Plan, PlanStep and MilestoneInstance rows whose
- * shape we own. Asking a model to lay out data we already have would make it slower,
- * less consistent, and occasionally wrong about the learner's own progress.
- *
- * Grouped by milestone because a flat list of nineteen concepts reads as a wall, while
- * "you can predict the order of asynchronous output — 2 of 4" is a thing worth
- * finishing.
- */
+/** Hand-built rather than a model-authored widget: the plan's shape is fixed. */
 export function Roadmap({
   learnerId, compact = false, onPick,
 }: {
@@ -33,9 +22,7 @@ export function Roadmap({
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => {
         if (cancelled) return;
-        // A missing roadmap is an empty state; anything else is a fault, and drawing
-        // both as one quiet grey line told the learner they had no plan when the
-        // backend was simply down.
+        // A missing roadmap is an empty state; anything else is a fault.
         setError({
           message: e instanceof Error ? e.message : String(e),
           remedy: e instanceof HttpError ? e.remedy : null,
@@ -93,8 +80,7 @@ export function Roadmap({
     const met = atLeast(mastery, (s.requiredLevel ?? "functional") as Mastery);
     const body = (
       <>
-        {/* The shared mark, so mastery carries a shape as well as a hue: two of the
-            four levels measured 1.13:1 apart, i.e. colour could not be the encoding. */}
+        {/* The mark carries a shape too, so colour is not the only channel. */}
         <span className="mastery-mark" data-level={mastery} title={MASTERY_MEANING[mastery]} />
         <span className="rm-name">{s.name}</span>
         <span className="rm-level">{met ? "done" : `${mastery} → ${s.requiredLevel}`}</span>

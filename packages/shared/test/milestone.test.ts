@@ -38,8 +38,7 @@ describe("milestone trimming", () => {
 
 describe("malformed milestones", () => {
   it("does not treat a milestone with no concepts as satisfied", () => {
-    // "Nothing required" is not "everything done". Folding an empty milestone forward
-    // silently awards a capability nobody demonstrated.
+    // "Nothing required" is not "everything done".
     const r = trimMilestone([], () => "unknown");
     expect(r.malformed).toBe(true);
     expect(r.foldForward).toBe(false);

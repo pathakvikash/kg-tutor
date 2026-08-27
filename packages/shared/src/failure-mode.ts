@@ -1,8 +1,4 @@
-/**
- * A hard edge costs a named failure mode: the specific misunderstanding that occurs
- * without the prerequisite. For a fabricated dependency a model usually cannot produce
- * one, which makes this the primary generation-time hallucination filter. (03, 15)
- */
+// A hard edge costs a named failure mode, which is the hallucination filter. (03, 15)
 
 export interface FailureModeCheck {
   ok: boolean;
@@ -29,11 +25,7 @@ function words(s: string): string[] {
   return s.toLowerCase().split(/\W+/).filter(Boolean);
 }
 
-/**
- * A failure mode must describe a *wrong belief or wrong behaviour*, not restate that
- * the prerequisite is needed. Heuristic and deliberately conservative — it rejects,
- * it never rewrites, and a rejection demotes the edge to `soft` rather than dropping it.
- */
+/** Must describe a wrong belief, not that the prerequisite is needed; a rejection demotes to soft. */
 export function checkFailureMode(
   text: string | null | undefined,
   opts: { sourceName: string; targetName: string },

@@ -2,17 +2,7 @@ import { defineCatalog } from "@json-render/core";
 import { schema } from "@json-render/react/schema";
 import { z } from "zod";
 
-/**
- * The component contract a tutor may target.
- *
- * Deliberately NOT a generic UI kit. Every entry answers a teaching question that prose
- * answers badly: what changes step by step, what two cases look like side by side, what
- * a stack or a queue holds at a given moment. A model given Button and Div builds a
- * form; a model given Timeline and Frames builds an explanation.
- *
- * Keeping this small is the point — it is the vocabulary the model is allowed to think
- * in, and every addition is one more thing it can get wrong.
- */
+// The vocabulary a tutor may target; not a generic UI kit, so keep it small.
 const step = z.object({
   label: z.string().describe("What happens at this step, in a few words"),
   detail: z.string().optional().describe("One or two sentences of explanation"),
@@ -37,8 +27,7 @@ const option = z.object({
 });
 
 export const catalog = defineCatalog(schema, {
-  // No actions: a teaching widget explains, it does not mutate anything outside itself.
-  // Interactivity here is local state — stepping a timeline, picking an option.
+  // No actions: a teaching widget explains and never mutates anything outside itself.
   actions: {},
   components: {
     Stack: {

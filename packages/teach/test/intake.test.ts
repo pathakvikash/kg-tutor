@@ -89,8 +89,7 @@ describe("binary-search probing", () => {
   });
 
   it("stops early once a chain is resolved, without spending the whole budget", () => {
-    // Binary search converges in about log2(n); spending the full budget anyway would
-    // be asking questions whose answers are already implied.
+    // Binary search converges in about log2(n), so the full budget is not needed.
     const long = Array.from({ length: 60 }, (_, i) => `c${i}`);
     let state = initialState([long]);
     let asked = 0;
@@ -105,8 +104,7 @@ describe("binary-search probing", () => {
   });
 
   it("hard-stops at the budget when many chains remain unresolved", () => {
-    // The cap is a product constraint, not a tuning knob. Uncertainty is left on the
-    // table deliberately: teaching corrects it for free, interrogating costs the user.
+    // The cap is a product constraint: leftover uncertainty is corrected by teaching.
     const chains = Array.from({ length: 12 }, (_, c) =>
       Array.from({ length: 40 }, (_, i) => `chain${c}-${i}`),
     );

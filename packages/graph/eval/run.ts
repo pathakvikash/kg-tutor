@@ -1,8 +1,4 @@
-/**
- * Scores the real adjudicator against the labelled pairs. Needs a model key.
- *
- *   ANTHROPIC_API_KEY=... pnpm --filter @kg/graph exec tsx eval/run.ts
- */
+/** Scores the real adjudicator against the labelled pairs; needs a model key in the env. */
 import { llmFromEnv } from "@kg/llm";
 import { LLMAdjudicator } from "../src/adjudicate-llm.js";
 import { formatReport, scoreAdjudicator } from "./score.js";

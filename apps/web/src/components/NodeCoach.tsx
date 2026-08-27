@@ -7,17 +7,7 @@ import { MASTERY_RANK as RANK, atLeast } from "../vocabulary";
 type Tab = "assess" | "ask";
 const TABS: Tab[] = ["assess", "ask"];
 
-/**
- * Assessment and chat for whichever concept is selected in the graph.
- *
- * The graph could already show what a learner knows and could not do anything about it —
- * a node reading "unknown" was a dead end, and changing it meant leaving for the lesson
- * page and hoping the planner offered that concept next. Which it usually would not: the
- * planner follows the plan, and the concept you are curious about is rarely the next step.
- *
- * So the graph gets the two things that move a node: a check that can raise its mastery,
- * and somewhere to ask about it without that counting as being taught. (19)
- */
+/** Assessment and chat for the concept selected in the graph. (19) */
 export function NodeCoach({
   learnerId, conceptId, conceptName, mastery, requiredLevel = "functional",
   unmetPrerequisites = [], onStateChanged, onPick,
@@ -27,14 +17,7 @@ export function NodeCoach({
   conceptName: string;
   mastery: Mastery;
   requiredLevel?: Mastery;
-  /**
-   * Hard prerequisites the learner has not reached yet.
-   *
-   * Assessing on top of a gap measures the gap. A binary-search-tree item is built to be
-   * unanswerable without references, so a learner who has not got references fails it and
-   * the failure is recorded against binary search trees — the wrong concept, and
-   * discouraging for no reason. Worth saying out loud before spending a minute on it.
-   */
+  /** Hard prerequisites not reached yet; assessing over one blames the wrong concept. */
   unmetPrerequisites?: { id: string; name: string; mastery: Mastery }[];
   /** The node's colour is derived from mastery, so the graph has to be told. */
   onStateChanged: () => void;
@@ -55,8 +38,7 @@ export function NodeCoach({
   const inFlight = useRef(false);
   const ids = useId();
 
-  // Selecting a different node has to clear the previous one's question and verdict,
-  // or an answer gets graded against a concept the learner is no longer looking at.
+  // Cleared on a selection change, or an answer is graded against the wrong concept.
   useEffect(() => {
     setQuestion(null); setAnswer(""); setResult(null);
     setError(null); setTurns([]); setInput("");
@@ -65,8 +47,7 @@ export function NodeCoach({
   }, [conceptId]);
 
   useEffect(() => {
-    // Scroll the chat's own box. A scrollIntoView on a sentinel scrolled the whole
-    // inspector, which fought the panel's scroll-to-top on a selection change.
+    // Scroll the chat box itself; scrollIntoView moves the whole inspector.
     const el = chat.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns, busy]);
@@ -135,8 +116,7 @@ export function NodeCoach({
         onFailed: (message) => { setError(message); },
       });
     } catch (e) {
-      // A dropped connection rejects rather than reporting `failed`, and nothing cleared
-      // busy on that path: the panel sat at "thinking" until a different node was picked.
+      // A dropped connection rejects instead of reporting `failed`.
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       inFlight.current = false;
@@ -152,15 +132,12 @@ export function NodeCoach({
     event.preventDefault();
     const next = TABS[(TABS.indexOf(tab) + step + TABS.length) % TABS.length]!;
     setTab(next);
-    // getElementById, not querySelector: useId's value contains colons, which are not
-    // valid unescaped in a selector.
+    // getElementById, not querySelector: useId values contain colons.
     document.getElementById(`${ids}-tab-${next}`)?.focus();
   };
 
   return (
     <section className="coach">
-      {/* Real tab semantics: a user could believe they were asking a question while being
-          graded, because the two looked identical to a screen reader. */}
       <div
         className="coach-tabs"
         role="tablist"
@@ -218,8 +195,6 @@ export function NodeCoach({
                 {mastery === "unknown"
                   ? `Nothing recorded for ${conceptName} yet. One question decides where it starts.`
                   : atCeiling
-                    // "A correct answer at functional moves it" was simply false for a
-                    // concept already at solid: the only outcome left is a regression.
                     ? `Already ${mastery} — at or past the ${requiredLevel} the plan asks for. A correct answer will not raise it, so the only thing this can change is a record of a step back.`
                     : `Currently ${mastery}. A correct answer at ${target} moves it; a wrong one records what went wrong.`}
               </p>
@@ -260,8 +235,7 @@ export function NodeCoach({
                 rows={4} value={answer} onChange={(e) => setAnswer(e.target.value)}
                 placeholder="In your own words."
                 aria-label={`Your answer about ${conceptName}`}
-                // readOnly rather than disabled: disabling the focused control blurs it to
-                // <body>, which dumped keyboard focus to the top of the document.
+                // readOnly, not disabled: disabling a focused control blurs it to <body>.
                 readOnly={busy !== null}
                 aria-disabled={busy !== null}
               />
@@ -330,8 +304,7 @@ export function NodeCoach({
             {turns.map((t, i) => (
               <div key={i} className={`bubble ${t.role}`}>
                 {t.role === "tutor" ? <Markdown text={t.text} /> : t.text}
-                {/* A pause with no caret read as finished, so a dropped stream looked like
-                    a complete answer that just happened to stop mid-sentence. */}
+                {/* The caret marks a stream still in flight, not a finished answer. */}
                 {t.role === "tutor" && streaming && i === turns.length - 1 && (
                   <span className="caret" />
                 )}

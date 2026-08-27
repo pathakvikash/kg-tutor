@@ -8,18 +8,7 @@ import { Markdown } from "../components/Markdown";
 import { resolveLearner, useStickyLearner } from "../useLearner";
 import { DUE_KIND, dueKindLabel, MASTERY_MEANING, MASTERY_RANK } from "../vocabulary";
 
-/**
- * One pass over what has gone stale.
- *
- * Distinct from a lesson: nothing here is taught. Each item is a concept the learner
- * held once — or holds a recorded wrong belief about — and the only question is whether
- * it still stands up. A pass restores confidence and clears the belief; a failure records
- * that honestly and the concept comes back.
- *
- * Because it cannot teach, a failure has to lead somewhere: every failed verdict links out
- * to the graph. And because a pass is real work, it is resumable — a nav click used to
- * reset it to item 1 and zero the tally without saying so.
- */
+/** One pass over what has gone stale: nothing here is taught, only checked. */
 
 /** Mirrors DEFAULT_THRESHOLDS.reprobeConfidenceFloor; @kg/shared is not a web dependency. */
 const REPROBE_FLOOR = 0.4;
@@ -30,11 +19,7 @@ const RECHECK_COOLDOWN_MS = 5 * 60_000;
 /** One question call plus one grading call, plus the time to write an answer. */
 const MINUTES_PER_ITEM = 1.5;
 
-/**
- * One key per learner. A single global key meant switching learner in the nav silently
- * discarded the other person's half-finished pass and their cooldown map, because the
- * `learnerId` guard below failed and `graded` reset to {}.
- */
+/** One key per learner; a global key would discard another learner's pass. */
 const passKey = (learnerId: string) => `kg-tutor:review-pass:${learnerId}`;
 
 /** A saved pass is the queue plus every generated question, so typing must not write one per key. */
@@ -42,16 +27,7 @@ const SAVE_DEBOUNCE_MS = 400;
 
 type Failure = { message: string; remedy: string | null };
 
-/**
- * A pass on disk.
- *
- * The learner id, the lesson transcript and the intake are all deliberately resumable and
- * this was not, so a refresh silently threw away a half-finished pass. `items` rather than
- * only the concept ids because a pass is a fixed list chosen at its start: an item that has
- * since left /due is still the item this pass is on, and "7 of 10" has to stay true.
- * `graded` outlives the pass — it is what stops "Check again" re-serving what was just
- * answered, which the queue's own ordering otherwise puts straight back on top.
- */
+/** A pass on disk: items is fixed at the pass's start, and graded outlives the pass. */
 type Saved = {
   learnerId: string;
   at: number;
@@ -144,17 +120,9 @@ export function ReviewSessionPage() {
   const answerRef = useRef<HTMLTextAreaElement | null>(null);
   const verdictRef = useRef<HTMLDivElement | null>(null);
 
-  /**
-   * Who exists. Retried as well as loaded on mount: this is the call that fails first, and
-   * a Retry that only re-fetched /due left `learners` at [] with a full queue in state —
-   * the page then printed "No learners yet" over a loaded pass.
-   *
-   * Returns the resolved id so the retry knows whether the learner effect will fire.
-   */
+  /** Returns the resolved id so a retry knows whether the learner effect will fire. */
   const loadLearners = useCallback(async (want: string): Promise<string> => {
-    // null is "not asked yet" again, so the retry has a visible in-progress state; without
-    // this, a first-time learner (nothing stored, learners fetch failed) clicked Retry and
-    // nothing on the page changed at all.
+    // null again, so a retry has a visible in-progress state.
     setLearners(null);
     setFatal(null);
     try {
@@ -204,13 +172,7 @@ export function ReviewSessionPage() {
     }
   }, []);
 
-  /**
-   * Both calls, in order, because either can be the one that failed.
-   *
-   * The learner effect below reloads the queue whenever the id changes, so asking again
-   * here would double-fetch; when the id resolves to the same learner nothing fires and
-   * this is the only thing that reloads it.
-   */
+  /** Reloads the queue only when the id is unchanged; the learner effect handles a change. */
   const retry = useCallback(async () => {
     const id = await loadLearners(learnerId);
     if (id && id === learnerId) await loadQueue(id, graded);
@@ -232,15 +194,11 @@ export function ReviewSessionPage() {
   const answer = conceptId ? drafts[conceptId] ?? "" : "";
   const result = conceptId ? verdicts[conceptId] ?? null : null;
 
-  // While a decision on a saved pass is outstanding, writing would destroy the thing
-  // being offered. `drafts` changes on every keystroke, so the write itself is on a
-  // trailing edge — and the pending payload is held so navigating away inside that
-  // window still saves it rather than dropping the last thing typed.
+  // Writing while a saved pass is on offer would destroy the thing being offered.
   const unsaved = useRef<Saved | null>(null);
   useEffect(() => {
     if (!learnerId || pending || !loaded) {
-      // A new load resets the pass, so anything still queued describes a pass that no
-      // longer exists and must not be flushed on the way out.
+      // A new load resets the pass, so a queued write must not be flushed.
       unsaved.current = null;
       return;
     }
@@ -288,8 +246,7 @@ export function ReviewSessionPage() {
       const level = current.mastery === "unknown" ? "familiar" : current.mastery;
       // "review", so this pass gets its own session rather than writing into the lesson.
       const q = await api.check(learnerId, current.conceptId, level, "review");
-      // The session the question turn was written into. The answer has to land in the same
-      // one, or the transcript holds a question that is never replied to.
+      // The answer has to land in the same session as the question turn.
       if (q?.sessionId) setSessionId(q.sessionId);
       setAsked((m) => ({ ...m, [current.conceptId]: q }));
     } catch (e) {
@@ -311,8 +268,7 @@ export function ReviewSessionPage() {
         response: answer,
         requiresTransfer: question.requiresTransfer,
         itemId: question.itemId,
-        // Omitting this adopted whatever lesson session was still open, so review Q&A
-        // landed in the Learn transcript and cleared that lesson's pending check.
+        // Without this, review Q&A lands in whatever lesson session is still open.
         sessionId: question.sessionId ?? sessionId ?? undefined,
       });
       if (r?.sessionId) setSessionId(r.sessionId);
@@ -350,13 +306,11 @@ export function ReviewSessionPage() {
   const resume = () => {
     const saved = pending;
     if (!saved) return;
-    // Fresher state where the server still has it, but the pass keeps the list — and so
-    // the count — it started with.
+    // Fresher item data where the server has it, but the pass keeps its own list.
     const fresh = new Map(queue.map((it) => [it.conceptId, it]));
     setQueue(saved.items.map((it) => fresh.get(it.conceptId) ?? it));
     setAt(Math.min(saved.at, Math.max(0, saved.items.length - 1)));
-    // `total` deliberately stays the number this load measured: the backlog moves on
-    // whether or not the pass does.
+    // total stays the number this load measured; the backlog moves on regardless.
     setAsked(saved.asked ?? {});
     setDrafts(saved.drafts ?? {});
     setVerdicts(saved.verdicts ?? {});
@@ -365,8 +319,7 @@ export function ReviewSessionPage() {
     setPending(null);
   };
 
-  // Both async transitions unmount the control that started them, and a control that
-  // unmounts takes the focus ring with it, so whatever replaces it has to claim focus.
+  // Async transitions unmount the control that had focus, so its replacement claims it.
   useEffect(() => {
     if (question && !result) answerRef.current?.focus();
   }, [question, result, at]);
@@ -374,8 +327,7 @@ export function ReviewSessionPage() {
     if (result) verdictRef.current?.focus();
   }, [result, at]);
 
-  // Grows with the answer rather than making the learner drag a corner for room. The
-  // border has to be added back: box-sizing is border-box and scrollHeight excludes it.
+  // The border has to be added back: box-sizing is border-box and scrollHeight excludes it.
   useEffect(() => {
     const el = answerRef.current;
     if (!el) return;
@@ -396,7 +348,7 @@ export function ReviewSessionPage() {
     </div>
   );
 
-  // ── Asked, and it failed. Not the same claim as "nothing is due". ──────────────
+  // Asked, and it failed. Not the same claim as "nothing is due".
   if (fatal) {
     return (
       <div className={PAGE}>
@@ -410,7 +362,7 @@ export function ReviewSessionPage() {
     );
   }
 
-  // ── Not asked yet ─────────────────────────────────────────────────────────────
+  // Not asked yet
   if (learners === null || (learners.length > 0 && !loaded)) {
     return (
       <div className={PAGE}>
@@ -425,9 +377,7 @@ export function ReviewSessionPage() {
     );
   }
 
-  // A loaded queue is proof the learner exists — it came from that learner's own /due —
-  // so an empty list only means the roster call is the one that failed. Never claim
-  // "no learners" over a pass that is sitting in state.
+  // A loaded queue proves the learner exists, so never claim "no learners" over it.
   if (learners.length === 0 && queue.length === 0) {
     return (
       <div className={PAGE}>
@@ -441,7 +391,7 @@ export function ReviewSessionPage() {
     );
   }
 
-  // ── A pass was interrupted ────────────────────────────────────────────────────
+  // A pass was interrupted
   if (pending) {
     return (
       <div className={PAGE}>
@@ -461,7 +411,7 @@ export function ReviewSessionPage() {
     );
   }
 
-  // ── Every item in the pass has been seen ──────────────────────────────────────
+  // Every item in the pass has been seen
   if (queue.length > 0 && at >= queue.length) {
     const remaining = Math.max(0, total - queue.length);
     return (
@@ -511,9 +461,7 @@ export function ReviewSessionPage() {
         )}
 
         <div className="row rs-actions">
-          {/* Not "Next 25": the cooldown filter runs after the next /due, so a pass whose
-              failures sort straight back to the top can serve none of them and land on
-              "Just checked" instead. The backlog size is stated below, where it is true. */}
+          {/* The cooldown filter runs after /due, so the next batch can serve none. */}
           {remaining > 0 ? (
             <button className="primary" onClick={() => void loadQueue(learnerId, graded)}>
               Next batch
@@ -533,7 +481,7 @@ export function ReviewSessionPage() {
     );
   }
 
-  // ── Asked, and there is nothing to serve ──────────────────────────────────────
+  // Asked, and there is nothing to serve
   if (queue.length === 0) {
     if (deferred.length > 0) {
       return (
@@ -594,8 +542,7 @@ export function ReviewSessionPage() {
         </div>
       </div>
 
-      {/* "N checked" was a lie for a pass with skips: a skip advances the bar without an
-          answer, and the done screen's own tally distinguishes the two. */}
+      {/* A skip advances the bar without an answer, so this counts seen, not checked. */}
       <div
         className="progress"
         role="progressbar"
@@ -627,8 +574,7 @@ export function ReviewSessionPage() {
           </p>
         </div>
 
-        {/* The belief is deliberately not shown before the question: being shown it is
-            enough to avoid it for one answer, and a pass clears the record for good. */}
+        {/* The belief stays hidden until answered: seeing it is enough to avoid it once. */}
         {!question && !result && (
           <div className="row rs-actions">
             <button className="primary" aria-disabled={busy !== null} onClick={() => void ask()}>

@@ -53,10 +53,7 @@ describe("generateMilestones", () => {
     expect(r.rejected[0]?.reason).toBe("rests on a single concept");
   });
 
-  /**
-   * An empty milestone on a plan is a completion waiting to be handed out for nothing,
-   * which is the malformed case trimMilestone already refuses to attach.
-   */
+  // An empty milestone would hand out a completion for nothing.
   it("rejects a claim whose concepts do not exist", async () => {
     const topicId = await topicWith(three);
     const r = await generateMilestones(

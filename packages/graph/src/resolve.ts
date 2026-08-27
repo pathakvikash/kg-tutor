@@ -41,28 +41,12 @@ function normalizeName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/**
- * Two sessions expanding adjacent topics will both reach `Python` within seconds of
- * each other. Serializing on the normalized name means the second one sees the first
- * one's concept and binds to it, instead of both inserting.
- *
- * `hashtext` is stable within a major version, and the lock is transaction-scoped so
- * it releases on commit or rollback without any cleanup path.
- */
+/** Transaction-scoped, so two sessions reaching the same name bind instead of both inserting. */
 async function lockOnName(tx: Prisma.TransactionClient, name: string): Promise<void> {
   await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, normalizeName(name));
 }
 
-/**
- * The only legitimate way a Concept enters the graph. (05)
- *
- * Everything is one transaction: the advisory lock, the exact-name recheck, the
- * candidate query, the write, and the proposal record. A crash mid-way leaves no
- * half-resolved concept and no orphan alias.
- *
- * The adjudicator call happens *before* the transaction opens — it is a network call
- * and must not hold a lock. The recheck inside the transaction is what makes that safe.
- */
+/** The only legitimate way a Concept enters the graph; adjudicate before opening the transaction. (05) */
 export async function proposeConcept(
   deps: ResolverDeps,
   input: ProposeInput,
@@ -110,8 +94,7 @@ export async function proposeConcept(
       },
     });
 
-    // Cheap exact-name recheck under the lock. Whoever got here first may have created
-    // or aliased this name while we were out at the adjudicator.
+    // Recheck under the lock; another session may have taken the name meanwhile.
     const existing = await tx.conceptAlias.findUnique({
       where: { name: normalizeName(input.name) },
     });
@@ -152,8 +135,7 @@ export async function proposeConcept(
     const concept = await tx.concept.create({
       data: { canonicalName: input.name.trim(), sense: input.sense.trim() },
     });
-    // Prisma cannot type the vector column, so the identity vector is set separately —
-    // still inside the same transaction.
+    // Prisma cannot type the vector column, so set it separately in the same transaction.
     await tx.$executeRawUnsafe(
       `UPDATE "Concept" SET "senseVector" = $1::vector WHERE id = $2`,
       toVectorLiteral(vector),
@@ -207,14 +189,7 @@ export interface ProposeEdgeResult {
   rejected?: "cycle" | "self_loop";
 }
 
-/**
- * Edges go through the same discipline as nodes. A `hard` proposal whose failure mode
- * is vague, circular or a restatement is written as `soft` rather than dropped — the
- * dependency may well be real even when the justification is empty. (03, 15)
- *
- * A cycle is not an error to swallow: the database rejects it, and the fact that a
- * model proposed one is itself a signal that the two concepts are tightly coupled. (13)
- */
+/** A `hard` proposal with a weak failure mode is written `soft`, not dropped. (03, 13, 15) */
 export async function proposeEdge(
   prisma: PrismaClient,
   input: ProposeEdgeInput,

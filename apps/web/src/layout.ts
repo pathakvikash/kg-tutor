@@ -12,17 +12,7 @@ export interface Positioned {
 export const NODE_W = 190;
 export const NODE_H = 52;
 
-/**
- * Layered top-to-bottom layout: prerequisites sit above the concepts that need them.
- *
- * A force-directed layout — the usual reflex for "knowledge graph" — is actively wrong
- * here. It optimises for even spacing and produces a hairball in which a chain like
- * variables -> functions -> closures -> memoization is invisible. Direction and depth
- * ARE the information in a prerequisite graph, so the layout has to encode them.
- *
- * Only `prerequisite_of` edges constrain layering; `related_to` and the rest would
- * otherwise pull unrelated concepts onto the same rank and flatten the hierarchy.
- */
+/** Layered top-to-bottom, so prerequisites sit above what needs them. */
 export async function layoutGraph(
   nodes: GraphNode[],
   edges: GraphEdge[],
@@ -38,8 +28,7 @@ export async function layoutGraph(
       "elk.spacing.nodeNode": "34",
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
       "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
-      // Cycles cannot reach here through hard edges (the DB rejects them), but a soft
-      // prerequisite pair can, and the layout must not hang on one.
+      // Soft prerequisite pairs can cycle, and the layout must not hang.
       "elk.layered.cycleBreaking.strategy": "GREEDY",
     },
     children: nodes.map((n) => ({ id: n.id, width: NODE_W, height: NODE_H })),
@@ -51,8 +40,7 @@ export async function layoutGraph(
   for (const child of result.children ?? []) {
     out.set(child.id!, { id: child.id!, x: child.x ?? 0, y: child.y ?? 0 });
   }
-  // Anything with no prerequisite edges is unplaced by the layered pass; park it in a
-  // trailing column rather than stacking every orphan at the origin.
+  // ELK leaves nodes with no prerequisite edge unplaced.
   let orphan = 0;
   const maxX = Math.max(0, ...[...out.values()].map((p) => p.x));
   for (const n of nodes) {

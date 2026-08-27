@@ -18,11 +18,7 @@ export interface EvalReport {
   accuracy: number;
   falseSames: PairResult[];
   falseDistincts: PairResult[];
-  /**
-   * The number to watch. A false `same` aliases one concept's learners onto another's
-   * mastery permanently; a false `distinct` leaves a duplicate someone can merge later.
-   * The costs are not symmetric and this score reflects that. (05)
-   */
+  /** The number to watch: a false `same` is permanent, a false `distinct` is repairable. (05) */
   weightedError: number;
   byPair: PairResult[];
 }

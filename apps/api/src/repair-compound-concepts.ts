@@ -1,15 +1,4 @@
-/**
- * Splits concepts already in the graph whose names denote more than one thing.
- *
- * `checkConceptName` stops new ones being written. This one deals with the ten that the
- * Data Structures expansion left behind, each of which carries real prerequisite edges
- * and, in most cases, has both of its halves sitting in the graph as separate concepts
- * already — so the compound is a permanent near-duplicate that can never be taught or
- * assessed coherently.
- *
- * Run with: pnpm --filter @kg/api repair:compound-concepts [--apply]
- * Without --apply it prints exactly what it would do and changes nothing.
- */
+/** Splits already-written compound concept names: repair:compound-concepts [--apply]. */
 import { PrismaClient } from "@kg/db";
 import { checkConceptName } from "@kg/shared";
 import { splitCompoundConcept, DeterministicEmbedding, LLMAdjudicator } from "@kg/graph";

@@ -2,31 +2,7 @@ import type { Prisma, PrismaClient } from "@kg/db";
 import { checkConceptName } from "@kg/shared";
 import { proposeConcept, type ResolverDeps } from "./resolve.js";
 
-/**
- * Splits a concept whose name denotes more than one thing.
- *
- * `checkConceptName` now stops these being written, but the ones already in the graph
- * are load-bearing: they carry prerequisite edges, topic membership, assessment items
- * and learner mastery. Deleting them would silently drop real prerequisite structure;
- * leaving them means the graph keeps teaching "Arrays or Linked Lists", which no item
- * can assess and no mastery level can describe.
- *
- * So it splits: each half goes through `proposeConcept`, which is the same resolver the
- * expansion uses, so an existing concept is reused rather than duplicated — and usually
- * one exists, since these compounds were written *alongside* their own halves.
- *
- * What deliberately does NOT move:
- *
- *   - **Mastery.** A level recorded against a compound was never a coherent measurement.
- *     Copying "functional at Arrays or Linked Lists" onto both halves would assert twice
- *     over something the learner never demonstrated once. The rows stay on the
- *     deprecated concept, where the planner no longer reads them, and are listed in the
- *     MergeRecord so the loss is visible rather than silent.
- *   - **Assessment items.** An item written for a compound asks about both halves at
- *     once. It is retired, and the generator refills each half on first use.
- *
- * Reversible: every rewrite is recorded in a MergeRecord per half.
- */
+/** Splitting a compound moves edges and topic links, but never mastery or items. */
 export interface SplitResult {
   conceptId: string;
   name: string;
@@ -38,19 +14,7 @@ export interface SplitResult {
   masteryRowsStranded: number;
 }
 
-/**
- * Names and senses for the concepts a compound contains.
- *
- * Splitting on " and " is too blunt to be the last word. It reads "width and height
- * properties" as "width" + "height properties", which is lopsided, and no syntactic rule
- * fixes that without breaking the next case — distributing the trailing noun would turn
- * "Variables and memory allocation" into "Variables allocation". Only something that
- * knows what the words mean can name these, so a caller may supply one.
- *
- * Senses matter as much as names here: sense is immutable and part of identity, so a half
- * created carrying the compound's definition is wrong forever and can only be deprecated,
- * never corrected.
- */
+/** Names and senses for a compound's halves; sense is immutable, so a wrong half is permanent. */
 export type PartsFor = (compound: {
   name: string;
   sense: string;
@@ -69,9 +33,7 @@ export async function splitCompoundConcept(
   const check = checkConceptName(concept.canonicalName);
   if (check.ok) return null;
 
-  // Only halves that are themselves valid names. "Graph connectivity concepts" yields
-  // none from the blunt split, and a compound with no usable halves is deprecated
-  // without a successor rather than guessed at.
+  // A compound with no usable halves is deprecated without a successor, not guessed at.
   const suggested = (check.parts ?? []).filter((h) => checkConceptName(h).ok);
   const proposed = partsFor
     ? await partsFor({
@@ -82,8 +44,7 @@ export async function splitCompoundConcept(
       })
     : suggested.map((name) => ({ name, sense: concept.sense }));
 
-  // A namer that returns a compound again has not helped, and writing it would recreate
-  // the problem this exists to remove.
+  // A namer that returns another compound would recreate the problem.
   const halves = proposed.filter((h) => checkConceptName(h.name).ok);
 
   const parts: SplitResult["parts"] = [];
@@ -112,8 +73,7 @@ export async function splitCompoundConcept(
       for (const e of edges) {
         const srcId = e.srcId === conceptId ? part.conceptId : e.srcId;
         const dstId = e.dstId === conceptId ? part.conceptId : e.dstId;
-        // A compound sitting between two concepts can produce a self-edge once both
-        // ends resolve to the same half. The DAG trigger would reject it anyway.
+        // Both ends can resolve to the same half, and the DAG trigger rejects a self-edge.
         if (srcId === dstId) continue;
         const existing = await tx.edge.findFirst({
           where: { srcId, dstId, type: e.type, retiredAt: null },
