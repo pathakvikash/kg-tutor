@@ -161,7 +161,7 @@
 .insp-title, .insp-name { font-size: var(--t-lead); line-height: 1.3; margin-bottom: var(--s-1); }
 .insp-name:focus-visible, .insp-title:focus-visible { border-radius: var(--r-sm); }
 .insp-pair { margin: 0 0 var(--s-2); font-size: var(--t-body); line-height: 1.4; }
-.insp-lead { font-size: 13px; }
+.insp-lead { font-size: var(--t-body); }
 .insp-note { font-size: var(--t-small); margin-top: var(--s-3); }
 .insp-section { margin-bottom: var(--s-4); }
 /* Sticky, so a long panel keeps telling you which list you are inside. */

@@ -62,9 +62,16 @@
 
 /* ── The conversation reads as a conversation, at any width ───────────────────── */
 .chat {
+  /* The scroll container is the full column; only the CONTENT is measured.
+     Capping .chat itself and centring it looked identical and was not: .chat is the
+     element with overflow-y, so a 1040px cap inside a 1600px column left a 280px dead
+     gutter on each side where the wheel did nothing, because the pointer was not over
+     any scroller. The scrollbar also sat 280px short of the edge, in the middle of the
+     page, which is where a reader is least likely to look for it.
+     The band is drawn with padding instead, so the hit area stays full-width and the
+     scrollbar returns to the right edge. max() keeps a real gutter at narrow widths. */
   width: 100%;
-  max-width: var(--chat-measure);
-  margin-inline: auto;
+  padding-inline: max(var(--s-5), calc((100% - var(--chat-measure)) / 2));
   scroll-padding-top: var(--s-4);
 }
 /* A past session is not a live one, and the transcript itself has to say so — the
