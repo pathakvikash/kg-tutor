@@ -4,3 +4,84 @@
  * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
  * NOT redefined here — if something belongs to more than one page, it belongs there.
  */
+
+/* Section rhythm. The page is a stack of panels and tables with nothing between them,
+   so every boundary was carried by a border alone. */
+.learner-page > .head { margin-bottom: var(--s-5); }
+.learner-page > .panel { margin-bottom: var(--s-5); }
+.learner-page > .learner-note,
+.learner-page > .learner-result { margin-bottom: var(--s-4); }
+.learner-result { outline-offset: var(--s-1); }
+.learner-page > .table-wrap,
+.learner-page > .empty { margin-bottom: var(--s-2); }
+
+/* A header cell may not wrap: "Confidence" broke mid-word at 320px, and a wrapped
+   uppercase-mono label reads as two labels. The base rule lives in styles.css and is
+   shared with pages this brief does not own, so it is scoped here instead. */
+.learner-page th { white-space: nowrap; }
+
+/* Field labels that are actually labels. The topic input's only label used to be a
+   styled div, and its instruction existed only as a placeholder. */
+.learner-label {
+  font-size: var(--t-small); font-weight: 600; color: var(--ink);
+}
+.learner-hint {
+  font-size: var(--t-small); line-height: 1.5; max-width: var(--measure);
+  margin: 0;
+}
+.learner-field { display: flex; flex-direction: column; gap: var(--s-2); }
+.learner-current { margin: 0; font-size: var(--t-body); }
+
+.learner-build .learner-topic { flex: 1 1 220px; min-width: 0; }
+
+/* Notices carry two or three paragraphs here (what is lost, then what is kept), and a
+   bare <p> inside one arrives with a 1em browser margin. */
+.learner-page .notice p { margin: 0 0 var(--s-2); }
+.learner-page .notice > :last-child { margin-bottom: 0; }
+.learner-page .notice .row { margin-top: var(--s-3); }
+.learner-dismiss { margin-left: auto; font-size: var(--t-small); }
+
+/* The mastery scale is drawn in the table, in the roadmap and in the record, and had no
+   key anywhere on the page. */
+.learner-legend {
+  list-style: none; margin: 0 0 var(--s-3); padding: 0;
+  gap: var(--s-2) var(--s-4);
+}
+.learner-legend li { display: flex; align-items: center; gap: var(--s-2); }
+.learner-legend b { color: var(--ink); font-weight: 600; }
+
+.learner-arm {
+  margin: var(--s-5) 0 0; padding-top: var(--s-3);
+  border-top: 1px solid var(--rule);
+  font-size: var(--t-small); max-width: var(--measure);
+}
+
+/* Five columns need more than the shared 520px floor before they stop crushing. */
+.learner-page .table-wrap > .learner-mastery { min-width: 640px; }
+
+/* Below this the mastery table cannot be read by scrolling — five columns at 320px is a
+   438px min-content in a 292px box — so each row becomes its own labelled block. The
+   other two tables keep the shared local-scroll treatment. */
+@media (max-width: 600px) {
+  .learner-page .table-wrap > .learner-mastery { min-width: 0; }
+  .learner-mastery thead { display: none; }
+  .learner-mastery,
+  .learner-mastery tbody,
+  .learner-mastery tr,
+  .learner-mastery td { display: block; }
+  .learner-mastery tr {
+    border: 1px solid var(--rule); border-radius: var(--r-md);
+    background: var(--surface); padding: var(--s-3); margin-bottom: var(--s-2);
+  }
+  .learner-mastery td { border: none; padding: 0 0 var(--s-1); }
+  .learner-mastery tr:last-child td { border-bottom: none; }
+  .learner-mastery td:first-child {
+    font-size: var(--t-body); padding-bottom: var(--s-2);
+  }
+  .learner-mastery td:not(:first-child)::before {
+    content: attr(data-label) " ";
+    font-family: var(--font-mono); font-size: var(--t-micro); font-weight: 500;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft);
+    margin-right: var(--s-1);
+  }
+}

@@ -192,6 +192,43 @@ describe("proposals", () => {
     expect(after.retiredReason).toBe("effect did not hold");
   });
 
+  /**
+   * A proposal can sit open for a long time, which is how it outlives its own endpoints.
+   * Deprecation is the case findUniqueOrThrow never covered: a compound concept that has
+   * since been split still has a row, so the edge applied cleanly onto a node that both
+   * the planner and the resolver ignore — a hard prerequisite nothing could ever reach.
+   */
+  it("refuses to approve a proposal whose endpoint has since been deprecated", async () => {
+    const s = await passingScenario();
+    const [candidate] = await findMissingEdgeCandidates(prisma);
+    const { proposalId } = await proposeNewHardEdge(prisma, candidate!);
+    const proposal = await prisma.promotionProposal.findUniqueOrThrow({ where: { id: proposalId! } });
+
+    await prisma.concept.update({
+      where: { id: proposal.srcId! },
+      data: { deprecatedAt: new Date() },
+    });
+
+    await expect(applyProposal(prisma, proposalId!, "vikash", FM)).rejects.toThrow(/deprecated/);
+    // Nothing written, and the proposal is left open rather than half-applied.
+    expect(await prisma.edge.count({ where: { promotedById: proposalId } })).toBe(0);
+    const after = await prisma.promotionProposal.findUniqueOrThrow({ where: { id: proposalId! } });
+    expect(after.status).toBe("open");
+    void s;
+  });
+
+  it("refuses to approve a proposal whose endpoint has been deleted", async () => {
+    const s = await passingScenario();
+    const [candidate] = await findMissingEdgeCandidates(prisma);
+    const { proposalId } = await proposeNewHardEdge(prisma, candidate!);
+    const proposal = await prisma.promotionProposal.findUniqueOrThrow({ where: { id: proposalId! } });
+
+    await prisma.concept.delete({ where: { id: proposal.dstId! } });
+    await expect(applyProposal(prisma, proposalId!, "vikash", FM))
+      .rejects.toThrow(/no longer exists|can no longer be accepted/);
+    void s;
+  });
+
   it("refuses to approve a hard edge with an empty failure mode", async () => {
     const s = await passingScenario();
     const [candidate] = await findMissingEdgeCandidates(prisma);

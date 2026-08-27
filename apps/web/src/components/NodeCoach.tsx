@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { api, askStream, type Mastery } from "../api";
 import { Markdown } from "./Markdown";
+import { Busy } from "./Busy";
+import { MASTERY_RANK as RANK, atLeast } from "../vocabulary";
 
-const RANK: Record<Mastery, number> = { unknown: 0, familiar: 1, functional: 2, solid: 3 };
+type Tab = "assess" | "ask";
+const TABS: Tab[] = ["assess", "ask"];
 
 /**
  * Assessment and chat for whichever concept is selected in the graph.
@@ -38,34 +41,45 @@ export function NodeCoach({
   /** Jump to a prerequisite instead. */
   onPick?: (conceptId: string) => void;
 }) {
-  const [tab, setTab] = useState<"assess" | "ask">("assess");
+  const [tab, setTab] = useState<Tab>("assess");
   const [question, setQuestion] = useState<any>(null);
   const [answer, setAnswer] = useState("");
   const [result, setResult] = useState<any>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turns, setTurns] = useState<{ role: "learner" | "tutor"; text: string }[]>([]);
   const [input, setInput] = useState("");
-  const bottom = useRef<HTMLDivElement>(null);
+  const chat = useRef<HTMLDivElement>(null);
+  /** Guards the stream itself: two Enters used to open two streams into one turns array. */
+  const inFlight = useRef(false);
+  const ids = useId();
 
   // Selecting a different node has to clear the previous one's question and verdict,
   // or an answer gets graded against a concept the learner is no longer looking at.
   useEffect(() => {
     setQuestion(null); setAnswer(""); setResult(null);
     setError(null); setTurns([]); setInput("");
+    setBusy(null); setStreaming(false);
+    inFlight.current = false;
   }, [conceptId]);
 
-  useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [turns, busy]);
+  useEffect(() => {
+    // Scroll the chat's own box. A scrollIntoView on a sentinel scrolled the whole
+    // inspector, which fought the panel's scroll-to-top on a selection change.
+    const el = chat.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [turns, busy]);
 
+  /** Already at or past what the plan needs — so nothing here can raise it. */
+  const atCeiling = atLeast(mastery, requiredLevel);
   /** The level worth testing: one above where they are, capped at what the plan needs. */
-  const target: Mastery =
-    RANK[mastery] >= RANK[requiredLevel]
-      ? requiredLevel
-      : (["familiar", "functional", "solid"] as const)[
-          Math.min(RANK[mastery], 2)
-        ] ?? "functional";
+  const target: Mastery = atCeiling
+    ? requiredLevel
+    : (["familiar", "functional", "solid"] as const)[Math.min(RANK[mastery], 2)] ?? "functional";
 
   const startCheck = async () => {
+    if (busy) return;
     setBusy("writing a question"); setError(null); setResult(null);
     try {
       setQuestion(await api.check(learnerId, conceptId, target));
@@ -75,7 +89,7 @@ export function NodeCoach({
   };
 
   const submit = async () => {
-    if (!answer.trim() || !question) return;
+    if (!answer.trim() || !question || busy) return;
     setBusy("grading"); setError(null);
     try {
       const r = await api.attempt(learnerId, {
@@ -97,42 +111,85 @@ export function NodeCoach({
 
   const ask = async () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || inFlight.current) return;
+    inFlight.current = true;
     setInput(""); setError(null);
     setTurns((prev) => [...prev, { role: "learner", text }]);
     setBusy("thinking");
     let index = -1;
-    await askStream(learnerId, conceptId, text, {
-      onOpen: () => {
-        setBusy(null);
-        setTurns((prev) => { index = prev.length; return [...prev, { role: "tutor", text: "" }]; });
-      },
-      onDelta: (chunk) => {
-        setTurns((prev) => {
-          if (index < 0 || !prev[index]) return prev;
-          const next = [...prev];
-          next[index] = { ...next[index]!, text: next[index]!.text + chunk };
-          return next;
-        });
-      },
-      onFailed: (message) => { setError(message); setBusy(null); },
-    });
-    setBusy(null);
+    try {
+      await askStream(learnerId, conceptId, text, {
+        onOpen: () => {
+          setBusy(null);
+          setStreaming(true);
+          setTurns((prev) => { index = prev.length; return [...prev, { role: "tutor", text: "" }]; });
+        },
+        onDelta: (chunk) => {
+          setTurns((prev) => {
+            if (index < 0 || !prev[index]) return prev;
+            const next = [...prev];
+            next[index] = { ...next[index]!, text: next[index]!.text + chunk };
+            return next;
+          });
+        },
+        onFailed: (message) => { setError(message); },
+      });
+    } catch (e) {
+      // A dropped connection rejects rather than reporting `failed`, and nothing cleared
+      // busy on that path: the panel sat at "thinking" until a different node was picked.
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      inFlight.current = false;
+      setBusy(null);
+      setStreaming(false);
+    }
+  };
+
+  /** Roving tabindex, so the pair is one tab stop and the arrows move between them. */
+  const onTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    const next = TABS[(TABS.indexOf(tab) + step + TABS.length) % TABS.length]!;
+    setTab(next);
+    // getElementById, not querySelector: useId's value contains colons, which are not
+    // valid unescaped in a selector.
+    document.getElementById(`${ids}-tab-${next}`)?.focus();
   };
 
   return (
     <section className="coach">
-      <div className="coach-tabs">
-        <button className={tab === "assess" ? "on" : ""} onClick={() => setTab("assess")}>
-          Assess
-        </button>
-        <button className={tab === "ask" ? "on" : ""} onClick={() => setTab("ask")}>
-          Ask
-        </button>
+      {/* Real tab semantics: a user could believe they were asking a question while being
+          graded, because the two looked identical to a screen reader. */}
+      <div
+        className="coach-tabs"
+        role="tablist"
+        aria-label="assess or ask"
+        onKeyDown={onTabKeyDown}
+      >
+        {TABS.map((t) => (
+          <button
+            key={t}
+            id={`${ids}-tab-${t}`}
+            role="tab"
+            aria-selected={tab === t}
+            aria-controls={`${ids}-panel-${t}`}
+            tabIndex={tab === t ? 0 : -1}
+            className={tab === t ? "on" : ""}
+            onClick={() => setTab(t)}
+          >
+            {t === "assess" ? "Assess" : "Ask"}
+          </button>
+        ))}
       </div>
 
       {tab === "assess" ? (
-        <div className="coach-body">
+        <div
+          className="coach-body"
+          role="tabpanel"
+          id={`${ids}-panel-assess`}
+          aria-labelledby={`${ids}-tab-assess`}
+        >
           {!question && !result && unmetPrerequisites.length > 0 && (
             <div className="prereq-warn">
               <strong>{unmetPrerequisites.length === 1 ? "One thing" : `${unmetPrerequisites.length} things`} this builds on {unmetPrerequisites.length === 1 ? "is" : "are"} not solid yet.</strong>
@@ -143,7 +200,12 @@ export function NodeCoach({
               </p>
               <div className="chips">
                 {unmetPrerequisites.map((p) => (
-                  <button key={p.id} className="chip" onClick={() => onPick?.(p.id)}>
+                  <button
+                    key={p.id}
+                    className="chip chip--action"
+                    onClick={() => onPick?.(p.id)}
+                    title={`Go to ${p.name} instead`}
+                  >
                     {p.name} <em>{p.mastery}</em>
                   </button>
                 ))}
@@ -152,20 +214,29 @@ export function NodeCoach({
           )}
           {!question && !result && (
             <>
-              <p className="muted" style={{ fontSize: 12.5 }}>
+              <p className="muted coach-note">
                 {mastery === "unknown"
                   ? `Nothing recorded for ${conceptName} yet. One question decides where it starts.`
-                  : `Currently ${mastery}. A correct answer at ${target} moves it; a wrong one records what went wrong.`}
+                  : atCeiling
+                    // "A correct answer at functional moves it" was simply false for a
+                    // concept already at solid: the only outcome left is a regression.
+                    ? `Already ${mastery} — at or past the ${requiredLevel} the plan asks for. A correct answer will not raise it, so the only thing this can change is a record of a step back.`
+                    : `Currently ${mastery}. A correct answer at ${target} moves it; a wrong one records what went wrong.`}
               </p>
-              <button
-                className={unmetPrerequisites.length > 0 ? "" : "primary"}
-                onClick={() => void startCheck()}
-                disabled={busy !== null}
-              >
-                {busy ?? (unmetPrerequisites.length > 0
-                  ? `Test me anyway`
-                  : `Test me on ${conceptName}`)}
-              </button>
+              <div className="row">
+                <button
+                  className={unmetPrerequisites.length > 0 || atCeiling ? "" : "primary"}
+                  onClick={() => void startCheck()}
+                  aria-disabled={busy !== null}
+                >
+                  {unmetPrerequisites.length > 0
+                    ? "Test me anyway"
+                    : atCeiling
+                      ? `Re-check ${conceptName}`
+                      : `Test me on ${conceptName}`}
+                </button>
+                {busy && <Busy label={busy} />}
+              </div>
             </>
           )}
 
@@ -180,7 +251,7 @@ export function NodeCoach({
                 )}
               </div>
               {question.requiresTransfer && (
-                <p className="muted" style={{ fontSize: 12 }}>
+                <p className="muted coach-note">
                   Deliberately an unfamiliar setting — recalling the explanation will not
                   be enough here.
                 </p>
@@ -188,15 +259,27 @@ export function NodeCoach({
               <textarea
                 rows={4} value={answer} onChange={(e) => setAnswer(e.target.value)}
                 placeholder="In your own words."
-                disabled={busy !== null}
+                aria-label={`Your answer about ${conceptName}`}
+                // readOnly rather than disabled: disabling the focused control blurs it to
+                // <body>, which dumped keyboard focus to the top of the document.
+                readOnly={busy !== null}
+                aria-disabled={busy !== null}
               />
-              <div style={{ display: "flex", gap: 6 }}>
-                <button className="primary" onClick={() => void submit()} disabled={busy !== null || !answer.trim()}>
-                  {busy ?? "Answer"}
+              <div className="row">
+                <button
+                  className="primary"
+                  onClick={() => void submit()}
+                  aria-disabled={busy !== null || !answer.trim()}
+                >
+                  Answer
                 </button>
-                <button onClick={() => { setQuestion(null); setAnswer(""); }} disabled={busy !== null}>
+                <button
+                  onClick={() => { setQuestion(null); setAnswer(""); }}
+                  aria-disabled={busy !== null}
+                >
                   Cancel
                 </button>
+                {busy && <Busy label={busy} />}
               </div>
             </>
           )}
@@ -205,7 +288,7 @@ export function NodeCoach({
             <div className={result.grade.correct ? "verdict ok" : "verdict gap"}>
               <strong>{result.grade.correct ? "Correct." : "Not quite."}</strong>{" "}
               <span className="verdict-why"><Markdown text={result.grade.reasoning} /></span>
-              <div className="chips" style={{ marginTop: 8 }}>
+              <div className="chips">
                 <span className="chip">
                   {result.state.before.mastery} → <b>{result.state.after.mastery}</b>
                 </span>
@@ -217,32 +300,43 @@ export function NodeCoach({
                   <span className="chip">credited {result.propagatedTo.length} prerequisite(s)</span>
                 )}
               </div>
-              <button style={{ marginTop: 10 }} onClick={() => void startCheck()} disabled={busy !== null}>
-                {busy ?? "Ask me another"}
-              </button>
+              <div className="row verdict-again">
+                <button onClick={() => void startCheck()} aria-disabled={busy !== null}>
+                  Ask me another
+                </button>
+                {busy && <Busy label={busy} />}
+              </div>
             </div>
           )}
-          {error && <p className="err">{error}</p>}
+          {error && <p className="notice notice--error" role="alert">{error}</p>}
         </div>
       ) : (
-        <div className="coach-body">
-          <p className="muted" style={{ fontSize: 12.5 }}>
+        <div
+          className="coach-body"
+          role="tabpanel"
+          id={`${ids}-panel-ask`}
+          aria-labelledby={`${ids}-tab-ask`}
+        >
+          <p className="muted coach-note">
             Questions about {conceptName}. Asking is not being taught — nothing here
             changes what you know on record.
           </p>
-          <div className="coach-chat">
+          <div className="coach-chat" ref={chat}>
             {turns.length === 0 && (
-              <p className="muted" style={{ fontSize: 12.5 }}>
+              <p className="muted coach-note">
                 e.g. "why does this need {conceptName}?", "show me the smallest example".
               </p>
             )}
             {turns.map((t, i) => (
               <div key={i} className={`bubble ${t.role}`}>
                 {t.role === "tutor" ? <Markdown text={t.text} /> : t.text}
+                {/* A pause with no caret read as finished, so a dropped stream looked like
+                    a complete answer that just happened to stop mid-sentence. */}
+                {t.role === "tutor" && streaming && i === turns.length - 1 && (
+                  <span className="caret" />
+                )}
               </div>
             ))}
-            {busy && <p className="muted" style={{ fontSize: 12 }}>{busy}…</p>}
-            <div ref={bottom} />
           </div>
           <textarea
             rows={2} value={input} onChange={(e) => setInput(e.target.value)}
@@ -250,11 +344,19 @@ export function NodeCoach({
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void ask(); }
             }}
             placeholder={`Ask about ${conceptName}…`}
+            aria-label={`Ask about ${conceptName}`}
           />
-          <button className="primary" onClick={() => void ask()} disabled={!input.trim()}>
-            Ask
-          </button>
-          {error && <p className="err">{error}</p>}
+          <div className="row">
+            <button
+              className="primary"
+              onClick={() => void ask()}
+              aria-disabled={!input.trim() || busy !== null || streaming}
+            >
+              Ask
+            </button>
+            {busy && <Busy label={busy} />}
+          </div>
+          {error && <p className="notice notice--error" role="alert">{error}</p>}
         </div>
       )}
     </section>

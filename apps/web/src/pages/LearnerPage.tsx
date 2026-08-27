@@ -1,288 +1,705 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { resolveLearner, useStickyLearner } from "../useLearner";
-import { api, type Mastery } from "../api";
+import { api, HttpError } from "../api";
+import { Busy } from "../components/Busy";
+import { Roadmap } from "../components/Roadmap";
+import { DEPTH_LABEL, MASTERY_MEANING, MASTERY_ORDER } from "../vocabulary";
 
-const DOT: Record<Mastery, string> = {
-  unknown: "var(--m-unknown)", familiar: "var(--m-familiar)",
-  functional: "var(--m-functional)", solid: "var(--m-solid)",
-};
+/** A read that failed, in the two flavours a page has to tell apart. */
+type Failure = { message: string; remedy: string | null; missing: boolean };
+
+function asFailure(e: unknown): Failure {
+  if (e instanceof HttpError) return { message: e.message, remedy: e.remedy, missing: e.isMissing };
+  return { message: e instanceof Error ? e.message : String(e), remedy: null, missing: false };
+}
+
+type Read<T> = { ok: true; value: T } | { ok: false; failure: Failure };
+
+/** Settles instead of rejecting, so one failed read cannot hide the other section. */
+function read<T>(p: Promise<T>): Promise<Read<T>> {
+  return p.then(
+    (value) => ({ ok: true as const, value }),
+    (e: unknown) => ({ ok: false as const, failure: asFailure(e) }),
+  );
+}
+
+function ReadFailure({ title, failure, onRetry }: {
+  title: string;
+  failure: Failure;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="notice notice--error learner-note" role="alert">
+      <strong>{title}</strong>
+      <p>{failure.message}</p>
+      {failure.remedy && <p>{failure.remedy}</p>}
+      <button onClick={onRetry}>Retry</button>
+    </div>
+  );
+}
+
+/** "We have not asked yet", which is not the same claim as "there is nothing here". */
+function Lines({ count = 3 }: { count?: number }) {
+  const widths = ["skeleton--w80", "skeleton--w60", "skeleton--w40"];
+  return (
+    <div aria-hidden="true">
+      {Array.from({ length: count }, (_, i) => (
+        <div className={`skeleton skeleton--line ${widths[i % widths.length]}`} key={i} />
+      ))}
+    </div>
+  );
+}
+
+/** "14 Mar" — a date a learner can act on, from a timestamp they cannot read. */
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
 
 /**
  * Expanding a new topic. This was the missing loop: the endpoint existed but nothing in
  * the UI reached it, so the graph could only grow from a seed or a curl. A learner
  * typing "React" is the whole premise of the product.
+ *
+ * Everything here is gated because the write is shared and irreversible: the concepts and
+ * edges it creates land in the one graph every learner sees, and nothing in the app takes
+ * them back out.
  */
 function NewTopic({ onDone }: { onDone: () => void }) {
   const [name, setName] = useState("");
   const [job, setJob] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Failure | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [starting, setStarting] = useState(false);
+  /** Set after several failed polls in a row, so a dead job stops reading as "queued · 0%". */
+  const [lost, setLost] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const buildRef = useRef<HTMLButtonElement | null>(null);
+
+  // A build outlives this page, so the form must not offer to start one that is already
+  // running — leaving and coming back showed an empty field mid-build.
+  useEffect(() => {
+    let cancelled = false;
+    void api.expansions()
+      .then((all) => {
+        if (cancelled) return;
+        const live = all.find((j: any) => j.status === "queued" || j.status === "running");
+        if (live) setJob(live);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
-    if (!job || job.status === "done" || job.status === "failed") return;
-    const timer = setInterval(async () => {
-      try {
-        const j = await api.expansion(job.id);
-        setJob(j);
-        if (j.status === "done") onDone();
-      } catch { /* transient */ }
+    if (!job || job.status === "done" || job.status === "failed" || lost) return;
+    // A successful poll calls setJob, which re-runs this effect and resets the counter; a
+    // failed one does not, so only consecutive misses accumulate.
+    let misses = 0;
+    const timer = setInterval(() => {
+      void api.expansion(job.id)
+        .then((j) => {
+          misses = 0;
+          setJob(j);
+          if (j.status === "done") onDone();
+        })
+        .catch(() => { if (++misses >= 3) setLost(true); });
     }, 2000);
     return () => clearInterval(timer);
-  }, [job, onDone]);
+  }, [job, onDone, lost]);
+
+  const running = !lost && job && (job.status === "queued" || job.status === "running");
+  const pct = Math.round((job?.progress ?? 0) * 100);
+  const report = job?.report ?? {};
 
   const start = async () => {
-    setError(null);
+    setConfirming(false); setError(null); setLost(false); setStarting(true);
     try { setJob(await api.startExpansion(name.trim())); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setError(asFailure(e)); }
+    finally { setStarting(false); }
   };
 
-  const running = job && (job.status === "queued" || job.status === "running");
+  const retry = async () => {
+    setError(null); setLost(false);
+    try { setJob(await api.retryExpansion(job.id)); }
+    catch (e) { setError(asFailure(e)); }
+  };
 
   return (
-    <div className="card" style={{ marginBottom: 18 }}>
-      <div className="k">Learn something new</div>
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+    <section className="panel stack learner-build" aria-labelledby="build-h">
+      <h3 className="eyebrow" id="build-h">Learn something new</h3>
+
+      <label className="learner-label" htmlFor="new-topic">Topic to build into the graph</label>
+      <p className="muted learner-hint" id="new-topic-hint">
+        Anything the graph does not have yet. It asks the model the same question three
+        times and keeps only what a majority names — once for the topic, then again for the
+        prerequisites of every concept it found — so a twenty-concept topic is sixty-odd
+        model calls over several minutes. What it writes goes into the graph every learner
+        shares, and this page cannot take it back out.
+      </p>
+
+      <div className="row">
         <input
-          style={{ flex: 1 }}
+          id="new-topic"
+          ref={inputRef}
+          className="learner-topic"
+          aria-describedby="new-topic-hint"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && name.trim() && !running) void start(); }}
-          placeholder="A topic that isn't in the graph yet — e.g. React, SQL, recursion"
-          disabled={!!running}
+          // Enter moves to the button instead of committing: this spends minutes of model
+          // time on a shared write, so a typo must not be able to reach it.
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buildRef.current?.focus(); } }}
+          placeholder="e.g. React, SQL, recursion"
         />
-        <button className="primary" onClick={() => void start()} disabled={!name.trim() || !!running}>
-          {running ? "Building…" : "Build the graph"}
+        <button
+          ref={buildRef}
+          className="primary"
+          aria-disabled={!name.trim() || !!running || starting}
+          onClick={() => {
+            if (!name.trim()) { inputRef.current?.focus(); return; }
+            if (running || starting) return;
+            setConfirming(true);
+          }}
+        >
+          Build the graph
         </button>
+        {starting && <Busy label="starting the build" clock={false} />}
       </div>
 
-      {running && (
-        <div style={{ marginTop: 10 }}>
-          <div className="progress"><div className="bar" style={{ width: `${Math.round(job.progress * 100)}%` }} /></div>
-          <div className="sub">
-            {job.phase} · {Math.round(job.progress * 100)}%
-            {" — this makes dozens of model calls and takes a few minutes."}
+      {confirming && (
+        <div className="notice notice--warn" role="alert">
+          <strong>Build “{name.trim()}” into the shared graph?</strong>
+          <p>
+            Sixty-odd model calls and several minutes for a topic this size. New concepts,
+            edges and milestones are written for everyone, and there is no undo.
+          </p>
+          <div className="row">
+            <button className="primary" onClick={() => void start()}>Yes, build it</button>
+            <button onClick={() => { setConfirming(false); buildRef.current?.focus(); }}>
+              Not now
+            </button>
           </div>
         </div>
       )}
-      {job?.status === "done" && (
-        <div className="sub" style={{ marginTop: 8 }}>
-          Built <strong>{job.topicName}</strong>: {job.report?.conceptsCreated ?? 0} new concepts,{" "}
-          {job.report?.conceptsBound ?? 0} reused, {job.report?.edgesWritten ?? 0} edges
-          {job.report?.edgesDemoted ? `, ${job.report.edgesDemoted} demoted to soft` : ""}
-          {job.report?.conceptsDroppedByConsensus?.length
-            ? ` · dropped by consensus: ${job.report.conceptsDroppedByConsensus.join(", ")}`
-            : ""}
-          . Pick it as a topic below.
-        </div>
-      )}
-      {job?.status === "failed" && (
-        <div style={{ marginTop: 8 }}>
-          <div className="sub err">{job.error}</div>
-          <button
-            style={{ marginTop: 6 }}
-            onClick={() => { void api.retryExpansion(job.id).then(setJob); }}
+
+      {running && (
+        <div className="stack stack--tight">
+          <div
+            className="progress"
+            role="progressbar"
+            aria-label={`Building ${job.topicName}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={pct}
+            aria-valuetext={`${pct}% — ${job.phase ?? "queued"}`}
           >
-            Try again
-          </button>
+            <div className="bar" style={{ width: `${pct}%` }} />
+          </div>
+          <Busy label={`${job.phase ?? "queued"} · ${pct}%`} clock={false} />
         </div>
       )}
-      {error && <div className="sub err" style={{ marginTop: 8 }}>{error}</div>}
-    </div>
+
+      {lost && job && (
+        <div className="notice notice--error" role="alert">
+          <strong>Lost contact with this build</strong>
+          <p>
+            Three status checks in a row failed, so this page cannot say whether “
+            {job.topicName}” is still running. The job itself is unaffected by that — if
+            the server is alive, it is still working.
+          </p>
+          <button onClick={() => setLost(false)}>Check again</button>
+        </div>
+      )}
+
+      {job?.status === "done" && (
+        <div className="stack stack--tight">
+          <div className="notice notice--ok" role="status">
+            <strong>Built {job.topicName}</strong>
+            <p>Pick it as a topic below to plan against it.</p>
+          </div>
+          <div className="build-stats">
+            <span><b>{report.conceptsCreated ?? 0}</b> new</span>
+            <span><b>{report.conceptsBound ?? 0}</b> reused</span>
+            <span><b>{report.edgesWritten ?? 0}</b> edges</span>
+            {report.edgesDemoted > 0 && <span><b>{report.edgesDemoted}</b> demoted to soft</span>}
+            {report.milestones?.length > 0 && (
+              <span><b>{report.milestones.length}</b> milestones</span>
+            )}
+          </div>
+          {report.conceptsDroppedByConsensus?.length > 0 && (
+            <p className="muted learner-hint">
+              Dropped for want of a majority: {report.conceptsDroppedByConsensus.join(", ")}.
+            </p>
+          )}
+        </div>
+      )}
+
+      {job?.status === "failed" && (
+        <div className="notice notice--error" role="alert">
+          <strong>That build failed</strong>
+          <p>{job.error}</p>
+          <button onClick={() => void retry()}>Try again</button>
+        </div>
+      )}
+
+      {error && (
+        <div className="notice notice--error" role="alert">
+          <strong>Could not start the build</strong>
+          <p>{error.message}</p>
+          {error.remedy && <p>{error.remedy}</p>}
+        </div>
+      )}
+    </section>
   );
 }
 
+/** The page draws the mastery scale in three places and had no key for it anywhere. */
+function MasteryLegend() {
+  return (
+    <ul className="legend learner-legend">
+      {MASTERY_ORDER.map((m) => (
+        <li key={m}>
+          <span className="mastery-mark" data-level={m} aria-hidden="true" />
+          <b>{m}</b> — {MASTERY_MEANING[m]}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The learner model, read first and edited second.
+ *
+ * The page is opened to answer "what does the tutor think I know", so nothing here may
+ * destroy that answer as a side effect of arriving. The two selects describe the active
+ * goal rather than a default, and replacing a plan is a named, confirmed act.
+ */
 export function LearnerPage() {
   const [learners, setLearners] = useState<any[]>([]);
   const [topics, setTopics] = useState<any[]>([]);
   const [id, setId] = useStickyLearner();
   const [state, setState] = useState<any>(null);
+  const [stateFail, setStateFail] = useState<Failure | null>(null);
   const [plan, setPlan] = useState<any>(null);
+  const [planFail, setPlanFail] = useState<Failure | null>(null);
+  const [loading, setLoading] = useState(true);
   const [depth, setDepth] = useState("use");
   const [topicId, setTopicId] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"goal" | "replan" | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
+  /** Which load is current. A slow first response must not land under a second learner. */
+  const generation = useRef(0);
+  const resultRef = useRef<HTMLDivElement | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     void api.learners().then((l) => { setLearners(l); setId(resolveLearner(id, l)); });
-    void api.topics().then((t) => { setTopics(t); if (t[0]) setTopicId(t[0].id); });
+    void api.topics().then(setTopics);
   }, []);
 
   const load = useCallback(async (learnerId: string) => {
-    if (!learnerId) return;
-    setState(await api.learnerState(learnerId));
-    try { setPlan(await api.plan(learnerId)); } catch { setPlan(null); }
+    if (!learnerId) { setLoading(false); return; }
+    const mine = ++generation.current;
+    setLoading(true);
+    // Independent reads: the plan 404s for a learner who has no goal yet, which says
+    // nothing about whether their concept record loaded.
+    const [s, p] = await Promise.all([
+      read(api.learnerState(learnerId)),
+      read(api.plan(learnerId)),
+    ]);
+    if (mine !== generation.current) return;
+    setState(s.ok ? s.value : null);
+    setStateFail(s.ok ? null : s.failure);
+    setPlan(p.ok ? p.value : null);
+    setPlanFail(p.ok ? null : p.failure);
+    setLoading(false);
   }, []);
 
   useEffect(() => { void load(id); }, [id, load]);
 
-  const setGoal = async () => {
-    setBusy(true); setNote(null);
+  const activeGoal = state?.goals?.find((g: any) => g.active) ?? null;
+
+  // The selects describe the goal that exists. They were pinned to topics[0] and "use", so
+  // the primary button acted on values the learner had never chosen and never saw. Keyed
+  // on the learner too, or a learner with no goal inherits the last one's draft.
+  useEffect(() => {
+    if (loading) return;
+    if (activeGoal) { setTopicId(activeGoal.topicId); setDepth(activeGoal.depth); }
+    else { setTopicId(""); setDepth("use"); }
+  }, [id, loading, activeGoal?.id, activeGoal?.topicId, activeGoal?.depth]);
+
+  useEffect(() => {
+    if (!activeGoal && !topicId && topics[0]) setTopicId(topics[0].id);
+  }, [activeGoal, topicId, topics]);
+
+  // A result belongs to the inputs that produced it. Changing any of them makes the
+  // banner underneath a claim about something else.
+  useEffect(() => { setNote(null); setFailure(null); setConfirming(false); }, [id, topicId, depth]);
+
+  // Both are only ever set by one of the two plan actions, and both actions destroy the
+  // control that was focused, so focus follows the outcome instead of falling to <body>.
+  useEffect(() => { if (note || failure) resultRef.current?.focus(); }, [note, failure]);
+
+  const dirty = !activeGoal || topicId !== activeGoal.topicId || depth !== activeGoal.depth;
+  const committed = plan?.steps?.filter((s: any) => s.committed).length ?? 0;
+  const targetTopic = topics.find((t) => t.id === topicId)?.name ?? "the selected topic";
+  const depthLabel = (d: string) => DEPTH_LABEL[d]?.label ?? d;
+
+  const applyGoal = async () => {
+    setBusy("goal"); setNote(null); setFailure(null); setConfirming(false);
     try {
       const r = await api.setGoal(id, topicId, depth);
-      setNote(`Plan v${r.plan.version}: ${r.plan.steps.length} concepts, ${r.plan.milestones.length} milestones`);
+      setNote(
+        `Plan v${r.plan.version} for ${targetTopic}: ${r.plan.steps.length} concepts, ` +
+        `${r.plan.milestones.length} milestones.`,
+      );
       await load(id);
     } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e));
-    } finally { setBusy(false); }
+      setFailure(asFailure(e));
+    } finally { setBusy(null); }
   };
 
   const rebuild = async () => {
-    setBusy(true); setNote(null);
+    setBusy("replan"); setNote(null); setFailure(null);
     try {
       const r = await api.rebuildPlan(id);
       // Growth is stated plainly rather than silently moving progress backwards. (08)
       setNote(`Plan v${r.version} — ${r.revisionReason ?? "no change"}`);
       await load(id);
     } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e));
-    } finally { setBusy(false); }
+      setFailure(asFailure(e));
+    } finally { setBusy(null); }
   };
 
   const refreshTopics = useCallback(() => { void api.topics().then(setTopics); }, []);
+  const openConcept = (conceptId: string) => navigate(`/graph?node=${conceptId}&learner=${id}`);
+
+  const states: any[] = state?.states ?? [];
+  const misconceptions: any[] = state?.misconceptions ?? [];
 
   return (
-    <div className="page">
-      <NewTopic onDone={refreshTopics} />
-      <div className="toolbar" style={{ marginBottom: 18, borderRadius: 6, border: "1px solid var(--rule)" }}>
+    <div className="page page--table learner-page">
+      <div className="head">
+        <div className="stack stack--tight">
+          <h2>Learner model</h2>
+          <p className="muted">
+            What the tutor believes about this learner, and the plan it derives from it.
+          </p>
+        </div>
         <label className="field">
           learner
           <select value={id} onChange={(e) => setId(e.target.value)}>
             {learners.map((l) => <option key={l.id} value={l.id}>{l.email}</option>)}
           </select>
         </label>
-        <label className="field">
-          topic
-          <select value={topicId} onChange={(e) => setTopicId(e.target.value)}>
-            {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        </label>
-        <label className="field">
-          depth
-          <select value={depth} onChange={(e) => setDepth(e.target.value)}>
-            <option value="use">use</option>
-            <option value="debug">debug</option>
-            <option value="build">build</option>
-          </select>
-        </label>
-        <button className="primary" onClick={() => void setGoal()} disabled={busy || !id}>
-          Set goal &amp; plan
-        </button>
-        <button onClick={() => void rebuild()} disabled={busy || !plan}>Replan</button>
-        {state?.learner && <span className="badge">arm: {state.learner.variant}</span>}
       </div>
 
-      {note && <div className="banner">{note}</div>}
+      <NewTopic onDone={refreshTopics} />
 
-      {plan ? (
-        <>
-          <h2 className="section-title">
-            Path — {plan.goal.topic} <span className="muted mono">({plan.goal.depth}, v{plan.version})</span>
-          </h2>
-          {plan.revisionReason && (
-            <p className="muted" style={{ marginTop: 0 }}>Last change: {plan.revisionReason}</p>
-          )}
+      <section className="panel stack learner-goal" aria-labelledby="goal-h">
+        <h3 className="eyebrow" id="goal-h">Goal</h3>
 
-          {plan.milestones.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              {plan.milestones.map((m: any) => (
-                <div className="milestone" key={m.id}>
-                  <div className="claim">{m.claim}</div>
-                  <div className="note">
-                    {m.conceptCount} concepts
-                    {m.foldedForward && " · mostly already satisfied, folded into the next one"}
-                    {m.completed && " · complete"}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        {loading ? (
+          <Lines count={1} />
+        ) : activeGoal ? (
+          <p className="learner-current">
+            Currently <b>{activeGoal.topic}</b> · {depthLabel(activeGoal.depth)}
+            {plan && <> · plan v{plan.version}, {plan.steps.length} concepts</>}
+            {committed > 0 && <span className="muted"> ({committed} pinned as firm)</span>}
+          </p>
+        ) : (
+          <p className="muted">
+            No goal yet. Pick a topic and a depth, and the planner orders the concepts for
+            you.
+          </p>
+        )}
 
-          <div className="steps">
-            {plan.steps.map((s: any) => (
-              <div className={`step${s.committed ? " committed" : ""}`} key={s.conceptId}>
-                <span className="pos">{String(s.position + 1).padStart(2, "0")}</span>
-                <span>
-                  <span className="mdot" style={{ background: DOT[s.currentMastery as Mastery], marginRight: 7 }} />
-                  {s.name}
-                  <span className="why" style={{ marginLeft: 8 }}>
-                    needs {s.requiredLevel}
-                    {s.unlockCount > 0 && ` · unlocks ${s.unlockCount}`}
-                    {s.committed && " · committed"}
-                  </span>
-                </span>
-                <span className="muted mono">{s.currentMastery}</span>
-              </div>
+        <div className="row">
+          <label className="field">
+            topic
+            <select value={topicId} onChange={(e) => setTopicId(e.target.value)}>
+              {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </label>
+        </div>
+
+        {/* Depth decides the shape of the whole plan, so it says what each one costs
+            rather than offering three unexplained lowercase words. */}
+        <div className="learner-field">
+          <span className="learner-label" id="depth-label">How deeply?</span>
+          <div className="depth-choice" role="group" aria-labelledby="depth-label">
+            {["use", "debug", "build"].map((v) => (
+              <button
+                key={v}
+                className={depth === v ? "depth on" : "depth"}
+                aria-pressed={depth === v}
+                onClick={() => setDepth(v)}
+              >
+                <strong>{depthLabel(v)}</strong>
+                <span>{DEPTH_LABEL[v]?.hint}</span>
+              </button>
             ))}
           </div>
+        </div>
 
-          {plan.probes.length > 0 && (
-            <>
-              <h2 className="section-title">Probes due before the next step</h2>
-              <table>
-                <thead><tr><th>Concept</th><th>Kind</th><th>Why</th></tr></thead>
-                <tbody>
-                  {plan.probes.map((p: any) => (
-                    <tr key={p.conceptId}>
-                      <td>{p.name}</td>
-                      <td className="mono">{p.kind}{p.optional ? "" : " (required)"}</td>
-                      <td className="muted">{p.reason}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
+        <div className="row">
+          <button
+            className="primary"
+            // Inert while it would replace a goal with itself, and never renamed for its
+            // own status — the label says which of the two acts this is.
+            disabled={!dirty || !id || !topicId}
+            aria-disabled={busy !== null}
+            onClick={() => {
+              if (busy) return;
+              if (activeGoal) setConfirming(true);
+              else void applyGoal();
+            }}
+          >
+            {activeGoal ? "Replace plan" : "Set goal & plan"}
+          </button>
+          <button
+            aria-disabled={busy !== null}
+            disabled={!plan}
+            onClick={() => { if (!busy) void rebuild(); }}
+          >
+            Replan
+          </button>
+          {busy === "goal" && <Busy label="building the new plan" clock={false} />}
+          {busy === "replan" && <Busy label="reordering your plan" clock={false} />}
+        </div>
+
+        <p className="muted learner-hint">
+          {dirty
+            ? "Replace plan starts a new goal and a new plan. Replan keeps your goal and re-orders what is left of it — that is the safe one."
+            : "These match your active goal, so there is nothing to replace. Replan re-orders what is left of it against what you now know."}
+        </p>
+
+        {confirming && activeGoal && (
+          <div className="notice notice--warn" role="alert">
+            <strong>Replace your plan?</strong>
+            <p>
+              This retires your <b>{activeGoal.topic} · {depthLabel(activeGoal.depth)}</b> goal
+              {plan && (
+                <> and plan v{plan.version} — {plan.steps.length} concepts, {committed} of
+                  them pinned as firm</>
+              )}
+              , and builds a new plan for <b>{targetTopic} · {depthLabel(depth)}</b>.
+            </p>
+            <p>
+              Mastery you have already demonstrated is kept — it lives on the concepts, not
+              on the plan. The path through them is what gets rebuilt.
+            </p>
+            <div className="row">
+              <button
+                className="primary"
+                aria-disabled={busy !== null}
+                onClick={() => { if (!busy) void applyGoal(); }}
+              >
+                Replace it
+              </button>
+              <button onClick={() => setConfirming(false)}>Keep my current plan</button>
+              {busy === "goal" && <Busy label="building the new plan" clock={false} />}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* A failed irreversible write and a successful one used to be the same amber
+          banner, on the page where "did my plan just get replaced?" is the question.
+          Focused rather than merely announced, because the control that produced it is
+          either gone (the confirm) or now inert (nothing left to replace). */}
+      {(note || failure) && (
+        <div className="learner-result" ref={resultRef} tabIndex={-1}>
+          {note && (
+            <div className="notice notice--ok learner-note" role="status">
+              <div className="row">
+                <span>{note}</span>
+                <button className="linkish learner-dismiss" onClick={() => setNote(null)}>
+                  dismiss
+                </button>
+              </div>
+            </div>
           )}
-        </>
-      ) : (
-        <div className="empty">No active plan. Pick a topic and depth, then set a goal.</div>
+          {failure && (
+            <div className="notice notice--error learner-note" role="alert">
+              <strong>That did not go through</strong>
+              <p>{failure.message}</p>
+              {failure.remedy && <p>{failure.remedy}</p>}
+              <button className="linkish learner-dismiss" onClick={() => setFailure(null)}>
+                dismiss
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
-      {state && (
+      <h3 className="section-title">Path</h3>
+      {loading ? (
+        <Lines />
+      ) : planFail && !planFail.missing ? (
+        <ReadFailure
+          title="Could not load this learner's plan"
+          failure={planFail}
+          onRetry={() => void load(id)}
+        />
+      ) : plan ? (
         <>
-          <h2 className="section-title">Known concepts ({state.states.length})</h2>
-          {state.states.length === 0 ? (
-            <div className="empty">Nothing recorded yet.</div>
-          ) : (
+          {plan.revisionReason && (
+            <p className="muted learner-hint">Last change: {plan.revisionReason}</p>
+          )}
+          {/* Keyed on the version so a replan re-reads it, rather than showing the path
+              the banner above has just announced as replaced. */}
+          <Roadmap key={`${id}:${plan.version}`} learnerId={id} onPick={openConcept} />
+        </>
+      ) : activeGoal ? (
+        <div className="empty">You have a goal but no plan for it. Replan builds one.</div>
+      ) : (
+        <div className="empty">
+          No plan yet. Pick a topic and a depth above, then set a goal.
+        </div>
+      )}
+
+      <h3 className="section-title">Probes due before the next step</h3>
+      {loading ? (
+        <Lines count={2} />
+      ) : !plan ? (
+        <p className="muted">Nothing to probe until there is a plan.</p>
+      ) : plan.probes.length === 0 ? (
+        <p className="muted">
+          None — the next step can be taught without checking anything first.
+        </p>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Concept</th><th>Kind</th><th>Why</th></tr></thead>
+            <tbody>
+              {plan.probes.map((p: any) => (
+                <tr key={p.conceptId}>
+                  <td>
+                    <button className="linkish" onClick={() => openConcept(p.conceptId)}>
+                      {p.name}
+                    </button>
+                  </td>
+                  <td className="mono">{p.kind}{p.optional ? "" : " (required)"}</td>
+                  <td className="muted">{p.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h3 className="section-title">
+        Concept record{!loading && !stateFail && ` (${states.length})`}
+      </h3>
+      <p className="muted learner-hint">
+        One row per concept this learner has been assessed on — including the ones assessed
+        as not established. Confidence runs 0–1 and halves every 45 days, so a fresh 0.40
+        and a year-old 0.40 are not the same claim.
+      </p>
+      <MasteryLegend />
+
+      {loading ? (
+        <Lines />
+      ) : stateFail ? (
+        <ReadFailure
+          title={
+            stateFail.missing
+              ? "This learner is no longer on the server"
+              : "Could not load this learner's model"
+          }
+          failure={stateFail}
+          onRetry={() => void load(id)}
+        />
+      ) : states.length === 0 ? (
+        <div className="empty">
+          Nothing recorded yet. The intake, or a first lesson, fills this in.
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table className="learner-mastery">
+            <thead>
+              <tr>
+                <th>Concept</th><th>Mastery</th><th>Confidence</th><th>Source</th><th>Flags</th>
+              </tr>
+            </thead>
+            <tbody>
+              {states.map((s: any) => (
+                <tr key={s.conceptId}>
+                  <td data-label="Concept">
+                    <button className="linkish" onClick={() => openConcept(s.conceptId)}>
+                      {s.name}
+                    </button>
+                  </td>
+                  <td data-label="Mastery">
+                    <span className="mastery-mark" data-level={s.mastery} aria-hidden="true" />
+                    {" "}{s.mastery}
+                  </td>
+                  <td className="mono" data-label="Confidence">{s.confidence.toFixed(2)}</td>
+                  <td className="mono muted" data-label="Source">{s.source}</td>
+                  <td className="muted" data-label="Flags">
+                    {s.reprobeQueued || s.blockedUntil ? (
+                      <>
+                        {s.reprobeQueued && "re-probe queued"}
+                        {s.reprobeQueued && s.blockedUntil && " · "}
+                        {s.blockedUntil && `blocked until ${shortDate(s.blockedUntil)}`}
+                      </>
+                    ) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h3 className="section-title">Misconceptions</h3>
+      {loading ? (
+        <Lines count={2} />
+      ) : stateFail ? (
+        <p className="muted">Unavailable while the learner model above is failing to load.</p>
+      ) : misconceptions.length === 0 ? (
+        <p className="muted">No misconceptions on record.</p>
+      ) : (
+        <>
+          <p className="muted learner-hint">
+            Every open belief here is put in front of the tutor on every lesson, so a wrong
+            one steers teaching until it is cleared. Open the concept to be re-assessed on
+            it.
+          </p>
+          <div className="table-wrap">
             <table>
-              <thead>
-                <tr><th>Concept</th><th>Mastery</th><th>Confidence</th><th>Source</th><th>Flags</th></tr>
-              </thead>
+              <thead><tr><th>Concept</th><th>Belief</th><th>Matched failure mode</th></tr></thead>
               <tbody>
-                {state.states.map((s: any) => (
-                  <tr key={s.conceptId}>
-                    <td>{s.name}</td>
+                {misconceptions.map((m: any, i: number) => (
+                  <tr key={`${m.conceptId}-${i}`}>
                     <td>
-                      <span className="mdot" style={{ background: DOT[s.mastery as Mastery], marginRight: 6 }} />
-                      {s.mastery}
+                      <button className="linkish" onClick={() => openConcept(m.conceptId)}>
+                        {m.name}
+                      </button>
                     </td>
-                    <td className="mono">{s.confidence.toFixed(2)}</td>
-                    <td className="mono muted">{s.source}</td>
-                    <td className="muted mono">
-                      {s.reprobeQueued && "re-probe "}{s.blockedUntil && "blocked"}
-                    </td>
+                    <td>{m.belief}</td>
+                    <td className="muted">{m.matchedFailureMode ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-
-          {state.misconceptions.length > 0 && (
-            <>
-              <h2 className="section-title">Misconceptions</h2>
-              <table>
-                <thead><tr><th>Concept</th><th>Belief</th><th>Matched failure mode</th></tr></thead>
-                <tbody>
-                  {state.misconceptions.map((m: any, i: number) => (
-                    <tr key={i}>
-                      <td>{m.name}</td>
-                      <td>{m.belief}</td>
-                      <td className="muted">{m.matchedFailureMode ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
+          </div>
         </>
+      )}
+
+      {state?.learner?.variant && (
+        <p className="muted learner-arm">
+          Experiment arm: <b>{state.learner.variant}</b> —{" "}
+          {state.learner.variant === "graph"
+            ? "taught through the graph and this learner model."
+            : "taught by a plain strong-model tutor with no graph, which is the control the graph is measured against."}{" "}
+          Derived from the learner id, so it never changes.
+        </p>
       )}
     </div>
   );

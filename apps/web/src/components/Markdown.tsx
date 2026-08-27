@@ -84,10 +84,14 @@ export function Markdown({ text }: { text: string }) {
 
     const heading = /^(#{1,4})\s+(.*)$/.exec(line);
     if (heading) {
+      const depth = heading[1]!.length;
+      // A real heading, not a styled div. Model output sits under the page's own h1-h3,
+      // so #..#### map to h4..h6 and clamp; the classes keep the visual unchanged.
+      const Tag = depth === 1 ? "h4" : depth === 2 ? "h5" : "h6";
       blocks.push(
-        <div key={key++} className={`md-h md-h${heading[1]!.length}`}>
+        <Tag key={key++} className={`md-h md-h${depth}`}>
           {inline(heading[2] ?? "", `h${key}`)}
-        </div>,
+        </Tag>,
       );
       i++;
       continue;

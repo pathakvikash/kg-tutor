@@ -12,6 +12,23 @@ export interface ForceNode extends SimulationNodeDatum {
 }
 type ForceLink = SimulationLinkDatum<ForceNode> & { strength: "hard" | "soft" };
 
+/**
+ * Explore-mode orb geometry, in one place.
+ *
+ * The simulation, the react-flow node box and the drawn dot all have to agree, or
+ * forceCollide's non-overlap guarantee describes circles nobody can see: the label box is
+ * 130px wide while the collide radius was 34, so labels overlapped by construction and
+ * the text-shadow halo was covering for it.
+ */
+export const ORB_W = 130;
+/** Dot (34 at most) + gap + two lines of 11px label. */
+export const ORB_H = 70;
+
+/** Size carries degree, so hubs read as hubs at a glance without a legend. */
+export function orbDotSize(degree: number): number {
+  return Math.min(34, 15 + degree * 2.2);
+}
+
 export interface ForceResult {
   positions: Map<string, { x: number; y: number }>;
   simulation: Simulation<ForceNode, ForceLink>;
@@ -104,7 +121,9 @@ export function runForceLayout(
     // The bias that makes direction readable. Strong enough to hold the ordering,
     // weak enough that clustering still does the horizontal work.
     .force("depth", forceY<ForceNode>((d) => depthY(d.id)).strength(0.85))
-    .force("collide", forceCollide<ForceNode>().radius((d) => 34 + d.degree * 1.8))
+    // Sized from the drawn label box, not from the dot: a 34px radius let two 130px
+    // labels sit on top of each other while the simulation reported no collision.
+    .force("collide", forceCollide<ForceNode>().radius((d) => ORB_W / 2 + orbDotSize(d.degree) / 2))
     .stop();
 
   // Run to completion synchronously: an animated settle looks alive but makes the graph

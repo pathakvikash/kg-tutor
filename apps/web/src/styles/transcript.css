@@ -3,4 +3,243 @@
  * One file per page so that page work can happen in parallel without two people
  * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
  * NOT redefined here — if something belongs to more than one page, it belongs there.
+ *
+ * Scope: the two surfaces that render model output — the markdown renderer and the
+ * interactive widgets. Loaded after styles.css, so these rules override the base
+ * declarations there at equal specificity; where a base rule sits inside a media query
+ * the override repeats the query rather than raising specificity.
  */
+
+/* ── Dark-mode tokens, locally ─────────────────────────────────────────────────
+   styles.css declares --danger / --danger-bg / --positive-text inside its dark
+   @media block (line 46) and then AGAIN, unconditionally, in the :root below it
+   (line 105). Same specificity, later source order, so the LIGHT values win in dark
+   mode and the dark block is dead — measured: --danger resolves to #b3261e on the
+   dark ground, which is the 2.6:1 failure this page is supposed to be fixing.
+
+   Scoped to the surfaces this file owns rather than to :root, because the ordering
+   bug lives in a shared file that is not mine to edit. Delete this block once the
+   duplicate declarations there are removed. */
+@media (prefers-color-scheme: dark) {
+  .w-root,
+  .build-log {
+    --danger: #f2b8b5;
+    --danger-bg: #2a1614;
+    --positive-text: var(--m-functional);
+  }
+}
+
+/* ── Model-authored headings are now h4..h6 ───────────────────────────────────
+   Real elements bring UA margins and match container rules written for the app's own
+   h4s (`.inspector h4` is uppercase mono), so the visual has to be pinned to the
+   class rather than left to the tag. Two classes, so this beats both `.inspector h4`
+   and `.build-section h4` on specificity. */
+.md .md-h {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  text-transform: none;
+  margin: var(--s-3) 0 var(--s-1);
+}
+.md .md-h1 { font-size: var(--t-lead); }
+.md .md-h2 { font-size: var(--t-section); }
+.md .md-h3,
+.md .md-h4 { font-size: var(--t-body); }
+/* `.md > *:first-child` in styles.css loses the tie to `.md-h`, so a response opening
+   with a heading carried a stray 14px above it. */
+.md > .md-h:first-child { margin-top: 0; }
+
+.w-root .w-heading {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: var(--t-body);
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  text-transform: none;
+  margin: 0 0 2px;
+}
+
+/* ── Container queries, not viewport queries ──────────────────────────────────
+   The widget column is the viewport minus a fixed 240/260/400px sidebar, so every
+   collapse rule keyed to viewport width fired at the wrong moment: between roughly
+   760 and 1100px a two-up compare got two 300px code columns and a four-region
+   simulation got four ~118px columns with identifiers broken mid-token.
+
+   .w-root is the container the widget grids actually live in, so it measures the real
+   available width; .chat and .inspector are containers too, for the markdown and
+   coach content around them. */
+.chat,
+.inspector,
+.w-root { container-type: inline-size; }
+
+@container (max-width: 640px) {
+  .w-compare { grid-template-columns: 1fr; }
+}
+
+/* One column per region does not survive a narrow column. auto-fit wraps instead, and
+   140px is about where a mono identifier stops breaking mid-token. */
+.w-regions { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+@container (max-width: 288px) {
+  /* 288px = two 140px tracks plus the 8px gap, i.e. exactly where auto-fit drops to
+     one column on its own. The rule exists only to beat the viewport-keyed
+     `!important` two-column rule in styles.css, which at a 244px bubble would
+     otherwise force two ~118px columns. */
+  .w-regions { grid-template-columns: 1fr !important; }
+}
+/* A 140px column ellipsised "microtask queue" down to "microtask q…". A label on two
+   lines is readable; a truncated one is not. */
+.w-region-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* ── Step dots: a real hit area, and a shape channel ──────────────────────────
+   9x9px with padding: 0 and a 5px gap is a 9px target, well under the 24px floor, and
+   current-vs-done was carried by background-colour alone. The button is 25px with its
+   8px padding pulled back out by a negative margin, so the row keeps its original
+   rhythm; the visible dot is a pseudo-element inset to the content box, which is the
+   only way to keep a 1px ring at 9px while the border box is 25px. */
+.w-tl-dots {
+  gap: var(--s-4); /* 25px targets tile edge-to-edge at 16px; at 5px they overlapped */
+  row-gap: var(--s-4);
+  flex-wrap: wrap;
+}
+.w-tl-head { flex-wrap: wrap; row-gap: var(--s-2); }
+.w-tl-dots .dot {
+  position: relative;
+  box-sizing: content-box;
+  width: 9px;
+  height: 9px;
+  padding: var(--s-2);
+  margin: calc(-1 * var(--s-2));
+  border: none;
+  background: none;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+.w-tl-dots .dot::before {
+  content: "";
+  position: absolute;
+  inset: var(--s-2);
+  border-radius: var(--r-pill);
+  /* --ink-soft, not --rule-strong: this ring is the whole of a control, and
+     --rule-strong measures 2.56:1 on white, under the 3:1 floor for a UI boundary. */
+  border: 1.5px solid var(--ink-soft);
+  background: var(--surface);
+  transition: transform var(--dur-fast) var(--ease);
+}
+/* Hollow ring = not reached, filled = done, amber donut = here. */
+.w-tl-dots .dot.done::before {
+  background: var(--ink-soft);
+  border-color: var(--ink-soft);
+}
+/* An INSET ring, not an outer halo: measured, an outer box-shadow on the pseudo-element
+   widens the button's own hit rect and eats 3-4px out of each neighbour. A donut plus
+   the size step is the shape channel, so "here" survives with no colour at all. */
+.w-tl-dots .dot.on {
+  /* The base rule scales the BUTTON, which now scales the 25px hit area to 31px and
+     overlaps both neighbours. Measured: the emphasis belongs on the visible dot. */
+  transform: none;
+}
+.w-tl-dots .dot.on::before {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1.5px var(--surface);
+  transform: scale(1.3);
+}
+.w-tl-dots .dot:hover::before { border-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .w-tl-dots .dot::before { transition: none; }
+}
+
+/* aria-disabled rather than disabled, so the press that reaches the last step does not
+   blur focus to <body>. The look has to be restated: :disabled no longer matches, and
+   the base button:hover would otherwise still turn a dead control amber. */
+.w-tl-head button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.w-tl-head button[aria-disabled="true"]:hover {
+  border-color: var(--rule-strong);
+  color: var(--ink);
+}
+
+/* ── Quiz options: an outcome that survives greyscale ─────────────────────────
+   Was border-colour plus text-colour only, with a raw #b3261e that never got a dark
+   override (2.6:1) and --m-functional used as text in light mode (3.30:1). Both now
+   route through the tokens that carry both themes, and the glyph plus its .sr-only
+   twin carry the outcome when hue is gone. */
+.w-root .w-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.w-root .w-opt.right {
+  border-color: var(--positive-text);
+  color: var(--positive-text);
+}
+.w-root .w-opt.wrong {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.w-root .w-opt-mark {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  flex: none;
+  line-height: inherit;
+}
+.w-root .w-opt-label { min-width: 0; }
+/* 0.4 put the unchosen options below every contrast floor while they are still the
+   text a learner re-reads to see what they missed. */
+.w-root .w-opt.dim { opacity: 0.62; }
+.w-root .w-opt[aria-disabled="true"] { cursor: default; }
+.w-root .w-opt.dim:hover {
+  border-color: var(--rule-strong);
+  color: var(--ink);
+}
+.w-root .w-feedback.right { color: var(--positive-text); }
+
+/* ── Build log ────────────────────────────────────────────────────────────────
+   Four event kinds were never given a colour, so a hard failure mid-build rendered in
+   the same neutral grey as the most common success. 110px also wrapped the two longest
+   labels onto a second line. */
+.ev { grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1.4fr); }
+/* Both success kinds through --positive-text. concept_created was --m-functional as
+   text, measured 3.30:1 on white; the label already says which kind it is, so the hue
+   only has to carry the succeeded/failed axis. */
+.ev.concept_created .ev-kind,
+.ev.milestone_written .ev-kind { color: var(--positive-text); }
+.ev.name_rejected .ev-kind,
+.ev.milestone_rejected .ev-kind,
+.ev.milestones_failed .ev-kind { color: var(--danger); }
+/* The one event that means the build gave up on a whole phase. */
+.ev.milestones_failed {
+  box-shadow: inset 3px 0 0 var(--danger);
+  background: var(--danger-bg);
+}
+/* nowrap + ellipsis threw away the substance: a created concept's sense, why an edge
+   was demoted, and the whole text of a milestones_failed error. Two lines, clamped. */
+.ev-detail {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+@media (max-width: 700px) {
+  /* Repeats the single-column rule from styles.css, which the un-queried .ev above
+     would otherwise outrank on source order. */
+  .ev { grid-template-columns: 1fr; }
+  .ev-detail {
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+  }
+}
+
+/* ── Model tables ─────────────────────────────────────────────────────────────
+   A flat 320px min-width forced a scrollbar inside a two-column table in a 244px
+   bubble on a phone, where the table would have fitted. */
+.md-table { min-width: min(320px, 100%); }

@@ -141,6 +141,9 @@
   --chip-size: var(--t-micro);
 }
 
+/* .step / .steps / .milestone were deleted here: the Learner page now renders the
+   Roadmap component and the lesson uses step-row / rm-step / milestone-turn, so the
+   bare selectors had no consumer left in apps/web/src. */
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
@@ -264,7 +267,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .card .sub { color: var(--ink-soft); font-size: 12px; margin-top: 4px; }
 
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
+/* A wrapped two-word column header is taller than its own rows and reads as two
+   columns. Every data page in the app wants this, so it belongs here. */
 th {
+  white-space: nowrap;
   text-align: left; font-family: "IBM Plex Mono", monospace; font-size: 10.5px;
   letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft);
   font-weight: 500; padding: 0 12px 7px 0; border-bottom: 1px solid var(--rule-strong);
@@ -280,21 +286,7 @@ tr:last-child td { border-bottom: none; }
   border: 1px dashed var(--rule-strong); border-radius: 6px;
 }
 
-.steps { display: flex; flex-direction: column; gap: 0; }
-.step {
-  display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: center;
-  padding: 10px 12px; border-bottom: 1px solid var(--rule); background: var(--surface);
-}
-.step:first-child { border-radius: 6px 6px 0 0; }
-.step:last-child { border-bottom: none; border-radius: 0 0 6px 6px; }
-.step .pos { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-soft); }
-.step.committed { border-left: 3px solid var(--accent); }
-.step .why { font-size: 11.5px; color: var(--ink-soft); font-family: "IBM Plex Mono", monospace; }
 
-.milestone {
-  padding: 11px 14px; background: var(--surface-alt);
-  border: 1px solid var(--rule); border-radius: 6px; margin-bottom: 8px;
-}
 .milestone .claim { font-weight: 600; }
 .milestone .note { font-size: 12px; color: var(--ink-soft); margin-top: 3px; }
 
@@ -578,10 +570,16 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 .w-tl-dots { display: flex; gap: 5px; flex: 1; }
 .w-tl-dots .dot {
   width: 9px; height: 9px; border-radius: 50%; padding: 0; border: 1px solid var(--rule-strong);
-  background: var(--surface); cursor: pointer;
+  background: var(--dot-bg, var(--surface)); border-color: var(--dot-border, var(--rule-strong));
+  cursor: pointer;
 }
-.w-tl-dots .dot.done { background: var(--rule-strong); }
-.w-tl-dots .dot.on { background: var(--accent); border-color: var(--accent); transform: scale(1.25); }
+/* These set `background` at 0-3-0, so a page-scoped `.dot { background: none }` at
+   0-2-0 could never win — the timeline's larger hit area landed for pending dots and
+   silently did not for done or current ones. Expressed as custom properties instead,
+   so a page can restyle the dot without having to out-specify it. */
+.w-tl-dots .dot { --dot-bg: var(--surface); --dot-border: var(--rule-strong); }
+.w-tl-dots .dot.done { --dot-bg: var(--rule-strong); }
+.w-tl-dots .dot.on { --dot-bg: var(--accent); --dot-border: var(--accent); transform: scale(1.25); }
 .w-tl-count { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-soft); }
 .w-tl-label { font-weight: 600; font-size: 13.5px; margin-bottom: 8px; }
 
@@ -730,7 +728,12 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 }
 @keyframes dropIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .w-frame.fresh { animation: none; } }
-@media (max-width: 700px) { .w-regions { grid-template-columns: 1fr 1fr !important; } }
+/* Was `!important`, which meant the only way for a page to choose a different
+   collapse was to shout back. The widget grid is authored per-region, so the base
+   rule now yields to whatever the page sets. */
+@media (max-width: 700px) {
+  .w-regions:not([style*="grid-template-columns"]) { grid-template-columns: 1fr 1fr; }
+}
 
 .rm-step.actionable {
   width: 100%; border: 1px solid transparent; border-radius: 4px;
@@ -1073,3 +1076,12 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 18px), transparent 100%);
 }
 @media (min-width: 900px) { .nav { mask-image: none; } }
+
+/* The busy convention: a control keeps its accessible name and gains aria-disabled,
+   because `disabled` blurs focus to <body> and removes the name exactly when the
+   state changes. It therefore needs a look — four pages had each written their own. */
+[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+[aria-disabled="true"]:hover { border-color: var(--rule); }

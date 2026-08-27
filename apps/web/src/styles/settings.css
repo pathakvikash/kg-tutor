@@ -4,3 +4,151 @@
  * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
  * NOT redefined here — if something belongs to more than one page, it belongs there.
  */
+
+/* Headings. The page had no h1 at all, and its one h4 ("Caveats") was the only heading
+   in the app outside a parent-scoped rule, so it rendered as browser-default bold sans
+   at 1em while every other heading was serif. */
+.settings .set-title {
+  font-size: var(--t-h);
+  line-height: 1.2;
+}
+.settings .set-h2 {
+  font-family: var(--font-serif);
+  font-size: var(--t-section);
+  margin: 0;
+}
+
+/* ── Fields. The label, the hint and the control are three separate elements now: the
+   hint used to live inside the <label>, so it joined the select's accessible name. ── */
+.settings .set-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+}
+.settings .set-field > label {
+  font-weight: 600;
+  font-size: var(--t-small);
+}
+.settings .set-hint {
+  margin: 0;
+  font-size: var(--t-small);
+  line-height: 1.5;
+  color: var(--ink-soft);
+  max-width: var(--measure-narrow);
+}
+/* Selects hold ids up to ~30 characters; at narrow widths they shrink rather than
+   overflow the panel. */
+.settings .set-field select,
+.settings .set-custom {
+  max-width: 100%;
+  min-width: min(320px, 100%);
+}
+.settings .set-fine {
+  font-size: var(--t-small);
+  font-weight: 400;
+}
+/* .linkish still paints itself --accent, which measures 3.98:1 as text in light mode.
+   Overridden here rather than in the shared rule, which eight other pages use. */
+.settings button.linkish {
+  color: var(--accent-text);
+}
+
+/* ── The state table. The global th rule is written for column headers — uppercase mono
+   micro-type — which is wrong for a row header, where the label is the reading order. ── */
+.settings .set-table th[scope="row"] {
+  font-family: var(--font-sans);
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--ink);
+  white-space: nowrap;
+  padding: var(--s-2) var(--s-3) var(--s-2) 0;
+  border-bottom: 1px solid var(--rule);
+}
+.settings .set-table tr:last-child th[scope="row"] {
+  border-bottom: none;
+}
+.settings .set-table td {
+  word-break: break-word;
+}
+/* Saved and in-use disagreeing is the half-state this page exists to show, so it is
+   marked rather than left to a character-by-character comparison. */
+.settings .set-differs {
+  margin-left: var(--s-2);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-bg);
+}
+
+/* ── Feedback. Both live regions stay in the DOM and stay displayed — a region that was
+   display:none when its text arrived may never be announced. Only the wrapper is a flex
+   item, so the empty slot costs one gap instead of two. ── */
+.settings .set-feedback {
+  display: flex;
+  flex-direction: column;
+}
+/* A notice is title-plus-explanation, so the paragraph belongs to the title above it
+   rather than floating a UA 1em away from it. */
+.settings .notice > p {
+  margin: var(--s-1) 0 0;
+}
+.settings .notice > p.set-remedy {
+  margin-top: var(--s-2);
+  color: var(--ink-mid);
+}
+.settings .set-caveats {
+  margin: var(--s-2) 0 0;
+  padding-left: var(--s-5);
+  font-size: var(--t-small);
+  line-height: 1.5;
+}
+.settings .set-caveats li + li {
+  margin-top: var(--s-1);
+}
+
+/* ── Actions ─────────────────────────────────────────────────────────────────────── */
+.settings .set-actions {
+  gap: var(--s-3);
+}
+/* aria-disabled, not disabled: a real `disabled` on the button that was just pressed
+   moves focus to <body>. It still has to look unavailable. */
+.settings button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+.settings button[aria-disabled="true"]:hover {
+  border-color: var(--rule-strong);
+  color: var(--ink);
+}
+.settings button.primary[aria-disabled="true"]:hover {
+  border-color: var(--accent);
+  color: var(--on-accent);
+  opacity: 0.5;
+}
+
+/* ── The two-tier rationale, demoted to a disclosure: it is an explanation, and the
+   status of the model is what the page is opened for. ────────────────────────────── */
+.settings .set-why > summary {
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-size: var(--t-section);
+  font-weight: 600;
+}
+.settings .set-why[open] > summary {
+  margin-bottom: var(--s-3);
+}
+.settings .set-why p {
+  margin: 0;
+  color: var(--ink-mid);
+  line-height: 1.6;
+}
+
+/* The skeleton is inline inside a table cell here, where a bare div would collapse. */
+.settings td > .skeleton {
+  display: inline-block;
+  width: 8em;
+  vertical-align: middle;
+  margin: 0;
+}

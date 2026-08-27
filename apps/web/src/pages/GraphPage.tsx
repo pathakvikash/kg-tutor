@@ -1,52 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useStickyLearner } from "../useLearner";
-import { Background, Controls, MarkerType, MiniMap, ReactFlow, type Edge, type Node } from "@xyflow/react";
-import { api, type GraphEdge, type GraphPayload, type Mastery } from "../api";
-import { layoutGraph } from "../layout";
-import { neighborhood, runForceLayout } from "../force";
+import {
+  Background, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider,
+  useReactFlow, type Edge, type Node,
+} from "@xyflow/react";
+import { api, HttpError, type GraphEdge, type GraphPayload, type Mastery } from "../api";
+import { layoutGraph, NODE_H, NODE_W } from "../layout";
+import { neighborhood, runForceLayout, ORB_H, ORB_W } from "../force";
 import { ConceptNode, type ConceptNodeData } from "../components/ConceptNode";
 import { NodeCoach } from "../components/NodeCoach";
+import { Busy } from "../components/Busy";
+import { atLeast, MASTERY_MEANING, MASTERY_ORDER } from "../vocabulary";
 
 const nodeTypes = { concept: ConceptNode };
 
-const RANK: Record<Mastery, number> = { unknown: 0, familiar: 1, functional: 2, solid: 3 };
+/**
+ * One fit for every layout change, with a ceiling above 1 so "fit" on a wide screen can
+ * enlarge rather than leaving a 78-node graph at 0.2 in the middle of 2000px of space.
+ */
+const FIT = { padding: 0.14, maxZoom: 1.6, duration: 200 };
 
-/** Asks for one more level of prerequisites under a single concept. */
-function DeepenButton({
-  conceptId, conceptName, onDone,
-}: { conceptId: string; conceptName: string; onDone: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+/** Below this the legend and the counts become a disclosure instead of four more rows. */
+const LEGEND_BREAKPOINT = 900;
 
-  const run = async () => {
-    setBusy(true); setResult(null);
-    try {
-      const r = await api.deepen(conceptId);
-      const added = r.prerequisitesAfter - r.prerequisitesBefore;
-      setResult(
-        added === 0
-          ? `Nothing new — the model named ${r.conceptsReused} concept(s) already here.`
-          : `${added} new prerequisite${added === 1 ? "" : "s"} · ` +
-            `${r.conceptsCreated} new concept(s), ${r.conceptsReused} reused` +
-            (r.edgesRejectedAsCycle > 0 ? `, ${r.edgesRejectedAsCycle} rejected as a cycle` : ""),
-      );
-      onDone();
-    } catch (e) {
-      setResult(e instanceof Error ? e.message : String(e));
-    } finally { setBusy(false); }
-  };
-
-  return (
-    <div style={{ marginTop: 8 }}>
-      <button onClick={() => void run()} disabled={busy} title={`Find what ${conceptName} builds on`}>
-        {busy ? "asking the model…" : "Go one level deeper"}
-      </button>
-      {result && <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>{result}</p>}
-    </div>
-  );
-}
-const met = (m: Mastery, need: Mastery) => RANK[m] >= RANK[need];
 type Mode = "explore" | "teach";
 
 interface Selection {
@@ -54,8 +31,163 @@ interface Selection {
   id: string;
 }
 
+/** A laid-out graph, tagged with the mode it was laid out for. */
+interface LaidOut {
+  mode: Mode;
+  nodes: Node[];
+  edges: Edge[];
+}
+
+const NO_NODES: Node[] = [];
+const NO_EDGES: Edge[] = [];
+
+function useNarrow(px: number): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${px}px)`);
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [px]);
+  return narrow;
+}
+
+/** Asks for one more level of prerequisites under a single concept. */
+function DeepenButton({
+  conceptId, conceptName, onDone,
+}: { conceptId: string; conceptName: string; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ text: string; ok: boolean } | null>(null);
+  // A relayout mid-read moves the thing you were reading, so the summary has to be
+  // dismissed before the graph is allowed to redraw.
+  const relayoutPending = useRef(false);
+
+  const run = async () => {
+    if (busy) return;
+    setBusy(true); setResult(null);
+    try {
+      const r = await api.deepen(conceptId);
+      const added = r.prerequisitesAfter - r.prerequisitesBefore;
+      setResult({
+        ok: true,
+        text:
+          added === 0
+            ? `Nothing new — the model named ${r.conceptsReused} concept(s) already here.`
+            : `${added} new prerequisite${added === 1 ? "" : "s"} · ` +
+              `${r.conceptsCreated} new concept(s), ${r.conceptsReused} reused` +
+              (r.edgesRejectedAsCycle > 0 ? `, ${r.edgesRejectedAsCycle} rejected as a cycle` : ""),
+      });
+      relayoutPending.current = true;
+    } catch (e) {
+      setResult({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally { setBusy(false); }
+  };
+
+  const dismiss = () => {
+    const redraw = relayoutPending.current;
+    relayoutPending.current = false;
+    setResult(null);
+    if (redraw) onDone();
+  };
+
+  return (
+    <section className="deepen">
+      <h4 className="eyebrow">Go deeper</h4>
+      <p className="muted deepen-why">
+        Asks the model what {conceptName} builds on. This adds concepts and edges to the
+        shared graph — it is not a change to one learner.
+      </p>
+      <div className="row">
+        <button
+          onClick={() => void run()}
+          aria-disabled={busy}
+          title={`Find what ${conceptName} builds on`}
+        >
+          Go one level deeper
+        </button>
+        {busy && <Busy label="asking the model" />}
+      </div>
+      {result && (
+        <div
+          className={`notice ${result.ok ? "notice--info" : "notice--error"} deepen-result`}
+          role={result.ok ? undefined : "alert"}
+        >
+          <p>{result.text}</p>
+          <button className="linkish" onClick={dismiss}>
+            {result.ok && relayoutPending.current ? "Redraw the graph" : "Dismiss"}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Legend({
+  mode, hasLearner, counts,
+}: {
+  mode: Mode;
+  hasLearner: boolean;
+  counts: { nodes: number; hard: number; soft: number } | null;
+}) {
+  return (
+    <div className="legend">
+      {/* The legend used to document the one encoding that does not work and omitted the
+          three that do. Every mark below is a miniature of the real one. */}
+      {mode === "explore" && (
+        <span className="lg">
+          <span className="lg-orbs" aria-hidden="true">
+            <span className="lg-orb lg-orb--sm" />
+            <span className="lg-orb lg-orb--lg" />
+          </span>
+          size = connections
+        </span>
+      )}
+      {hasLearner ? (
+        <span className="lg lg-mastery">
+          {MASTERY_ORDER.map((m) => (
+            <span className="lg-level" key={m} title={MASTERY_MEANING[m]}>
+              <span className="mastery-mark" data-level={m} />
+              {m}
+            </span>
+          ))}
+        </span>
+      ) : (
+        <span className="lg muted">Pick a learner to colour concepts by mastery</span>
+      )}
+      <span className="lg">
+        <svg className="lg-line" viewBox="0 0 26 6" aria-hidden="true">
+          <line x1="0" y1="3" x2="26" y2="3" stroke="var(--rule-strong)" strokeWidth="1.8" />
+        </svg>
+        hard — required
+      </span>
+      <span className="lg">
+        <svg className="lg-line" viewBox="0 0 26 6" aria-hidden="true">
+          <line
+            x1="0" y1="3" x2="26" y2="3"
+            stroke="var(--rule-strong)" strokeWidth="1.2" strokeDasharray="4 3"
+          />
+        </svg>
+        soft — adds depth
+      </span>
+      <span className="lg">
+        <svg className="lg-line" viewBox="0 0 26 6" aria-hidden="true">
+          <line x1="0" y1="3" x2="26" y2="3" stroke="var(--accent)" strokeWidth="1.8" />
+        </svg>
+        provisional
+      </span>
+      <span className="lg">arrows run from a prerequisite to what it unlocks</span>
+      {counts && (
+        <span className="lg mono">
+          {counts.nodes} concepts · {counts.hard} hard · {counts.soft} soft
+        </span>
+      )}
+    </div>
+  );
+}
+
 function Inspector({
-  graph, selection, trail, onHop, onFocus, focusId, hops, onHops, learnerId, onStateChanged,
+  graph, selection, trail, onHop, onFocus, focusId, learnerId, onStateChanged, headingRef,
 }: {
   graph: GraphPayload;
   selection: Selection | null;
@@ -63,54 +195,59 @@ function Inspector({
   onHop: (id: string) => void;
   onFocus: (id: string | null) => void;
   focusId: string | null;
-  hops: number;
-  onHops: (n: number) => void;
   /** Empty when no learner is chosen: assessing needs someone to assess. */
   learnerId: string;
   onStateChanged: () => void;
+  headingRef: React.RefObject<HTMLHeadingElement | null>;
 }) {
   const name = (id: string) => graph.nodes.find((n) => n.id === id)?.name ?? id;
 
   if (!selection) {
     return (
-      <aside className="inspector">
-        <h4>Exploring</h4>
-        <p className="muted" style={{ fontSize: 13 }}>
+      <>
+        <h3 className="insp-title">Exploring</h3>
+        <p className="muted insp-lead">
           Click a concept to see what it needs and what it unlocks. Click an edge to see
           the dependency itself — including the specific misunderstanding that happens
           without it, which is what the tutor uses to diagnose a wrong answer.
         </p>
-        <section>
-          <h4>Modes</h4>
-          <p className="muted" style={{ fontSize: 13 }}>
+        <section className="insp-section">
+          <h4 className="eyebrow">Modes</h4>
+          <p className="muted insp-lead">
             <strong>Explore</strong> clusters by connection — good for finding hubs and
             gaps. <strong>Teach</strong> layers by dependency — good for reading the order
             a learner would go through.
           </p>
         </section>
-      </aside>
+      </>
     );
   }
 
   if (selection.kind === "edge") {
     const e = graph.edges.find((x) => x.id === selection.id);
-    if (!e) return <aside className="inspector" />;
+    if (!e) {
+      return (
+        <div className="notice notice--info">
+          That dependency is not in this view. Pick another edge, or a concept.
+        </div>
+      );
+    }
     return (
-      <aside className="inspector">
-        <h4>Dependency</h4>
-        <h3 style={{ fontSize: 15, lineHeight: 1.3 }}>
+      <>
+        <h3 className="insp-title" ref={headingRef} tabIndex={-1}>Dependency</h3>
+        <p className="insp-pair">
           <button className="linkish" onClick={() => onHop(e.source)}>{name(e.source)}</button>
           {" → "}
           <button className="linkish" onClick={() => onHop(e.target)}>{name(e.target)}</button>
-        </h3>
+        </p>
         <div className="chips">
           <span className={`chip ${e.strength === "hard" ? "hard" : ""}`}>{e.strength}</span>
           <span className="chip">{e.type.replace(/_/g, " ")}</span>
           <span className="chip">confidence {e.confidence.toFixed(2)}</span>
           {e.provisional && <span className="chip prov">provisional</span>}
         </div>
-        <section style={{ marginTop: 14 }}>
-          <h4>Failure mode</h4>
+        <section className="insp-section">
+          <h4 className="eyebrow">Failure mode</h4>
           {e.failureMode ? (
             <div className="edge-detail">{e.failureMode}</div>
           ) : (
@@ -121,51 +258,55 @@ function Inspector({
           )}
         </section>
         {e.provisional && (
-          <p className="muted" style={{ fontSize: 12 }}>
+          <p className="muted insp-note">
             Promoted from learner evidence and still monitored. Reversible from Review.
           </p>
         )}
-      </aside>
+      </>
     );
   }
 
   const node = graph.nodes.find((n) => n.id === selection.id);
-  if (!node) return <aside className="inspector" />;
+  if (!node) {
+    return (
+      <div className="notice notice--info">
+        That concept is not in this view — it may sit outside the current topic filter.
+        Pick another concept on the canvas.
+      </div>
+    );
+  }
   const incoming = graph.edges.filter((e) => e.target === node.id);
   const outgoing = graph.edges.filter((e) => e.source === node.id);
 
   return (
-    <aside className="inspector">
+    <>
       {trail.length > 1 && (
-        <div className="hop-path" style={{ marginBottom: 10 }}>
+        <nav className="hop-path" aria-label="concepts you came through">
+          {trail.length > 4 && (
+            <span className="sep" title={trail.map(name).join(" › ")}>…</span>
+          )}
           {trail.slice(-4).map((id, i, arr) => (
             <span key={`${id}-${i}`}>
               <button onClick={() => onHop(id)}>{name(id)}</button>
               {i < arr.length - 1 && <span className="sep"> › </span>}
             </span>
           ))}
-        </div>
+        </nav>
       )}
-      <h3>{node.name}</h3>
+      <h3 className="insp-name" ref={headingRef} tabIndex={-1}>{node.name}</h3>
       <p className="sense">{node.sense}</p>
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+      <div className="row">
         <button onClick={() => onFocus(focusId === node.id ? null : node.id)}>
           {focusId === node.id ? "Clear focus" : "Focus neighbourhood"}
         </button>
-        {focusId === node.id && (
-          <select value={hops} onChange={(e) => onHops(Number(e.target.value))}>
-            <option value={1}>1 hop</option>
-            <option value={2}>2 hops</option>
-            <option value={3}>3 hops</option>
-          </select>
-        )}
       </div>
 
       {node.state && (
-        <section>
-          <h4>Learner state</h4>
+        <section className="insp-section">
+          <h4 className="eyebrow">Learner state</h4>
           <div className="rel">
+            <span className="mastery-mark" data-level={node.state.mastery} />{" "}
             {node.state.mastery} · confidence {node.state.confidence.toFixed(2)}{" "}
             <span className="muted">({node.state.source})</span>
           </div>
@@ -183,7 +324,7 @@ function Inspector({
             .filter((e) => e.strength === "hard")
             .map((e) => graph.nodes.find((n) => n.id === e.source))
             .filter((n): n is NonNullable<typeof n> => Boolean(n))
-            .filter((n) => !met((n.state?.mastery ?? "unknown") as Mastery, "functional"))
+            .filter((n) => !atLeast((n.state?.mastery ?? "unknown") as Mastery, "functional"))
             .map((n) => ({
               id: n.id, name: n.name, mastery: (n.state?.mastery ?? "unknown") as Mastery,
             }))}
@@ -191,17 +332,14 @@ function Inspector({
           onPick={onHop}
         />
       ) : (
-        <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>
+        <p className="muted insp-note">
           Pick a learner above to be assessed on this, or to ask about it.
         </p>
       )}
 
-      <section>
-        <h4>Requires ({incoming.length})</h4>
+      <section className="insp-section">
+        <h4 className="eyebrow">Requires ({incoming.length})</h4>
         {incoming.length === 0 && <p className="muted">Nothing — a starting point here.</p>}
-        {/* A topic expansion goes one level deep, so the graph's depth is whatever that
-            first pass produced. This asks for one more level under this concept only. */}
-        <DeepenButton conceptId={node.id} conceptName={node.name} onDone={onStateChanged} />
         {incoming.map((e) => (
           <div className="rel" key={e.id}>
             <button className="linkish" onClick={() => onHop(e.source)}>{name(e.source)}</button>{" "}
@@ -209,10 +347,14 @@ function Inspector({
             {e.failureMode && <div className="fm">Without it: {e.failureMode}</div>}
           </div>
         ))}
+        {/* A topic expansion goes one level deep, so the graph's depth is whatever that
+            first pass produced. This asks for one more level under this concept only, and
+            sits below the list it extends rather than above it. */}
+        <DeepenButton conceptId={node.id} conceptName={node.name} onDone={onStateChanged} />
       </section>
 
-      <section>
-        <h4>Unlocks ({outgoing.length})</h4>
+      <section className="insp-section">
+        <h4 className="eyebrow">Unlocks ({outgoing.length})</h4>
         {outgoing.length === 0 && <p className="muted">Nothing downstream yet.</p>}
         {outgoing.map((e) => (
           <div className="rel" key={e.id}>
@@ -223,8 +365,8 @@ function Inspector({
       </section>
 
       {node.topics.length > 0 && (
-        <section>
-          <h4>Topics</h4>
+        <section className="insp-section">
+          <h4 className="eyebrow">Topics</h4>
           {node.topics.map((t) => (
             <div className="rel" key={t.id}>
               {t.name} {!t.direct && <span className="muted mono">(via prerequisite)</span>}
@@ -232,11 +374,23 @@ function Inspector({
           ))}
         </section>
       )}
-    </aside>
+    </>
   );
 }
 
+/**
+ * useReactFlow and useStore both need a provider above the consumer, and the layout
+ * effect has to call fitView from outside <ReactFlow>. Hence the split.
+ */
 export function GraphPage() {
+  return (
+    <ReactFlowProvider>
+      <Graph />
+    </ReactFlowProvider>
+  );
+}
+
+function Graph() {
   /**
    * The view lives in the URL.
    *
@@ -248,8 +402,8 @@ export function GraphPage() {
    */
   const [params, setParams] = useSearchParams();
   const [graph, setGraph] = useState<GraphPayload | null>(null);
-  const [nodes, setNodes] = useState<Node[]>([]);
-  const [edges, setEdges] = useState<Edge[]>([]);
+  const [layout, setLayout] = useState<LaidOut | null>(null);
+  const [layingOut, setLayingOut] = useState(false);
   const mode = (params.get("view") === "teach" ? "teach" : "explore") as Mode;
   const topicId = params.get("topic") ?? "";
   const [stickyLearner, setStickyLearner] = useStickyLearner();
@@ -269,11 +423,27 @@ export function GraphPage() {
   // Off is the deliberate choice, so it is the one that has to be written down.
   const live = params.get("live") !== "off";
   const [trail, setTrail] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  /** Only a first load can legitimately replace the whole page with an error. */
+  const [firstLoadError, setFirstLoadError] = useState<Error | null>(null);
+  /** A failed refresh keeps the graph you were reading, and says so. */
+  const [refreshError, setRefreshError] =
+    useState<{ message: string; remedy: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const stamp = useRef<string>("");
   /** When a poll last found a real change. Names the feature better than any label. */
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
+  const [focusDropped, setFocusDropped] = useState(false);
+
+  const { fitView } = useReactFlow();
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const inspectorRef = useRef<HTMLElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const graphRef = useRef<GraphPayload | null>(null);
+  graphRef.current = graph;
+  /** Arrow traversal keeps focus on the canvas; a click or Enter hands it to the panel. */
+  const keepCanvasFocus = useRef(false);
+  const mounted = useRef(false);
+  const narrow = useNarrow(LEGEND_BREAKPOINT);
 
   /**
    * `replace` rather than `push` for everything except a node hop: filters are
@@ -300,31 +470,48 @@ export function GraphPage() {
   const setMode = (m: Mode) => patch({ view: m === "explore" ? null : m });
   const setTopicId = (id: string) => patch({ topic: id || null, node: null, edge: null, focus: null });
   const setLearnerId = (id: string) => { setStickyLearner(id); patch({ learner: id || null }); };
-  const setFocusId = (id: string | null) => patch({ focus: id });
+  const setFocusId = useCallback((id: string | null) => patch({ focus: id }), [patch]);
   const setHops = (n: number) => patch({ hops: n === 1 ? null : String(n) });
   const setLive = (fn: (v: boolean) => boolean) => patch({ live: fn(live) ? null : "off" });
-  const setSelection = (sel: Selection | null, opts: { push?: boolean } = {}) =>
-    patch(
-      sel === null
-        ? { node: null, edge: null }
-        : sel.kind === "node"
-          ? { node: sel.id, edge: null }
-          : { edge: sel.id, node: null },
-      opts,
-    );
+  const setSelection = useCallback(
+    (sel: Selection | null, opts: { push?: boolean } = {}) =>
+      patch(
+        sel === null
+          ? { node: null, edge: null }
+          : sel.kind === "node"
+            ? { node: sel.id, edge: null }
+            : { edge: sel.id, node: null },
+        opts,
+      ),
+    [patch],
+  );
 
   useEffect(() => { void api.learners().then(setLearners).catch(() => undefined); }, []);
 
+  /**
+   * A refresh that fails must not delete what you were reading.
+   *
+   * The 3s poll called the same loader as the first paint, and a failure replaced the
+   * canvas AND the inspector with one line of raw HTTP text — so one transient 500 took
+   * the graph, the selection and a half-written assessment answer with it.
+   */
   const load = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const g = await api.graph({
         ...(topicId ? { topicId } : {}),
         ...(learnerId ? { learnerId } : {}),
       });
       setGraph(g);
+      setFirstLoadError(null);
+      setRefreshError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const e = err instanceof Error ? err : new Error(String(err));
+      if (graphRef.current) {
+        setRefreshError({ message: e.message, remedy: e instanceof HttpError ? e.remedy : null });
+      } else {
+        setFirstLoadError(e);
+      }
     } finally { setLoading(false); }
   }, [topicId, learnerId]);
 
@@ -347,40 +534,79 @@ export function GraphPage() {
     return () => clearInterval(timer);
   }, [live, load]);
 
+  const focusNode = focusId ? graph?.nodes.find((n) => n.id === focusId) ?? null : null;
+
   const visible = useMemo(() => {
-    if (!graph || !focusId) return null;
+    // A ?focus= naming a concept this graph does not contain used to dim every real node
+    // to opacity 0.18 with no message — which is what any shared link to a since-removed
+    // concept, and any focus/topic mismatch, produced.
+    if (!graph || !focusId || !focusNode) return null;
     return neighborhood(focusId, graph.edges, hops);
-  }, [graph, focusId, hops]);
+  }, [graph, focusId, focusNode, hops]);
+
+  useEffect(() => {
+    if (!graph || !focusId) return;
+    // A focus that resolves retires the notice about the one that did not.
+    if (focusNode) { setFocusDropped(false); return; }
+    setFocusDropped(true);
+    setFocusId(null);
+  }, [graph, focusId, focusNode, setFocusId]);
+
+  const selectedNodeId = selection?.kind === "node" ? selection.id : null;
 
   // Layout is the expensive step, so it only reruns when the graph or mode changes —
   // not when selection or focus does.
   useEffect(() => {
     if (!graph) return;
     let cancelled = false;
+    setLayingOut(true);
 
     void (async () => {
+      // Measured, not assumed: the simulation was handed a hardcoded 900x620 while the
+      // canvas is whatever the window gives it, so the spread never matched the space it
+      // had to be read in.
+      const box = canvasRef.current?.getBoundingClientRect();
+      const size = {
+        width: Math.max(640, Math.round(box?.width ?? 1000)),
+        height: Math.max(420, Math.round(box?.height ?? 700)),
+      };
       const positions =
         mode === "teach"
           ? await layoutGraph(graph.nodes, graph.edges)
-          : runForceLayout(graph.nodes, graph.edges, { width: 900, height: 620 });
+          : runForceLayout(graph.nodes, graph.edges, size);
       if (cancelled) return;
 
       const degree = new Map<string, number>();
       const unlocks = new Map<string, number>();
+      const requires = new Map<string, number>();
+      const nameOf = new Map(graph.nodes.map((n) => [n.id, n.name]));
       for (const e of graph.edges) {
         degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
         degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
+        requires.set(e.target, (requires.get(e.target) ?? 0) + 1);
         if (e.type === "prerequisite_of") unlocks.set(e.source, (unlocks.get(e.source) ?? 0) + 1);
       }
 
-      setNodes(
-        graph.nodes.map((n): Node => {
+      // d3-force reports centres and elk reports top-left corners, and both used to be
+      // fed straight into position, which react-flow reads as top-left. Every orb was
+      // drawn 65px right and half its height low, so forceCollide's non-overlap guarantee
+      // did not describe the drawn geometry at all.
+      const geometry =
+        mode === "explore"
+          ? { initialWidth: ORB_W, initialHeight: ORB_H, origin: [0.5, 0.5] as [number, number] }
+          : { initialWidth: NODE_W, initialHeight: NODE_H, origin: [0, 0] as [number, number] };
+
+      setLayout({
+        mode,
+        nodes: graph.nodes.map((n): Node => {
           const p = positions.get(n.id) ?? { x: 0, y: 0 };
+          const need = requires.get(n.id) ?? 0;
+          const opens = unlocks.get(n.id) ?? 0;
           const data: ConceptNodeData = {
             name: n.name,
             mastery: (n.state?.mastery as Mastery) ?? null,
             inferred: n.state?.source === "inferred",
-            unlocks: unlocks.get(n.id) ?? 0,
+            unlocks: opens,
             degree: degree.get(n.id) ?? 0,
             mode,
             // Applied here as well as in the dimming effect below, because this layout
@@ -392,50 +618,181 @@ export function GraphPage() {
             dimmed: visible ? !visible.has(n.id) : false,
             isFocus: n.id === focusId,
           };
-          return { id: n.id, type: "concept", position: { x: p.x, y: p.y }, data };
+          return {
+            id: n.id,
+            type: "concept",
+            position: { x: p.x, y: p.y },
+            data,
+            ...geometry,
+            selected: n.id === selectedNodeId,
+            // A ghost must not be a tab stop or a click target.
+            focusable: !data.dimmed,
+            selectable: !data.dimmed,
+            // The only thing react-flow said about a node was the drag description it
+            // generates for a draggable one. This says what the node is.
+            ariaLabel:
+              `${n.name}. ${n.state ? n.state.mastery : "not assessed"}. ` +
+              `${need} prerequisite${need === 1 ? "" : "s"}, unlocks ${opens}.`,
+          };
         }),
-      );
-      setEdges(
-        graph.edges.map((e) =>
-          toFlowEdge(e, Boolean(visible) && !(visible!.has(e.source) && visible!.has(e.target))),
+        edges: graph.edges.map((e) =>
+          toFlowEdge(
+            e,
+            Boolean(visible) && !(visible!.has(e.source) && visible!.has(e.target)),
+            nameOf.get(e.source) ?? e.source,
+            nameOf.get(e.target) ?? e.target,
+          ),
         ),
-      );
+      });
+      setLayingOut(false);
+
+      // The two modes do not share a coordinate space — explore settles around the canvas
+      // centre while elk's layered pass starts at (0,0) and runs thousands of pixels down
+      // — so a one-shot fitView on mount left teach mode looking at blank canvas.
+      requestAnimationFrame(() => {
+        if (!cancelled && graph.nodes.length > 0) void fitView(FIT);
+      });
     })();
 
     return () => { cancelled = true; };
-    // `visible` and `focusId` are deliberately not dependencies: relaying out the whole
-    // graph on a focus change would be a visible jolt, and the effect below handles that
-    // case. They are read here only to seed nodes that are created after a load.
+    // `visible`, `focusId` and `selectedNodeId` are deliberately not dependencies:
+    // relaying out the whole graph on a focus change would be a visible jolt, and the
+    // effect below handles that case. They are read here only to seed nodes that are
+    // created after a load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, mode]);
+  }, [graph, mode, fitView]);
 
-  // Dimming is a cheap data update, kept separate so focusing never triggers a relayout.
+  // Dimming and selection are cheap data updates, kept separate so focusing or hopping
+  // never triggers a relayout. Selection is driven from the URL here, so react-flow's own
+  // click selection, the keyboard and a shared link all agree on one selected node.
   useEffect(() => {
-    setNodes((prev) =>
-      prev.map((n) => ({
-        ...n,
-        data: {
-          ...(n.data as ConceptNodeData),
-          dimmed: visible ? !visible.has(n.id) : false,
-          isFocus: n.id === focusId,
-        },
-      })),
+    setLayout((prev) =>
+      prev === null
+        ? prev
+        : {
+            ...prev,
+            nodes: prev.nodes.map((n) => {
+              const dimmed = visible ? !visible.has(n.id) : false;
+              return {
+                ...n,
+                selected: n.id === selectedNodeId,
+                focusable: !dimmed,
+                selectable: !dimmed,
+                data: { ...(n.data as ConceptNodeData), dimmed, isFocus: n.id === focusId },
+              };
+            }),
+            edges: prev.edges.map((e) => ({
+              ...e,
+              style: {
+                ...e.style,
+                opacity: visible && !(visible.has(e.source) && visible.has(e.target)) ? 0.08 : 1,
+              },
+            })),
+          },
     );
-    setEdges((prev) =>
-      prev.map((e) => ({
-        ...e,
-        style: {
-          ...e.style,
-          opacity: visible && !(visible.has(e.source) && visible.has(e.target)) ? 0.08 : 1,
-        },
-      })),
-    );
-  }, [visible, focusId]);
+  }, [visible, focusId, selectedNodeId]);
 
-  const hopTo = (id: string) => {
-    setSelection({ kind: "node", id }, { push: true });
-    setTrail((t) => (t[t.length - 1] === id ? t : [...t, id]));
+  /** The selected id, readable from a callback that must not re-create on every hop. */
+  const selectedRef = useRef<string | null>(null);
+  selectedRef.current = selectedNodeId;
+
+  const hopTo = useCallback(
+    (id: string, opts: { keepFocus?: boolean } = {}) => {
+      // One click reaches here twice — once through onNodeClick and once through the
+      // selection listener — and two history entries per hop would break the back button.
+      // The flag is set after the guard so a no-op hop cannot leave it armed.
+      if (selectedRef.current === id) return;
+      if (opts.keepFocus) keepCanvasFocus.current = true;
+      setSelection({ kind: "node", id }, { push: true });
+      setTrail((t) => {
+        // A breadcrumb is a stack, not a log: re-clicking A on A › B › C used to give
+        // A › B › C › A, drawn with separators that promise ancestry.
+        const at = t.lastIndexOf(id);
+        return at >= 0 ? t.slice(0, at + 1) : [...t, id];
+      });
+    },
+    [setSelection],
+  );
+  const hopToRef = useRef(hopTo);
+  hopToRef.current = hopTo;
+
+  /**
+   * The keyboard path into the inspector.
+   *
+   * react-flow gives every node tabIndex=0 and an Enter/Space handler, but that handler
+   * calls its own internal selection and never onNodeClick — so every piece of substance
+   * on this page was mouse-only. Selection, however it happens, now writes the URL.
+   */
+  const onSelectionChange = useCallback(({ nodes: picked }: { nodes: Node[] }) => {
+    const id = picked[0]?.id;
+    // An empty payload also arrives whenever the node array is re-adopted, which is not
+    // the user deselecting anything; the pane click handler owns clearing.
+    if (!id || id === selectedRef.current) return;
+    hopToRef.current(id);
+  }, []);
+
+  /**
+   * Arrow-key traversal along edges, handled on the canvas rather than on the node: the
+   * focused element is react-flow's own wrapper, so a handler inside the node never sees
+   * its keydown. With nodesDraggable off these keys were otherwise inert.
+   */
+  const onCanvasKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const g = graph;
+    if (!g) return;
+    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    const el = (event.target as HTMLElement).closest?.(".react-flow__node") as HTMLElement | null;
+    const from = el?.dataset.id;
+    if (!from) return;
+
+    const allowed = (id: string) => (visible ? visible.has(id) : true);
+    const up = g.edges.filter((e) => e.target === from).map((e) => e.source).filter(allowed);
+    const down = g.edges.filter((e) => e.source === from).map((e) => e.target).filter(allowed);
+
+    let next: string | undefined;
+    if (event.key === "ArrowUp") next = up[0];
+    else if (event.key === "ArrowDown") next = down[0];
+    else {
+      // Left/right move between concepts that share a prerequisite — the ones you would
+      // actually compare — falling back to document order when nothing sits above.
+      const parent = up[0];
+      const peers = (
+        parent
+          ? g.edges.filter((e) => e.source === parent).map((e) => e.target)
+          : g.nodes.map((n) => n.id)
+      ).filter(allowed);
+      const at = peers.indexOf(from);
+      if (at >= 0 && peers.length > 1) {
+        const step = event.key === "ArrowRight" ? 1 : -1;
+        next = peers[(at + step + peers.length) % peers.length];
+      }
+    }
+    if (!next || next === from) return;
+
+    event.preventDefault();
+    hopTo(next, { keepFocus: true });
+    // Focus follows the traversal, or the next press has nothing to move from.
+    const target = next;
+    requestAnimationFrame(() => {
+      const candidates = canvasRef.current?.querySelectorAll<HTMLElement>(".react-flow__node");
+      for (const candidate of candidates ?? []) {
+        if (candidate.dataset.id === target) { candidate.focus(); return; }
+      }
+    });
   };
+
+  /**
+   * React reuses the inspector's DOM element, so clicking a link in a hub concept's
+   * Unlocks list landed you 600–1000px down the *new* concept's panel, having never seen
+   * its name. Reset the scroll, and move focus to the heading so the keyboard follows the
+   * selection into the panel that holds everything.
+   */
+  useEffect(() => {
+    inspectorRef.current?.scrollTo({ top: 0 });
+    if (!mounted.current) { mounted.current = true; return; }
+    if (keepCanvasFocus.current) { keepCanvasFocus.current = false; return; }
+    if (!selection) return;
+    headingRef.current?.focus();
+  }, [selection?.kind, selection?.id]);
 
   const counts = graph
     ? {
@@ -445,118 +802,266 @@ export function GraphPage() {
       }
     : null;
 
+  const nodes = layout && layout.mode === mode ? layout.nodes : NO_NODES;
+  const edges = layout && layout.mode === mode ? layout.edges : NO_EDGES;
+  const legend = <Legend mode={mode} hasLearner={Boolean(learnerId)} counts={counts} />;
+
   return (
-    <div className="page flush" style={{ flexDirection: "column" }}>
-      <div className="toolbar">
-        <label className="field">
-          view
-          <select value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
-            <option value="explore">explore — cluster by connection</option>
-            <option value="teach">teach — layer by dependency</option>
-          </select>
-        </label>
-        <label className="field">
-          topic
-          <select value={topicId} onChange={(e) => setTopicId(e.target.value)}>
-            <option value="">all</option>
-            {(graph?.topics ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        </label>
-        <label className="field">
-          learner
-          <select value={learnerId} onChange={(e) => setLearnerId(e.target.value)}>
-            <option value="">none</option>
-            {learners.map((l) => <option key={l.id} value={l.id}>{l.email}</option>)}
-          </select>
-        </label>
-        {focusId && <button onClick={() => setFocusId(null)}>Clear focus</button>}
-        <button onClick={() => void load()} disabled={loading}>{loading ? "…" : "reload"}</button>
-        <span className="spacer" />
-        {/* "live" said nothing about what it did. It watches for changes made elsewhere
-            — an expansion finishing, a lesson or an assessment moving mastery — and
-            redraws when it finds one. Naming the behaviour, and showing when it last
-            fired, explains it better than a tooltip nobody hovers. */}
-        <span className={live ? "live" : "live off"} title={
-          live
-            ? "Checks every 3s for changes made elsewhere — a graph expansion finishing, " +
-              "or mastery moving after a lesson or an assessment — and redraws when it finds one."
-            : "Not watching for changes. The view only updates when you press reload."
-        }>
-          <span className="pulse" />
-          <button
-            style={{ border: "none", background: "none", padding: 0, color: "inherit", cursor: "pointer" }}
-            onClick={() => setLive((v) => !v)}
-          >
-            {live
-              ? refreshedAt
-                ? "auto-refresh · updated"
-                : "auto-refresh"
-              : "auto-refresh off"}
-          </button>
-        </span>
-        <div className="legend">
-          <span><span className="swatch" style={{ background: "var(--m-unknown)" }} />unknown</span>
-          <span><span className="swatch" style={{ background: "var(--m-familiar)" }} />familiar</span>
-          <span><span className="swatch" style={{ background: "var(--m-functional)" }} />functional</span>
-          <span><span className="swatch" style={{ background: "var(--m-solid)" }} />solid</span>
-          <span className="orient" title="Arrows point from a prerequisite to what it unlocks">
-            ↑ foundations · ↓ builds on them
-          </span>
-          {counts && <span className="mono">{counts.nodes} · {counts.hard} hard · {counts.soft} soft</span>}
+    <div className="page flush graph-page">
+      <h2 className="sr-only">Concept graph</h2>
+      {/* A grid, not a wrapping row with a flex spacer: the spacer collapsed inside the
+          wrap container, so the auto-refresh control landed somewhere different at every
+          width and the toolbar grew to six rows before any graph was visible. */}
+      <div className="toolbar graph-toolbar">
+        <div className="gt-filters">
+          <label className="field">
+            view
+            <select value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
+              {/* The one-line explanation of each mode lives in the inspector's Modes
+                  section, so these stay short enough not to set the column width. */}
+              <option value="explore">Explore</option>
+              <option value="teach">Teach</option>
+            </select>
+          </label>
+          <label className="field">
+            topic
+            <select value={topicId} onChange={(e) => setTopicId(e.target.value)}>
+              <option value="">all</option>
+              {(graph?.topics ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            learner
+            <select value={learnerId} onChange={(e) => setLearnerId(e.target.value)}>
+              <option value="">none</option>
+              {learners.map((l) => <option key={l.id} value={l.id}>{l.email}</option>)}
+            </select>
+          </label>
         </div>
+
+        <div className="gt-status">
+          <button onClick={() => void load()} aria-disabled={loading}>reload</button>
+          {loading && graph && <Busy label="refreshing" clock={false} />}
+          {/* "live" said nothing about what it did. It watches for changes made elsewhere
+              — an expansion finishing, a lesson or an assessment moving mastery — and
+              redraws when it finds one. Naming the behaviour, and showing when it last
+              fired, explains it better than a tooltip nobody hovers. */}
+          <span className={live ? "live" : "live off"} title={
+            live
+              ? "Checks every 3s for changes made elsewhere — a graph expansion finishing, " +
+                "or mastery moving after a lesson or an assessment — and redraws when it finds one."
+              : "Not watching for changes. The view only updates when you press reload."
+          }>
+            <span className="pulse" />
+            <button className="live-toggle" aria-pressed={live} onClick={() => setLive((v) => !v)}>
+              {live
+                ? refreshedAt
+                  ? `auto-refresh · updated ${clockTime(refreshedAt)}`
+                  : "auto-refresh"
+                : "auto-refresh off"}
+            </button>
+          </span>
+        </div>
+
+        {narrow ? (
+          <details className="gt-legend gt-legend--fold">
+            <summary>key{counts ? ` · ${counts.nodes} concepts` : ""}</summary>
+            {legend}
+          </details>
+        ) : (
+          <div className="gt-legend">{legend}</div>
+        )}
       </div>
 
-      {error && <div className="page"><p className="err">{error}</p></div>}
+      {(focusDropped || refreshError) && (
+        <div className="graph-notices">
+          {focusDropped && (
+            <div className="notice notice--warn">
+              <p>
+                The focused concept is not in this view, so the focus was cleared. It may
+                have been removed, or it may sit outside the current topic filter.
+              </p>
+              <div className="row">
+                {topicId && (
+                  <button className="linkish" onClick={() => setTopicId("")}>
+                    Show all topics
+                  </button>
+                )}
+                <button className="linkish" onClick={() => setFocusDropped(false)}>
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+          {refreshError && (
+            <div className="notice notice--error" role="alert">
+              <strong>The graph could not be refreshed.</strong>
+              <p>{refreshError.message} You are looking at the last version that loaded.</p>
+              {refreshError.remedy && <p>{refreshError.remedy}</p>}
+              <div className="row">
+                <button onClick={() => void load()} aria-disabled={loading}>Retry</button>
+                {loading && <Busy label="retrying" clock={false} />}
+                <button className="linkish" onClick={() => setRefreshError(null)}>Dismiss</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
-      {!error && (
+      {firstLoadError ? (
+        <div className="page page--measure">
+          <div className="notice notice--error" role="alert">
+            <strong>The graph could not be loaded.</strong>
+            <p>{firstLoadError.message}</p>
+            {firstLoadError instanceof HttpError && firstLoadError.remedy && (
+              <p>{firstLoadError.remedy}</p>
+            )}
+            <div className="row">
+              <button onClick={() => void load()} aria-disabled={loading}>Try again</button>
+              {loading && <Busy label="loading the graph" />}
+            </div>
+          </div>
+        </div>
+      ) : (
         <div className="graph-wrap">
-          <div className="canvas">
-            {graph && graph.nodes.length === 0 ? (
+          <div className="canvas" ref={canvasRef} onKeyDown={onCanvasKeyDown}>
+            {!graph ? (
+              // "We have not asked yet" is a different claim from "there is nothing here",
+              // and this page used to render the same blank grid for both.
+              <div className="canvas-loading" aria-busy="true">
+                <div className="skeleton canvas-skeleton" />
+                <Busy label="loading the graph" block />
+              </div>
+            ) : graph.nodes.length === 0 ? (
               <div className="page">
                 <div className="empty">
-                  No concepts yet. Run <code>pnpm --filter @kg/api seed</code>, or expand a topic.
+                  {topicId ? (
+                    <>
+                      <p>
+                        No concepts are tagged with this topic yet — which is a filter
+                        result, not an empty database.
+                      </p>
+                      <div className="row empty-action">
+                        <button onClick={() => setTopicId("")}>Show all topics</button>
+                      </div>
+                    </>
+                  ) : (
+                    <p>
+                      No concepts yet. Run <code>pnpm --filter @kg/api seed</code>, or
+                      expand a topic from Curate.
+                    </p>
+                  )}
                 </div>
               </div>
             ) : (
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                nodeTypes={nodeTypes}
-                onNodeClick={(_, n) => hopTo(n.id)}
-                onEdgeClick={(_, e) => setSelection({ kind: "edge", id: e.id })}
-                onPaneClick={() => { setSelection(null); setTrail([]); }}
-                fitView
-                fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
-                minZoom={0.05}
-                proOptions={{ hideAttribution: true }}
-              >
-                <Background gap={20} size={1} color="var(--rule)" />
-                <Controls showInteractive={false} />
-                <MiniMap pannable zoomable nodeColor="#7d8a88" maskColor="transparent" />
-              </ReactFlow>
+              <>
+                {focusNode && (
+                  // The hop-depth select used to render only on the focused node's own
+                  // panel, so a focus became unsteerable after the first hop — and the
+                  // button on the next node still read "Focus neighbourhood".
+                  <div className="focus-bar panel panel--tight">
+                    <span className="eyebrow">focused on</span>
+                    <strong className="focus-name">{focusNode.name}</strong>
+                    <label className="field">
+                      depth
+                      <select value={hops} onChange={(e) => setHops(Number(e.target.value))}>
+                        <option value={1}>1 hop</option>
+                        <option value={2}>2 hops</option>
+                        <option value={3}>3 hops</option>
+                      </select>
+                    </label>
+                    <span className="mono muted">
+                      {visible?.size ?? 0} of {graph.nodes.length}
+                    </span>
+                    <button onClick={() => setFocusId(null)}>Show all</button>
+                  </div>
+                )}
+                {layingOut && (
+                  <div className="canvas-veil">
+                    <Busy label="laying out the graph" clock={false} block />
+                  </div>
+                )}
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  nodeTypes={nodeTypes}
+                  onNodeClick={(_, n) => hopTo(n.id)}
+                  onEdgeClick={(_, e) => setSelection({ kind: "edge", id: e.id })}
+                  onPaneClick={() => { setSelection(null); setTrail([]); }}
+                  onSelectionChange={onSelectionChange}
+                  // This graph is authored by the model, so nothing here is editable by
+                  // dragging. Draggable nodes meant every orb carried react-flow's `nopan`
+                  // class (dragging a 130px orb refused to pan the canvas), both invisible
+                  // handles took a crosshair cursor and offered a connection the app has
+                  // no endpoint to accept, arrow keys translated positions instead of
+                  // traversing, and the one assertive announcement the DAG ever made was a
+                  // false "Moved selected node left" about a change that did not happen.
+                  nodesDraggable={false}
+                  nodesConnectable={false}
+                  // ~50 unlabelled tab stops. The dependency structure is reachable as
+                  // text through the inspector's Requires and Unlocks buttons instead.
+                  edgesFocusable={false}
+                  deleteKeyCode={null}
+                  fitView
+                  fitViewOptions={FIT}
+                  minZoom={0.15}
+                  maxZoom={2.5}
+                  proOptions={{ hideAttribution: true }}
+                >
+                  <Background gap={20} size={1} color="var(--rule)" />
+                  <Controls showInteractive={false} />
+                  <MiniMap
+                    pannable
+                    zoomable
+                    nodeColor={miniMapColor}
+                    nodeStrokeColor="var(--rule-strong)"
+                    nodeStrokeWidth={2}
+                  />
+                </ReactFlow>
+              </>
             )}
           </div>
-          {graph && (
-            <Inspector
-              graph={graph}
-              selection={selection}
-              trail={trail}
-              onHop={hopTo}
-              onFocus={setFocusId}
-              focusId={focusId}
-              hops={hops}
-              onHops={setHops}
-              learnerId={learnerId}
-              onStateChanged={load}
-            />
-          )}
+          {/* Rendered whether or not the graph has arrived, so the canvas does not resize
+              under the pointer the moment the first response lands. */}
+          <aside className="inspector" ref={inspectorRef} aria-label="concept detail">
+            {graph ? (
+              <Inspector
+                graph={graph}
+                selection={selection}
+                trail={trail}
+                onHop={hopTo}
+                onFocus={setFocusId}
+                focusId={focusId}
+                learnerId={learnerId}
+                onStateChanged={load}
+                headingRef={headingRef}
+              />
+            ) : (
+              <div className="stack" aria-busy="true">
+                <div className="skeleton skeleton--line skeleton--w60" />
+                <div className="skeleton skeleton--line skeleton--w80" />
+                <div className="skeleton skeleton--line" />
+                <div className="skeleton skeleton--line skeleton--w40" />
+              </div>
+            )}
+          </aside>
         </div>
       )}
     </div>
   );
 }
 
-function toFlowEdge(e: GraphEdge, dim: boolean): Edge {
+function clockTime(at: number): string {
+  return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/** Mastery on the minimap, from the same tokens the orbs use. */
+function miniMapColor(node: Node): string {
+  const d = node.data as ConceptNodeData;
+  return d.mastery ? `var(--m-${d.mastery})` : "transparent";
+}
+
+function toFlowEdge(e: GraphEdge, dim: boolean, sourceName: string, targetName: string): Edge {
   return {
     id: e.id,
     source: e.source,
@@ -564,6 +1069,9 @@ function toFlowEdge(e: GraphEdge, dim: boolean): Edge {
     // Clickable and thick enough to hit — an unclickable edge hides the failure mode,
     // which is the most useful thing on it.
     interactionWidth: 18,
+    // Names, not ids: the generated description was a pair of uuids.
+    ariaLabel: `${sourceName} is a ${e.strength} prerequisite of ${targetName}`,
+    focusable: false,
     // Direction was completely invisible before this: a prerequisite graph drawn
     // without arrowheads cannot be read at all.
     markerEnd: {

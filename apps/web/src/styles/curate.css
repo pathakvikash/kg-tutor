@@ -4,3 +4,180 @@
  * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
  * NOT redefined here — if something belongs to more than one page, it belongs there.
  */
+
+/* The prose on this page is the evidence a permanent graph write rests on, so it gets a
+   measure. Unbounded, the claim sentences ran ~250 characters per line. */
+.cur > .notice,
+.cur .cur-lead,
+.cur .cur-sub,
+.cur .cur-note {
+  max-width: var(--measure);
+}
+
+.cur-head { margin-bottom: var(--s-4); }
+.cur-head h1 { font-size: var(--t-display); }
+.cur-lead {
+  margin: var(--s-2) 0 0;
+  color: var(--ink-mid);
+  font-size: var(--t-lead);
+  line-height: 1.5;
+}
+
+/* Load-bearing text out of --ink-soft: the claim and the negative-evidence sentences are
+   what the decision rests on, and they measured ~4.5:1 in light mode. */
+.cur-sub,
+.cur-note,
+.cur-detail,
+.cur-kind-blurb {
+  color: var(--ink-mid);
+  font-size: var(--t-small);
+  line-height: 1.55;
+}
+.cur-sub, .cur-note { margin: 0 0 var(--s-3); }
+.cur .section-title + .cur-sub { margin-top: calc(-1 * var(--s-1)); }
+
+.cur-actions { margin-bottom: var(--s-2); }
+.cur-section-head { margin-bottom: var(--s-3); }
+.cur-section-head .section-title { margin-bottom: var(--s-1); }
+.cur-section-head .cur-sub { margin-bottom: 0; }
+
+.cur-err-msg { margin: 0 0 var(--s-2); }
+.notice > .cur-err-msg:last-child { margin-bottom: 0; }
+
+.cur-nil { color: var(--ink-mid); font-style: italic; }
+.cur-to { color: var(--ink-soft); }
+.cur-pair { overflow-wrap: anywhere; }
+
+.cur-sk { margin-bottom: var(--s-3); }
+
+/* ── Near misses ──────────────────────────────────────────────────────────────
+   The copy has always promised these; now that they are rendered, a scan that
+   found 30 candidates and promoted 0 no longer looks like a scan that found
+   nothing. Collapsed, because the promoted ones are the reason you scanned. */
+.cur-misses summary { cursor: pointer; font-weight: 600; }
+.cur-misses ul { list-style: none; margin: var(--s-2) 0 0; padding: 0; }
+.cur-misses li {
+  display: flex; flex-direction: column; gap: var(--s-1);
+  padding: var(--s-2) 0; border-top: 1px solid var(--rule);
+}
+.cur-miss-why { color: var(--ink); }
+.cur-miss-meta { font-size: var(--t-meta); color: var(--ink-mid); }
+.cur-miss-links { display: flex; flex-wrap: wrap; gap: var(--s-3); font-size: var(--t-meta); }
+
+/* ── Open proposals ───────────────────────────────────────────────────────────
+   One panel per proposal at every width, not a table. Each row carries a
+   contract paragraph, a textarea, a live check, its own error and two decisions;
+   as a table that has a ~600px min-content floor, so below ~630px the page
+   scrolled sideways and reaching Accept took the column headers off screen —
+   an irreversible write with no visible row identity. */
+.cur-proposals, .cur-decided { display: flex; flex-direction: column; gap: var(--s-3); }
+
+.cur-card-head { align-items: baseline; margin-bottom: var(--s-1); }
+.cur-edge { font-size: var(--t-lead); line-height: 1.3; }
+.cur-edge-sm { font-family: var(--font-serif); font-size: var(--t-section); }
+.cur-kind-blurb { margin: 0 0 var(--s-3); }
+
+.cur-evidence {
+  display: flex; flex-direction: column; gap: var(--s-3);
+  padding: var(--s-3) 0; border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* The comparison the acceptance criterion names: without it → with it.
+   No hue on the two numbers: --danger and --positive-text are re-declared by the
+   light :root *after* the dark block, so in dark mode they resolve to the light
+   values and both read wrong. The arrow and the caption carry the direction. */
+.cur-shift { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s-2); }
+.cur-rate {
+  font-family: var(--font-serif); font-size: var(--t-h); line-height: 1;
+  color: var(--ink);
+}
+.cur-rate.is-low { font-weight: 700; }
+.cur-shift .cur-to { font-size: var(--t-lead); color: var(--ink-mid); }
+.cur-shift-t {
+  margin: 0;
+  font-size: var(--t-meta); color: var(--ink-mid); line-height: 1.4;
+}
+/* Only inside the row: .cur-evidence is a flex column, where a flex-basis would be
+   read as a height and leave 220px of blank card. */
+.cur-shift > .cur-shift-t { flex: 1 1 220px; }
+
+.cur-meters { display: flex; flex-wrap: wrap; gap: var(--s-5); }
+.cur-meter { display: flex; flex-direction: column; gap: var(--s-1); min-width: 96px; }
+.cur-meter-v { font-family: var(--font-mono); font-size: var(--t-section); color: var(--ink-mid); }
+.cur-meter-v.is-met { color: var(--ink); }
+.cur-meter-t { font-size: var(--t-micro); color: var(--ink-mid); }
+.cur-bar {
+  position: relative; display: block; height: 5px; width: 100%;
+  background: var(--surface-alt); border-radius: var(--r-pill); overflow: hidden;
+}
+.cur-bar-fill {
+  position: absolute; inset: 0 auto 0 0; display: block;
+  background: var(--rule-strong); border-radius: var(--r-pill);
+}
+.cur-bar-fill.is-met { background: var(--m-functional); }
+/* The threshold tick sits at the midpoint because the scale is twice the threshold. */
+.cur-bar-tick {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  background: var(--ink-mid);
+}
+
+/* The claim repeats the numbers above it in prose, so it stops competing with them. */
+.cur-claim summary { cursor: pointer; font-size: var(--t-small); color: var(--ink-mid); }
+.cur-claim p { margin: var(--s-2) 0 0; color: var(--ink-mid); line-height: 1.55; }
+
+.cur-fm { margin-top: var(--s-3); }
+.cur-fm-label {
+  display: block; margin-bottom: var(--s-1);
+  font-family: var(--font-mono); font-size: var(--t-micro); font-weight: 500;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft);
+}
+/* The contract, stated where the field is, instead of hinted at in a placeholder. */
+.cur-contract {
+  margin: 0 0 var(--s-2); max-width: var(--measure-narrow);
+  font-size: var(--t-small); color: var(--ink-mid); line-height: 1.55;
+}
+/* Was width: 240 inline inside a table cell. */
+.cur-fm-input { width: 100%; max-width: var(--measure-narrow); resize: vertical; }
+.cur-fm-check {
+  margin: var(--s-1) 0 0; max-width: var(--measure-narrow);
+  font-size: var(--t-meta); color: var(--ink-mid); line-height: 1.45;
+}
+.cur-reason { width: 100%; max-width: 380px; margin-bottom: var(--s-2); }
+
+.cur-card .notice { margin-top: var(--s-3); }
+.cur-card-actions {
+  display: flex; align-items: flex-start; flex-wrap: wrap;
+  gap: var(--s-3); margin-top: var(--s-3);
+}
+/* Reject used to be one text node away from Accept and the last tab stop in the row.
+   It is quieter, it is separated, and it asks first. */
+.cur-reject { margin-left: auto; }
+.cur-confirm { margin-top: var(--s-2); max-width: var(--measure-narrow); }
+@media (max-width: 620px) {
+  .cur-reject { margin-left: 0; width: 100%; }
+}
+
+.cur-outcome { margin: var(--s-3) 0; }
+.cur-decision-meta { margin: var(--s-1) 0 var(--s-2); font-size: var(--t-meta); color: var(--ink-mid); }
+.cur-decision .head { gap: var(--s-2); }
+
+/* ── Read-only tables ─────────────────────────────────────────────────────────
+   Local horizontal scroll rather than dragging the whole page sideways. */
+.table-wrap > .cur-table { min-width: 560px; }
+.cur-table td { vertical-align: top; }
+.cur-table a { text-decoration: none; }
+.cur-table a:hover { text-decoration: underline; }
+
+/* Stacked, not inline: this lives in the narrowest column of the widest table. */
+.cur-dismiss {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: var(--s-1); margin-top: var(--s-1);
+}
+.cur-dismiss input { width: 100%; min-width: 0; }
+.cur-dismissed { margin-top: var(--s-2); font-size: var(--t-small); }
+.cur-dismissed ul { list-style: none; margin: var(--s-2) 0 0; padding: 0; }
+.cur-dismissed li {
+  display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: baseline;
+  padding: var(--s-1) 0;
+}

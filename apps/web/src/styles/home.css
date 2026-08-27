@@ -4,3 +4,195 @@
  * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
  * NOT redefined here — if something belongs to more than one page, it belongs there.
  */
+
+/* ── Two names that belong in styles.css ──────────────────────────────────────
+   .btn--primary and .btn--bare are the foundation's naming for treatments the
+   shared sheet only has as `.btn.primary` and as three separately copy-pasted
+   `color: inherit` patches. They are declared here because styles.css is not this
+   pass's file to edit; both should move up, and `.btn.primary` should retire in
+   favour of --on-accent (it still hard-codes #fff, which measured 2.11:1). */
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.btn--primary:hover { color: var(--on-accent); opacity: 0.9; }
+
+/* `button:hover` sets color: var(--accent), so every row-shaped control turned
+   entirely amber on hover. Three of them defuse that one at a time; this is the
+   reusable version. */
+.btn--bare {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+}
+.btn--bare:hover { color: var(--ink); }
+
+/* Inert but still focusable: the convention is aria-disabled rather than disabled,
+   because disabling a focused control blurs it to <body>. */
+.home [aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+.home [aria-disabled="true"]:hover { border-color: var(--rule-strong); color: var(--ink); }
+.home .btn--primary[aria-disabled="true"]:hover {
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ── Head and single-panel states ─────────────────────────────────────────────
+   .home-head is shared with ReviewSession, which is losing the control that made
+   it overflow; Home uses the .head primitive instead so neither page can restyle
+   the other's header. */
+.home-top { margin-bottom: var(--s-5); }
+.home-top h2 { margin-bottom: var(--s-1); }
+.home-solo { margin-bottom: var(--s-5); }
+
+/* ── Cards ────────────────────────────────────────────────────────────────────
+   .home-cards keeps its auto-fit grid from styles.css; the lead card spans it, so
+   rank reads as size and position rather than living only in a DOM order the grid
+   was free to flatten. */
+.home-card { gap: var(--s-2); }
+.home-card > p { margin: 0; font-size: var(--t-body); line-height: 1.55; }
+.home-card--lead { grid-column: 1 / -1; }
+
+.home-card-head { justify-content: space-between; gap: var(--s-3); }
+/* Only the lead card gets the serif voice. */
+.home-card-title {
+  font-family: var(--font-serif);
+  font-size: var(--t-lead);
+  font-weight: 600;
+  margin: 0;
+}
+.home-card--lead .home-card-title { font-size: var(--t-h); }
+.home-card--lead > p { font-size: var(--t-lead); }
+
+/* The rank, in words. It was previously carried by position in a grid that
+   reflows and by an accent rail applied to two cards at once. */
+.home-rank {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 2px var(--s-2);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-bg);
+  white-space: nowrap;
+}
+
+.home-kinds { list-style: none; margin: 0; padding: 0; }
+.home-kinds li {
+  display: flex;
+  gap: var(--s-2);
+  align-items: baseline;
+  font-size: var(--t-small);
+  color: var(--ink-mid);
+}
+.home-kind-n {
+  font-family: var(--font-mono);
+  color: var(--ink);
+  min-width: 2ch;
+  text-align: right;
+}
+
+/* Specificity, not preference: `.home-card > p` above outranks a bare class. */
+.home-card > p.home-transition { font-size: var(--t-small); }
+.home-card > p.home-goal { font-size: var(--t-small); }
+.home-transition .mono { font-size: var(--t-meta); color: var(--ink-mid); }
+.home-arrow { color: var(--ink-soft); }
+
+.home-fail-why { margin: 0 0 var(--s-2); }
+
+/* ── Builds ───────────────────────────────────────────────────────────────────
+   Done and failed jobs stay for the session, so this list can be several entries
+   long even when nothing is running. */
+.home-jobs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.home-job { min-width: 0; }
+.home-job > .row { justify-content: space-between; }
+.home-job-state { font-size: var(--t-meta); }
+.home-job-report, .home-job-note { font-size: var(--t-small); }
+
+/* ── The due list ─────────────────────────────────────────────────────────────
+   The rows were a grid with a 128px + minmax(120px, 200px) floor and no
+   breakpoint, so below ~360px they turned a <button> into a nested horizontal
+   scroller inside a page that was itself scrolling sideways. The kind track is
+   max-content now, and the whole row collapses rather than overflowing. */
+.home-list { margin-top: var(--s-6); }
+.home-list-head { margin-bottom: var(--s-2); }
+.home-due-rows { list-style: none; margin: 0; padding: 0; }
+.home-due {
+  border-bottom: 1px solid var(--rule);
+  padding: var(--s-2) var(--s-1);
+}
+.home-due:last-child { border-bottom: none; }
+.home-due-open {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: var(--s-2) var(--s-3);
+  align-items: baseline;
+  width: 100%;
+  border-radius: var(--r-sm);
+}
+.home-due-open:hover { background: var(--surface-alt); }
+/* Sentence case rather than uppercase: these are the shared vocabulary's own
+   phrases, and "WRONG BELIEF ON RECORD" as a pill is a shout. */
+.home-due .due-kind {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: var(--t-meta);
+}
+.home-due .due-name { min-width: 0; overflow-wrap: anywhere; }
+.home-due .due-why { min-width: 0; overflow-wrap: anywhere; }
+.home-due-belief {
+  margin-top: var(--s-1);
+  padding-left: var(--s-2);
+  color: var(--ink-soft);
+  font-size: var(--t-small);
+  box-shadow: inset 2px 0 0 var(--rule-strong);
+}
+.home-due-belief .eyebrow { display: block; margin-bottom: var(--s-1); }
+/* One recorded sentence, so its paragraph should not add a gap the row then has
+   to absorb. */
+.home-due-belief .md-p { margin: 0; }
+.home-more { margin: var(--s-3) 0 0; font-size: var(--t-small); }
+
+@media (max-width: 700px) {
+  /* Kind first, on its own line: it is the ranking, and it is the widest track. */
+  .home-due-open { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
+  .home-due-open .due-kind { justify-self: start; }
+}
+
+/* ── Working language ─────────────────────────────────────────────────────────
+   A configuration field with three sentences of microcopy was the first thing on
+   the page. It is last now, and closed, with its current value on the summary so
+   the common case needs no expansion. */
+.home-lang { margin-top: var(--s-6); }
+/* Left as a list-item so the disclosure triangle survives — display: flex on a
+   <summary> removes the marker in Chrome, taking the only affordance with it. */
+.home-lang-summary { cursor: pointer; font-size: var(--t-small); }
+.home-lang-summary .eyebrow { display: inline; }
+.home-lang-value { font-weight: 600; margin-left: var(--s-2); }
+.home-lang[open] .home-lang-summary { margin-bottom: var(--s-3); }
+.home-lang-body { gap: var(--s-3); }
+.home-lang-body .field input { min-width: 200px; }
+.home-lang-note { font-size: var(--t-small); max-width: var(--measure-narrow); }
+.home-lang-status {
+  margin: 0;
+  font-size: var(--t-small);
+  color: var(--positive-text);
+  max-width: var(--measure-narrow);
+}
+/* Kept in the DOM even when empty — an empty <p> has no line box, so it costs no
+   space, and a live region that is added only on success announces unreliably. */

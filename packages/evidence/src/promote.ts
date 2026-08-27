@@ -158,9 +158,31 @@ export async function applyProposal(
   if (!p.srcId || !p.dstId) throw new Error("proposal has no src/dst");
 
   const [src, dst] = await Promise.all([
-    prisma.concept.findUniqueOrThrow({ where: { id: p.srcId } }),
-    prisma.concept.findUniqueOrThrow({ where: { id: p.dstId } }),
+    prisma.concept.findUnique({ where: { id: p.srcId } }),
+    prisma.concept.findUnique({ where: { id: p.dstId } }),
   ]);
+  /**
+   * Both ends must still be live concepts.
+   *
+   * findUniqueOrThrow already stopped an edge being written against a deleted row, but
+   * it said nothing about deprecation — and a compound concept that has since been split
+   * is deprecated, not deleted. So a proposal raised before the split would still apply
+   * cleanly and write a hard edge onto a node the planner and the resolver both ignore:
+   * an edge that exists, claims a prerequisite, and can never be reached. Proposals can
+   * sit open for a long time, which is exactly how they outlive their own endpoints.
+   */
+  const dead = [
+    !src ? "the source concept no longer exists" : null,
+    !dst ? "the target concept no longer exists" : null,
+    src?.deprecatedAt ? `the source concept "${src.canonicalName}" has been deprecated` : null,
+    dst?.deprecatedAt ? `the target concept "${dst.canonicalName}" has been deprecated` : null,
+  ].filter(Boolean);
+  if (dead.length > 0 || !src || !dst) {
+    throw new Error(
+      `this proposal can no longer be accepted: ${dead.join("; ")}. ` +
+        `Reject it — the graph has moved on since it was raised.`,
+    );
+  }
   const check = checkFailureMode(failureMode, {
     sourceName: src.canonicalName,
     targetName: dst.canonicalName,

@@ -4,3 +4,179 @@
  * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
  * NOT redefined here — if something belongs to more than one page, it belongs there.
  */
+
+/* ── The metric card ──────────────────────────────────────────────────────────
+   Was .card / .cards, shared with Home's navigation cards, so each page's tuning
+   restyled the other. Own names, own grid; the surface repeats the shared .panel
+   treatment rather than nesting under .card, so the two can diverge without a
+   fight. */
+.metrics .stats {
+  display: grid;
+  /* auto-fit, not auto-fill: at 2560px auto-fill held ten phantom tracks and left
+     four cards huddled in the leftmost 1000px. */
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--s-3);
+  margin: 0;
+}
+.metrics .stat {
+  background: var(--panel-bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  padding: var(--panel-pad);
+}
+.metrics .stat .k {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.metrics .stat .v {
+  display: block;
+  margin: var(--s-1) 0 0;
+  font-family: var(--font-serif);
+  font-size: var(--t-display);
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.metrics .stat .sub {
+  display: block;
+  margin-top: var(--s-1);
+  color: var(--ink-soft);
+  font-family: var(--font-sans);
+  font-size: var(--t-small);
+  line-height: 1.45;
+}
+/* "no data yet" is a sentence, not a magnitude, so it does not get the 26px serif
+   treatment that makes a reader assume a measurement exists. */
+.metrics .stat[data-empty] .v {
+  font-family: var(--font-sans);
+  font-size: var(--t-lead);
+  color: var(--ink-soft);
+}
+.metrics .stat-skel-v {
+  height: var(--t-display);
+  margin: var(--s-1) 0 var(--s-2);
+}
+
+/* ── Page head ───────────────────────────────────────────────────────────────── */
+.metrics .metrics-head {
+  margin-bottom: var(--s-5);
+}
+.metrics .metrics-title {
+  font-size: var(--t-h);
+  font-weight: 600;
+}
+.metrics .metrics-scope {
+  margin: 0 0 var(--s-3);
+}
+
+/* ── Section rhythm ──────────────────────────────────────────────────────────
+   Scoped to this page: .section-title is shared with four others. A dashboard of
+   eight sections needs the break to be visible without reading, so it gains a
+   hairline rule and the step above --t-section. The brief asked for 17px, measured
+   before the fonts loaded; 16px is the token that exists. */
+.metrics .section-title {
+  margin: var(--s-6) 0 var(--s-3);
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--t-lead);
+  font-weight: 600;
+}
+.metrics .section-title:first-child {
+  margin-top: 0;
+}
+/* Replaces three inline marginTop values. */
+.metrics .note {
+  margin: var(--s-3) 0 0;
+}
+/* The two paragraphs carrying the argument for why these metrics exist ran ~200
+   characters a line at 1280px and ~400 at 2560px. */
+.metrics .prose {
+  max-width: 68ch;
+}
+
+/* ── Numbers ─────────────────────────────────────────────────────────────────
+   There was no numeric-cell rule anywhere, so on the one page built for comparing
+   magnitudes the Calls column was ragged-left. */
+.metrics td.num,
+.metrics th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.metrics td .sub {
+  display: block;
+  margin-top: 2px; /* under --s-1 on purpose: this rides beneath its own line */
+  font-family: var(--font-sans);
+  font-size: var(--t-micro);
+  color: var(--ink-soft);
+}
+/* The sample size, not the ratio derived from it, is what makes an arm readable. */
+.metrics .n-cell {
+  font-size: var(--t-lead);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────────────
+   The five-column tables need more than the primitive's 520px floor before their
+   trailing columns collapse; .table-wrap keeps the scroll local either way. */
+.metrics .t-purpose,
+.metrics .t-arms {
+  min-width: 640px;
+}
+.metrics .table-wrap {
+  padding-bottom: var(--s-1); /* room for the scrollbar, so it never sits on a row */
+}
+.metrics tfoot th,
+.metrics tfoot td {
+  border-top: 1px solid var(--rule-strong);
+  border-bottom: none;
+  padding-top: var(--s-2);
+  font-weight: 600;
+  color: var(--ink);
+}
+.metrics tfoot th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* ── Notices and empty states ───────────────────────────────────────────────── */
+.metrics .notice p {
+  margin: 0 0 var(--s-2);
+}
+.metrics .notice > :last-child {
+  margin-bottom: 0;
+}
+.metrics .metrics-degraded {
+  margin-bottom: var(--s-5);
+}
+.metrics .metrics-error {
+  margin-bottom: var(--s-4);
+}
+.metrics .metrics-caveats {
+  margin: 0;
+  padding-left: var(--s-4);
+}
+.metrics .metrics-caveats li + li {
+  margin-top: var(--s-1);
+}
+.metrics .metrics-detail {
+  color: var(--ink-mid);
+  overflow-wrap: anywhere;
+}
+/* Radius follows the panel scale rather than the shared .empty's 6px, and the copy
+   is a clause now, so it needs a measure. */
+.metrics .metrics-empty {
+  max-width: var(--measure-wide);
+  padding: var(--s-5);
+  border-radius: var(--r-lg);
+  font-size: var(--t-small);
+  line-height: 1.5;
+  text-align: left;
+}

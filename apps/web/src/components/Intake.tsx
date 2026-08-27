@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import { api, HttpError } from "../api";
+import { Busy } from "./Busy";
 import { Markdown } from "./Markdown";
+import { DEPTH_LABEL } from "../vocabulary";
 
 /**
  * The initial assessment, conversational. (07)
@@ -11,11 +13,13 @@ import { Markdown } from "./Markdown";
  * model of the learner.
  */
 export function Intake({
-  learnerId, topics, onComplete, initialGoal = null,
+  learnerId, topics, onComplete, onCancel, initialGoal = null,
 }: {
   learnerId: string;
   topics: any[];
   onComplete: () => void;
+  /** The way out. Every stage of this used to be a one-way door. */
+  onCancel?: () => void;
   /** Pre-filled when the learner asked for this in chat rather than via the button. */
   initialGoal?: string | null;
 }) {
@@ -26,6 +30,15 @@ export function Intake({
   const [buildQueue, setBuildQueue] = useState<string[]>([]);
   const [resumedFrom, setResumed] = useState<{ topic: string | null; depth: string } | null>(null);
   const [topicId, setTopicId] = useState("");
+  /**
+   * The topic list this component actually chooses from.
+   *
+   * It rendered the `topics` prop, which the parent fetched on mount, while `topicId`
+   * came from a list fetched after a build that can run for nineteen minutes. So the
+   * just-built topic was selected and unlisted: the field looked blank or showed the
+   * wrong subject, and touching it discarded the build.
+   */
+  const [topicList, setTopicList] = useState<any[]>(topics);
   const [depth, setDepth] = useState("use");
   const [goalText, setGoalText] = useState("");
   const [alreadyKnow, setAlreadyKnow] = useState("");
@@ -33,10 +46,26 @@ export function Intake({
   /** Set once when the assessment starts, so it survives every answer after it. */
   const [roadmap, setRoadmap] = useState<{ steps: number; milestones: number } | null>(null);
   const [answer, setAnswer] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Consecutive poll failures. One is a blip; five in a row is a lost job. */
+  const [pollFails, setPollFails] = useState(0);
+  const [lostContact, setLostContact] = useState(false);
 
-  useEffect(() => { if (!topicId && topics[0]) setTopicId(topics[0].id); }, [topics, topicId]);
+  useEffect(() => { setTopicList((prev) => (prev.length ? prev : topics)); }, [topics]);
+  useEffect(() => { if (!topicId && topicList[0]) setTopicId(topicList[0].id); }, [topicList, topicId]);
+
+  /** Fresh list, held in state, so the selected id is always one of the options. */
+  const refreshTopics = async (preferName?: string): Promise<string | null> => {
+    try {
+      const fresh = await api.topics();
+      setTopicList(fresh);
+      const match =
+        (preferName && fresh.find((t: any) => t.name === preferName)) ??
+        fresh.find((t: any) => t.concepts > 0) ?? fresh[0];
+      return match?.id ?? null;
+    } catch { return null; }
+  };
 
   /**
    * Pick up an assessment that was interrupted. The rows survived a refresh all along;
@@ -84,7 +113,7 @@ export function Intake({
    * even when the graph has never heard of it.
    */
   const resolve = async () => {
-    setBusy(true); setError(null);
+    setBusy("working out what that means"); setError(null);
     try {
       const r = await api.resolveGoal(goalInput);
       setResolved(r);
@@ -100,9 +129,10 @@ export function Intake({
         if (missing.length > 0) {
           setBuildQueue(missing.map((c: any) => c.name));
           setJob(await api.startExpansion(missing[0].name));
-          setStage("building");
+          startBuilding();
           return;
         }
+        await refreshTopics(built.components[0]?.name);
         setTopicId(built.components[0]?.id ?? "");
         setStage("goal");
         return;
@@ -111,23 +141,33 @@ export function Intake({
       if (r.needsExpansion) {
         setBuildQueue([r.canonicalName]);
         setJob(await api.startExpansion(r.canonicalName, r.description));
-        setStage("building");
+        startBuilding();
         return;
       }
+      await refreshTopics(r.canonicalName);
       setTopicId(r.topicId);
       setStage("goal");
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
+    finally { setBusy(null); }
+  };
+
+  const startBuilding = () => {
+    setPollFails(0); setLostContact(false); setError(null); setStage("building");
   };
 
   // Build topics one at a time; each expansion is minutes of model calls.
   useEffect(() => {
-    if (stage !== "building" || !job) return;
+    // A failed job stops the clock: it has nothing left to report, and re-setting the
+    // same error every 1.2s only re-renders the page under the learner.
+    if (stage !== "building" || !job || lostContact || job.status === "failed") return;
     const timer = setInterval(async () => {
       try {
         const j = await api.expansion(job.id);
+        setPollFails(0);
         setJob(j);
-        if (j.status === "failed") { setError(j.error); setStage("ask"); return; }
+        // A failed build stays here with the goal text intact and a retry, rather than
+        // dumping the learner back on an empty form having lost what they asked for.
+        if (j.status === "failed") { setError(j.error ?? "the build failed"); return; }
         if (j.status !== "done") return;
 
         const rest = buildQueue.slice(1);
@@ -136,58 +176,78 @@ export function Intake({
           setJob(await api.startExpansion(rest[0]!));
           return;
         }
-        const fresh = await api.topics();
-        const match = fresh.find((t: any) => t.name === buildQueue[0]) ?? fresh.find((t: any) => t.concepts > 0);
-        if (match) setTopicId(match.id);
+        const id = await refreshTopics(buildQueue[0]);
+        if (id) setTopicId(id);
         setStage("goal");
-      } catch { /* transient */ }
+      } catch (e) {
+        // A 404 means this job is gone, not slow. Either way, a frozen progress bar at
+        // 5% forever is the one outcome the learner cannot act on, so count the misses
+        // and eventually say so.
+        const fatal = e instanceof HttpError && e.isMissing;
+        setPollFails((n) => {
+          const next = n + 1;
+          if (fatal || next >= 5) setLostContact(true);
+          return next;
+        });
+      }
     }, 1200);
     return () => clearInterval(timer);
-  }, [stage, job, buildQueue]);
+  }, [stage, job, buildQueue, lostContact]);
+
+  const retryBuild = async () => {
+    if (!job) return;
+    setBusy("restarting the build");
+    try {
+      const j = await api.retryExpansion(job.id);
+      setJob(j);
+      startBuilding();
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(null); }
+  };
+
+  /** Back to the goal box with the text still in it. */
+  const startOver = () => {
+    setStage("ask"); setJob(null); setBuildQueue([]); setResolved(null);
+    setError(null); setPollFails(0); setLostContact(false);
+    setGoalInput((prev) => prev || goalText || "");
+  };
 
   const start = async () => {
-    setBusy(true); setError(null);
+    setBusy("setting up your assessment"); setError(null);
     try {
       const r = await api.startIntake({ learnerId, topicId, depth, goalText, alreadyKnow });
       setSession(r);
       if (r.plan) setRoadmap({ steps: r.plan.steps, milestones: r.plan.milestones });
       setStage(r.status === "complete" ? "done" : "probing");
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
+    finally { setBusy(null); }
   };
 
-  const submit = async () => {
-    if (!answer.trim()) return;
-    setBusy(true); setError(null);
-    const text = answer;
-    setAnswer("");
+  const answerWith = async (text: string, label: string) => {
+    if (!text.trim() || busy) return;
+    setBusy(label); setError(null);
     try {
       const r = await api.answerIntake(session.intakeId, text);
       setSession(r);
+      // The answer is only cleared once it has actually been recorded. It used to be
+      // wiped before the await, so a failed request took the learner's writing with it.
+      setAnswer("");
       // Deliberately NOT calling onComplete() here. The parent hides this component when
       // it fires, so doing both in one tick unmounted the summary before it rendered:
       // the learner submitted a final answer and landed back on the lesson page having
       // been told nothing. "Start learning" is what finishes the assessment now.
       if (r.status === "complete") setStage("done");
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
+    finally { setBusy(null); }
   };
 
-  const skip = async () => {
-    // "I don't know" is a legitimate answer and should cost one question, not a bluff.
-    setAnswer("I don't know");
-    setBusy(true);
-    try {
-      const r = await api.answerIntake(session.intakeId, "I don't know");
-      setSession(r);
-      if (r.status === "complete") setStage("done");
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); setAnswer(""); }
-  };
+  const submit = () => void answerWith(answer, "checking your answer");
+  /** "I don't know" is a legitimate answer and should cost one question, not a bluff. */
+  const skip = () => void answerWith("I don't know", "recording that");
 
   if (stage === "ask") {
     return (
-      <div className="intake">
+      <div className="intake page--narrow">
         <h2>What do you want to learn?</h2>
         <p className="muted">
           Say it however you'd say it out loud. If it isn't in the graph yet, it gets
@@ -197,19 +257,32 @@ export function Intake({
           rows={3}
           value={goalInput}
           onChange={(e) => setGoalInput(e.target.value)}
-          placeholder="e.g. I want to master JavaScript &nbsp;·&nbsp; become a backend developer &nbsp;·&nbsp; understand how databases work"
-          disabled={busy}
+          placeholder="e.g. I want to master JavaScript · become a backend developer · understand how databases work"
         />
-        {error && <p className="err">{error}</p>}
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button className="primary" onClick={() => void resolve()} disabled={busy || goalInput.trim().length < 3}>
-            {busy ? "Working it out…" : "Build my roadmap"}
+        {error && (
+          <div className="notice notice--error" role="alert">
+            <strong>That goal could not be worked out.</strong>
+            {error}
+          </div>
+        )}
+        <div className="row intake-actions">
+          <button
+            className="primary"
+            onClick={() => void resolve()}
+            aria-disabled={!!busy || undefined}
+            disabled={goalInput.trim().length < 3}
+          >
+            Build my roadmap
           </button>
-          {topics.length > 0 && (
-            <button onClick={() => setStage("goal")} disabled={busy}>
+          {topicList.length > 0 && (
+            <button onClick={() => setStage("goal")} aria-disabled={!!busy || undefined}>
               Pick an existing topic
             </button>
           )}
+          {onCancel && (
+            <button className="linkish" onClick={onCancel}>back to the lesson</button>
+          )}
+          {busy && <Busy label={busy} />}
         </div>
       </div>
     );
@@ -218,8 +291,11 @@ export function Intake({
   if (stage === "building") {
     const report = job?.report ?? {};
     const events: { kind: string; name: string; detail: string }[] = report.events ?? [];
-    // Newest first: a live log the user reads from the top rather than chasing.
+    // Newest first, and keyed by what the event IS rather than where it sits. Keyed on
+    // the reversed index, every row's key changed on every poll, so all 40 remounted and
+    // the entry animation replayed two or three times a second — nothing could be read.
     const recent = [...events].reverse().slice(0, 40);
+    const failed = job?.status === "failed";
 
     return (
       <div className="intake wide">
@@ -230,7 +306,50 @@ export function Intake({
             : "Finding the concepts and how they depend on each other."}
         </p>
 
-        <div className="progress" style={{ marginTop: 12 }}>
+        {pollFails > 1 && !lostContact && (
+          // Said before it becomes a verdict: a frozen bar with no explanation is what
+          // made a lost build indistinguishable from a slow one.
+          <p className="muted build-hint" role="status">
+            Not hearing back from the build — still asking.
+          </p>
+        )}
+
+        {lostContact && (
+          <div className="notice notice--error" role="alert">
+            <strong>Lost contact with this build.</strong>
+            <p>
+              It stopped answering. The work may still be running server-side, or the job
+              may be gone — either way nothing more will appear here on its own.
+            </p>
+            <div className="row">
+              <button className="primary" onClick={() => void retryBuild()} aria-disabled={!!busy || undefined}>
+                Retry the build
+              </button>
+              <button onClick={startOver}>Not what I meant — start over</button>
+              {busy && <Busy label={busy} clock={false} />}
+            </div>
+          </div>
+        )}
+
+        {failed && !lostContact && (
+          <div className="notice notice--error" role="alert">
+            <strong>The build failed.</strong>
+            <p>{error ?? job?.error}</p>
+            <p className="muted">
+              Your goal is still here: “{goalText || goalInput}”. Retrying picks up from
+              what was already written.
+            </p>
+            <div className="row">
+              <button className="primary" onClick={() => void retryBuild()} aria-disabled={!!busy || undefined}>
+                Try the build again
+              </button>
+              <button onClick={startOver}>Not what I meant — start over</button>
+              {busy && <Busy label={busy} clock={false} />}
+            </div>
+          </div>
+        )}
+
+        <div className="progress build-progress">
           <div className="bar" style={{ width: `${Math.round((job?.progress ?? 0) * 100)}%` }} />
         </div>
         <div className="build-stats">
@@ -258,14 +377,14 @@ export function Intake({
         <div className="build-section">
           <h4>Live</h4>
           {recent.length === 0 ? (
-            <p className="muted" style={{ fontSize: 12.5 }}>
+            <p className="muted build-hint">
               Sampling the model three times for the concept list. Nothing is written
               until a majority agrees, so the first result takes a moment.
             </p>
           ) : (
             <ul className="build-log">
-              {recent.map((e, i) => (
-                <li key={`${e.kind}-${e.name}-${i}`} className={`ev ${e.kind}`}>
+              {recent.map((e) => (
+                <li key={`${e.kind}-${e.name}-${e.detail}`} className={`ev ${e.kind}`}>
                   <span className="ev-kind">{e.kind.replace(/_/g, " ")}</span>
                   <span className="ev-name">{e.name}</span>
                   <span className="ev-detail">{e.detail}</span>
@@ -275,19 +394,29 @@ export function Intake({
           )}
         </div>
 
-        <p className="muted" style={{ fontSize: 12 }}>
+        <p className="muted build-hint">
           Each question is asked of the model three times independently and only what a
           majority names is kept — that filter is why this takes minutes, and it is what
           stops the graph filling with plausible-sounding concepts nobody needs.
         </p>
-        {error && <p className="err">{error}</p>}
+
+        {!failed && !lostContact && (
+          <div className="row intake-actions">
+            <button onClick={startOver}>Not what I meant — start over</button>
+            {onCancel && (
+              <button className="linkish" onClick={onCancel}>
+                leave it running and go back
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   }
 
   if (stage === "goal") {
     return (
-      <div className="intake">
+      <div className="intake page--narrow">
         <h2>Before we start</h2>
         <p className="muted">
           {resolved
@@ -299,29 +428,31 @@ export function Intake({
         <label className="intake-field">
           <span>What do you want to learn?</span>
           <select value={topicId} onChange={(e) => setTopicId(e.target.value)}>
-            {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {topicList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </label>
 
-        <label className="intake-field">
-          <span>How deeply?</span>
+        {/* A fieldset, not a <label> around three <button>s: <button> is labelable, so
+            clicking "How deeply?" activated the first option. */}
+        <fieldset className="intake-field depth-set">
+          <legend>How deeply?</legend>
           <div className="depth-choice">
-            {[
-              ["use", "Use it", "Get things working"],
-              ["debug", "Debug it", "Understand it when it breaks"],
-              ["build", "Build with it", "Know it well enough to design with"],
-            ].map(([v, label, hint]) => (
+            {Object.entries(DEPTH_LABEL).map(([v, { label, hint }]) => (
               <button
                 key={v}
+                type="button"
+                aria-pressed={depth === v}
                 className={depth === v ? "depth on" : "depth"}
-                onClick={() => setDepth(v as string)}
+                onClick={() => setDepth(v)}
               >
+                {/* Selected has to be readable with no colour at all. */}
+                <span className="depth-mark" aria-hidden="true">{depth === v ? "●" : "○"}</span>
                 <strong>{label}</strong>
                 <span>{hint}</span>
               </button>
             ))}
           </div>
-        </label>
+        </fieldset>
 
         <label className="intake-field">
           <span>What are you aiming to do with it? <em className="muted">(optional)</em></span>
@@ -343,19 +474,38 @@ export function Intake({
           </em>
         </label>
 
-        {error && <p className="err">{error}</p>}
-        <button className="primary" onClick={() => void start()} disabled={busy || !topicId}>
-          {busy ? "Setting up…" : "Start"}
-        </button>
+        {error && (
+          <div className="notice notice--error" role="alert">
+            <strong>The assessment could not be started.</strong>
+            {error}
+          </div>
+        )}
+        <div className="row intake-actions">
+          <button
+            className="primary"
+            onClick={() => void start()}
+            aria-disabled={!!busy || undefined}
+            disabled={!topicId}
+          >
+            Start
+          </button>
+          <button onClick={startOver} aria-disabled={!!busy || undefined}>
+            Change the goal
+          </button>
+          {onCancel && (
+            <button className="linkish" onClick={onCancel}>back to the lesson</button>
+          )}
+          {busy && <Busy label={busy} />}
+        </div>
       </div>
     );
   }
 
   if (stage === "probing" && session?.question) {
     return (
-      <div className="intake">
+      <div className="intake page--narrow">
         {resumedFrom && (
-          <div className="banner" style={{ fontSize: 12.5 }}>
+          <div className="notice notice--info">
             Picking up where you left off — {resumedFrom.topic ?? "your assessment"} (
             {resumedFrom.depth}).{" "}
             <button
@@ -389,7 +539,7 @@ export function Intake({
           /* The learner asked for a roadmap and then met a run of questions. Saying the
              roadmap already exists, and what these questions are for, is the difference
              between an assessment and an unexplained quiz. */
-          <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
+          <p className="muted probe-hint">
             Your roadmap is built — <b>{roadmap.steps}</b> concepts
             {roadmap.milestones > 0 ? ` across ${roadmap.milestones} milestones` : ""}. These
             questions only decide where you start and what gets skipped, so answering more
@@ -398,13 +548,13 @@ export function Intake({
         )}
         <div className="intake-progress">
           Question {session.asked + 1} of at most {session.budget}
-          <div className="progress" style={{ marginTop: 6 }}>
+          <div className="progress probe-progress">
             <div className="bar" style={{ width: `${((session.asked) / session.budget) * 100}%` }} />
           </div>
         </div>
         <h2>{session.question.conceptName}</h2>
         <p className="muted">{session.question.why}</p>
-        <div className="bubble" style={{ margin: "12px 0" }}>
+        <div className="bubble probe-prompt">
           <Markdown text={session.question.prompt} />
           {/* Rendered as raw text before, so a question about a snippet arrived as one
               unreadable line — the same paragraph-joining problem as the lesson. */}
@@ -417,14 +567,29 @@ export function Intake({
         <textarea
           rows={4} value={answer} onChange={(e) => setAnswer(e.target.value)}
           placeholder="In your own words. A rough answer is more useful than a guess."
-          disabled={busy}
         />
-        {error && <p className="err">{error}</p>}
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="primary" onClick={() => void submit()} disabled={busy || !answer.trim()}>
-            {busy ? "Checking…" : "Answer"}
+        {error && (
+          <div className="notice notice--error" role="alert">
+            <strong>That answer was not recorded.</strong>
+            <p>{error}</p>
+            <p className="muted">Your text is still in the box — send it again.</p>
+          </div>
+        )}
+        <div className="row intake-actions">
+          <button
+            className="primary"
+            onClick={submit}
+            aria-disabled={!!busy || undefined}
+            disabled={!answer.trim()}
+          >
+            Answer
           </button>
-          <button onClick={() => void skip()} disabled={busy}>I don't know this</button>
+          {busy && <Busy label={busy} />}
+          {/* Held away from the primary button: one stray click here spent a probe. */}
+          <span className="spacer" />
+          <button className="linkish quiet" onClick={skip} aria-disabled={!!busy || undefined}>
+            I don't know this one
+          </button>
         </div>
       </div>
     );
@@ -432,7 +597,7 @@ export function Intake({
 
   const known: string[] = session?.knownConcepts ?? [];
   return (
-    <div className="intake">
+    <div className="intake page--narrow">
       <h2>Assessment done</h2>
       <p>
         {session?.asked ?? 0} question{session?.asked === 1 ? "" : "s"} asked, and a plan of{" "}

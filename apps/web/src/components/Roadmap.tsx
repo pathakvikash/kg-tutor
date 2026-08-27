@@ -1,11 +1,6 @@
-import { useEffect, useState } from "react";
-import { api, type Mastery } from "../api";
-
-const RANK: Record<Mastery, number> = { unknown: 0, familiar: 1, functional: 2, solid: 3 };
-const DOT: Record<Mastery, string> = {
-  unknown: "var(--m-unknown)", familiar: "var(--m-familiar)",
-  functional: "var(--m-functional)", solid: "var(--m-solid)",
-};
+import { useCallback, useEffect, useState } from "react";
+import { api, HttpError, type Mastery } from "../api";
+import { atLeast, DEPTH_LABEL, MASTERY_MEANING } from "../vocabulary";
 
 /**
  * The roadmap, as a first-class component rather than a model-authored widget.
@@ -28,19 +23,59 @@ export function Roadmap({
   onPick?: (conceptId: string, name: string) => void;
 }) {
   const [data, setData] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; remedy: string | null; missing: boolean } | null>(null);
   const [open, setOpen] = useState<Set<number>>(new Set([0]));
 
-  useEffect(() => {
+  const fetchRoadmap = useCallback(() => {
     let cancelled = false;
+    setError(null);
     api.roadmap(learnerId)
       .then((d) => { if (!cancelled) setData(d); })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+      .catch((e) => {
+        if (cancelled) return;
+        // A missing roadmap is an empty state; anything else is a fault, and drawing
+        // both as one quiet grey line told the learner they had no plan when the
+        // backend was simply down.
+        setError({
+          message: e instanceof Error ? e.message : String(e),
+          remedy: e instanceof HttpError ? e.remedy : null,
+          missing: e instanceof HttpError && e.isMissing,
+        });
+      });
     return () => { cancelled = true; };
   }, [learnerId]);
 
-  if (error) return <div className="rm"><p className="muted">{error}</p></div>;
-  if (!data) return <div className="rm"><p className="muted">Loading your roadmap…</p></div>;
+  useEffect(() => fetchRoadmap(), [fetchRoadmap]);
+
+  if (error) {
+    if (error.missing) {
+      return (
+        <div className="rm">
+          <p className="muted empty-line">No roadmap yet — set a goal to get one.</p>
+        </div>
+      );
+    }
+    return (
+      <div className="rm">
+        <div className="notice notice--error" role="alert">
+          <strong>The roadmap could not be loaded.</strong>
+          <p>{error.message}</p>
+          {error.remedy && <p className="muted">{error.remedy}</p>}
+          <button onClick={() => fetchRoadmap()}>Try again</button>
+        </div>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="rm" aria-busy="true">
+        <div className="skeleton skeleton--line skeleton--w40" />
+        <div className="skeleton skeleton--line skeleton--w80" />
+        <div className="skeleton skeleton--line skeleton--w60" />
+        <span className="sr-only" role="status">Loading your roadmap.</span>
+      </div>
+    );
+  }
 
   const claimed = new Set(data.milestones.flatMap((m: any) => m.concepts.map((c: any) => c.id)));
   const loose = data.steps.filter((s: any) => !claimed.has(s.conceptId));
@@ -55,10 +90,12 @@ export function Roadmap({
 
   const Step = ({ s }: { s: any }) => {
     const mastery = (s.currentMastery ?? "unknown") as Mastery;
-    const met = RANK[mastery] >= RANK[(s.requiredLevel ?? "functional") as Mastery];
+    const met = atLeast(mastery, (s.requiredLevel ?? "functional") as Mastery);
     const body = (
       <>
-        <span className="rm-dot" style={{ background: DOT[mastery] }} />
+        {/* The shared mark, so mastery carries a shape as well as a hue: two of the
+            four levels measured 1.13:1 apart, i.e. colour could not be the encoding. */}
+        <span className="mastery-mark" data-level={mastery} title={MASTERY_MEANING[mastery]} />
         <span className="rm-name">{s.name}</span>
         <span className="rm-level">{met ? "done" : `${mastery} → ${s.requiredLevel}`}</span>
         {onPick && <span className="rm-go">{met ? "revisit" : "learn"} →</span>}
@@ -82,9 +119,9 @@ export function Roadmap({
         <div>
           <div className="rm-goal">{data.goal.topic}</div>
           <div className="rm-sub">
-            {data.goal.depth === "build" ? "to build with it"
-              : data.goal.depth === "debug" ? "to debug it"
-              : "to use it"}
+            {DEPTH_LABEL[data.goal.depth]
+              ? `to ${DEPTH_LABEL[data.goal.depth]!.label.toLowerCase()}`
+              : data.goal.depth}
             {" · plan v"}{data.version}
           </div>
         </div>
@@ -98,13 +135,13 @@ export function Roadmap({
 
       {data.milestones.map((m: any, i: number) => {
         const done = m.concepts.filter(
-          (c: any) => RANK[(c.currentMastery ?? "unknown") as Mastery] >= RANK[c.requiredLevel as Mastery],
+          (c: any) => atLeast((c.currentMastery ?? "unknown") as Mastery, c.requiredLevel as Mastery),
         ).length;
         const isOpen = open.has(i);
         return (
           <div className={`rm-ms${m.completed ? " complete" : ""}`} key={i}>
             <button className="rm-ms-head" onClick={() => toggle(i)} aria-expanded={isOpen}>
-              <span className="rm-caret">{isOpen ? "▾" : "▸"}</span>
+              <span className="rm-caret" aria-hidden="true">{isOpen ? "▾" : "▸"}</span>
               <span className="rm-claim">{m.claim}</span>
               <span className="rm-ms-count">{done}/{m.concepts.length}</span>
             </button>
@@ -126,7 +163,7 @@ export function Roadmap({
       {loose.length > 0 && (
         <div className="rm-ms">
           <button className="rm-ms-head" onClick={() => toggle(-1)} aria-expanded={open.has(-1)}>
-            <span className="rm-caret">{open.has(-1) ? "▾" : "▸"}</span>
+            <span className="rm-caret" aria-hidden="true">{open.has(-1) ? "▾" : "▸"}</span>
             <span className="rm-claim">Groundwork</span>
             <span className="rm-ms-count">{loose.length}</span>
           </button>
