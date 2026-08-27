@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { completeJson, startStream } from "@kg/llm";
 import { activePlanWhere, loadMastery } from "@kg/planner";
-import { generateItems, selectItem, routeChatQuestion, recordEvidence } from "@kg/teach";
+import { generateItems, isWrongLanguage, selectItem, routeChatQuestion, recordEvidence } from "@kg/teach";
 import { isActionable } from "@kg/teach";
 import { prisma, getLlm } from "../context.js";
 import { openSession, saveTurn } from "../sessions.js";
@@ -144,6 +144,9 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
           explainTopics.length > 0
             ? `Studied as part of: ${explainTopics.map((t) => t.topic.name).join(", ")}`
             : "",
+          learner.workingLanguage
+            ? `They write code in ${learner.workingLanguage} — use it for every example.`
+            : "",
           learner.background ? `Learner background: ${learner.background}` : "",
           known.length > 0 ? `Already knows: ${known.map((k) => k.canonicalName).join(", ")}` : "",
           misconceptions.length > 0
@@ -233,10 +236,19 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     const llm = getLlm();
     if (!llm) return reply.code(503).send(NO_MODEL);
 
-    let item = await selectItem(prisma, body.data.conceptId, body.data.level);
-    if (!item) {
-      await generateItems(prisma, llm, body.data.conceptId);
-      item = await selectItem(prisma, body.data.conceptId, body.data.level);
+    const learner = await prisma.learner.findUniqueOrThrow({
+      where: { id: body.data.learnerId },
+      select: { workingLanguage: true },
+    });
+    const language = learner.workingLanguage;
+
+    let item = await selectItem(prisma, body.data.conceptId, body.data.level, [], { language });
+    // Generate when there is nothing, and also when the only thing available is in a
+    // language the learner does not write — otherwise the bank's first arrival fixes the
+    // language forever, and "memory addresses" arrived in C.
+    if (!item || isWrongLanguage(item, language)) {
+      await generateItems(prisma, llm, body.data.conceptId, { language });
+      item = await selectItem(prisma, body.data.conceptId, body.data.level, [], { language });
     }
     if (!item) return reply.code(422).send({ error: "no item could be produced for this concept" });
 

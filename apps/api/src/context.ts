@@ -105,6 +105,14 @@ function purposeOf(system: string): string {
   if (system.includes("classify a learner")) return "route_chat";
   if (system.includes("write assessment items")) return "generate_items";
   if (system.includes("excellent tutor")) return "baseline_turn";
+  // These four were a fifth of all spend, filed as "other" — so the most expensive
+  // single purpose in the system was invisible to the very report meant to find it.
+  if (system.includes("You explain one concept")) return "explain";
+  if (system.includes("Answer the learner's question")) return "answer_chat";
+  if (system.includes("capabilities a learner gains")) return "milestones";
+  if (system.includes("turn a learner's stated goal")) return "resolve_goal";
+  if (system.includes("interactive teaching widget") || system.includes("catalog")) return "widget";
+  if (system.includes("denotes more than one concept")) return "split_names";
   return "other";
 }
 

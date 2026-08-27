@@ -28,7 +28,7 @@ async function get<T>(url: string): Promise<T> {
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
 }
-async function send<T>(method: "POST" | "PUT" | "DELETE", url: string, body?: unknown): Promise<T> {
+async function send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", url: string, body?: unknown): Promise<T> {
   // Declaring a JSON content-type with no body makes Fastify reject the request
   // outright, so the header only goes on when there is something to send.
   const res = await fetch(url, {
@@ -132,6 +132,9 @@ export const api = {
   learners: () => get<any[]>("/api/learners"),
   learnerState: (id: string) => get<any>(`/api/learners/${id}/state`),
   plan: (id: string) => get<any>(`/api/learners/${id}/plan`),
+  /** The language every example and item should be written in. */
+  updateLearner: (id: string, patch: Record<string, unknown>) =>
+    send<any>("PATCH", `/api/learners/${id}`, patch),
   /** What has decayed, was never demonstrated, or has an unresolved misconception. */
   due: (id: string, limit = 20) => get<any>(`/api/learners/${id}/due?limit=${limit}`),
   /** One more level of prerequisites under a single concept. */

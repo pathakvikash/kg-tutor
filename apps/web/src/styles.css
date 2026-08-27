@@ -776,3 +776,12 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 @media (prefers-color-scheme: dark) { .due-badge { color: #1a1207; } }
 .review-session { max-width: 720px; }
 .review-session textarea { width: 100%; margin: 8px 0; }
+
+/* The one input that steers every generated example. Prominent for that reason. */
+.lang-row {
+  display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
+  margin-top: 18px; padding: 12px 14px;
+  border: 1px solid var(--rule); border-radius: 8px; background: var(--surface);
+}
+.lang-row .field input { min-width: 200px; }
+.lang-row .muted { flex: 1 1 240px; }

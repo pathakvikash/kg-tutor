@@ -16,6 +16,7 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
       email: l.email,
       name: l.name,
       background: l.background,
+      workingLanguage: l.workingLanguage,
       variant: assignVariant(l.id),
       concepts: l._count.states,
       evidence: l._count.evidence,
@@ -25,7 +26,12 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/api/learners", async (req, reply) => {
     const body = z
-      .object({ email: z.string().email(), name: z.string().optional(), background: z.string().optional() })
+      .object({
+        email: z.string().email(),
+        name: z.string().optional(),
+        background: z.string().optional(),
+        workingLanguage: z.string().optional(),
+      })
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
     const l = await prisma.learner.create({
@@ -33,9 +39,37 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
         email: body.data.email,
         name: body.data.name ?? null,
         background: body.data.background ?? null,
+        workingLanguage: body.data.workingLanguage ?? null,
       },
     });
     return { ...l, variant: assignVariant(l.id) };
+  });
+
+  /** Editing who the learner is. Only the fields that steer teaching. */
+  app.patch("/api/learners/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z
+      .object({
+        name: z.string().nullable().optional(),
+        background: z.string().nullable().optional(),
+        /** Empty string clears it, which is different from leaving it unset. */
+        workingLanguage: z.string().nullable().optional(),
+      })
+      .safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+    const data: Record<string, string | null> = {};
+    if (body.data.name !== undefined) data.name = body.data.name || null;
+    if (body.data.background !== undefined) data.background = body.data.background || null;
+    if (body.data.workingLanguage !== undefined) {
+      data.workingLanguage = body.data.workingLanguage?.trim() || null;
+    }
+
+    const updated = await prisma.learner.update({ where: { id }, data });
+    return {
+      id: updated.id, name: updated.name,
+      background: updated.background, workingLanguage: updated.workingLanguage,
+    };
   });
 
   app.get("/api/learners/:id/state", async (req, reply) => {

@@ -318,6 +318,15 @@ model Learner {
   name      String?
   /// Background bucket drives analogy selection and explanation caching. (12, 17)
   background String? @db.Text
+  /// The language this learner actually writes code in.
+  ///
+  /// Concepts are shared and many are language-neutral: "memory addresses" under
+  /// "Data Structures" implies nothing, so the item generator picked one — reasonably,
+  /// C — and a learner working through JavaScript was handed `realloc` and asked to
+  /// diagnose a dangling pointer. Nothing anywhere recorded what they write in, so
+  /// nothing could have done better. Items are tagged with the language they are
+  /// written in and selected against this. (07)
+  workingLanguage String?
   /// Raw evidence is private by default; only aggregates may reach the graph. (policy D)
   orgId     String?
   createdAt DateTime @default(now())

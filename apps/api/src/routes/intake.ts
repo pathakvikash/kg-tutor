@@ -3,7 +3,7 @@ import { z } from "zod";
 import { buildPlan, reconcilePlan } from "@kg/planner";
 import {
   applyAnswer, buildChains, derivedBeliefs, gradeResponse, initialState,
-  loadTopicGraph, nextProbe, recordEvidence, selectItem, generateItems,
+  loadTopicGraph, nextProbe, recordEvidence, selectItem, generateItems, isWrongLanguage,
   type IntakeState, type ProbeChoice,
 } from "@kg/teach";
 import { prisma, getLlm } from "../context.js";
@@ -13,12 +13,13 @@ const NO_MODEL = { error: "no model configured", detail: "Choose one in Settings
 /** Picks or generates the question for a probe. */
 async function questionFor(
   conceptId: string,
+  language?: string | null,
 ): Promise<{ itemId: string; prompt: string; code: string | null; codeLanguage: string | null } | null> {
   const llm = getLlm();
-  let item = await selectItem(prisma, conceptId, "functional");
-  if (!item && llm) {
-    await generateItems(prisma, llm, conceptId);
-    item = await selectItem(prisma, conceptId, "functional");
+  let item = await selectItem(prisma, conceptId, "functional", [], { language });
+  if ((!item || isWrongLanguage(item, language)) && llm) {
+    await generateItems(prisma, llm, conceptId, { language });
+    item = await selectItem(prisma, conceptId, "functional", [], { language });
   }
   return item
     ? { itemId: item.id, prompt: item.prompt, code: item.code, codeLanguage: item.codeLanguage }
@@ -45,7 +46,11 @@ async function advance(intakeId: string, lastAnswer?: AnswerVerdict): Promise<un
 
   if (!probe) return { ...(await finish(intakeId) as object), lastAnswer: lastAnswer ?? null };
 
-  const q = await questionFor(probe.conceptId);
+  const learner = await prisma.learner.findUnique({
+    where: { id: intake.learnerId },
+    select: { workingLanguage: true },
+  });
+  const q = await questionFor(probe.conceptId, learner?.workingLanguage);
   if (!q) {
     // No item and no way to make one: skip rather than stalling the intake.
     const skipped = applyAnswer(state, probe, false);

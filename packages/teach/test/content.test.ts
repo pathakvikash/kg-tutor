@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { ScriptedLLM } from "@kg/llm";
-import { generateItems, selectItem, updateItemStats, promoteExplanations } from "../src/content.js";
+import {
+  generateItems, selectItem, updateItemStats, promoteExplanations, isWrongLanguage,
+} from "../src/content.js";
 import { prisma, reset, concept, learner, hardEdge } from "./helpers.js";
 
 const FM = "The learner predicts a zero-delay timer runs before the current function returns.";
@@ -157,5 +159,85 @@ describe("promoteExplanations", () => {
     expect(byId[bad.id]).toBe("retired");
     expect(byId[middling.id]).toBe("kept");
     expect(byId[thin.id]).toBeUndefined();
+  });
+});
+
+describe("language-aware item selection", () => {
+  /**
+   * The reported failure: a learner working through JavaScript, assessed on concepts from
+   * a language-neutral Data Structures graph, was handed C — `int scores[100]`, `realloc`,
+   * a dangling pointer to diagnose. Nothing recorded what they write in, so nothing could
+   * have chosen better. An item in the wrong language does not test the concept, it tests
+   * the language.
+   */
+  /** Explicit rather than a partial spread: exactOptionalPropertyTypes rejects the latter. */
+  let seq = 0;
+  const make = (
+    conceptId: string,
+    code: string | null,
+    codeLanguage: string | null,
+    discrimination = 0.5,
+    status: "candidate" | "canonical" = "candidate",
+  ) =>
+    prisma.assessmentItem.create({
+      data: {
+        conceptId,
+        prompt: `prompt ${seq++}`,
+        code,
+        codeLanguage,
+        rubric: { mustDemonstrate: ["something"] },
+        targetsLevel: "functional",
+        requiresTransfer: false,
+        status,
+        discrimination,
+      },
+    });
+
+  it("prefers the learner's language over a better-performing item in another", async () => {
+    const c = await concept("some concept");
+    await make(c, "int x[10];", "c", 0.9, "canonical");
+    const want = await make(c, "const x = [];", "javascript", 0.1);
+    const picked = await selectItem(prisma, c, "functional", [], { language: "JavaScript" });
+    expect(picked?.id).toBe(want.id);
+  });
+
+  it("treats TypeScript as close enough to JavaScript", async () => {
+    const c = await concept("some concept");
+    const ts = await make(c, "const x: number[] = [];", "typescript");
+    await make(c, "int x[10];", "c");
+    const picked = await selectItem(prisma, c, "functional", [], { language: "javascript" });
+    expect(picked?.id).toBe(ts.id);
+  });
+
+  it("accepts an item with no code at all — prose is language-neutral", async () => {
+    const c = await concept("some concept");
+    const prose = await make(c, null, null);
+    await make(c, "int x[10];", "c");
+    const picked = await selectItem(prisma, c, "functional", [], { language: "JavaScript" });
+    expect(picked?.id).toBe(prose.id);
+  });
+
+  it("still returns a wrong-language item when it is the only one", async () => {
+    const c = await concept("some concept");
+    const only = await make(c, "int x[10];", "c");
+    const picked = await selectItem(prisma, c, "functional", [], { language: "JavaScript" });
+    expect(picked?.id).toBe(only.id);
+    // ...and the caller is told, so it can generate a variant instead of asking it.
+    expect(isWrongLanguage(picked!, "JavaScript")).toBe(true);
+  });
+
+  it("falls back to discrimination when no language is stated", async () => {
+    const c = await concept("some concept");
+    const best = await make(c, "int x[10];", "c", 0.8);
+    await make(c, "const x = [];", "javascript", 0.2);
+    const picked = await selectItem(prisma, c, "functional");
+    expect(picked?.id).toBe(best.id);
+  });
+
+  it("does not call a matching item wrong, in either casing", () => {
+    expect(isWrongLanguage({ codeLanguage: "JavaScript" }, "javascript")).toBe(false);
+    expect(isWrongLanguage({ codeLanguage: "python" }, "JavaScript")).toBe(true);
+    expect(isWrongLanguage({ codeLanguage: null }, "JavaScript")).toBe(false);
+    expect(isWrongLanguage({ codeLanguage: "c" }, null)).toBe(false);
   });
 });

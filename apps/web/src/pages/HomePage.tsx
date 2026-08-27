@@ -28,11 +28,18 @@ export function HomePage() {
   const [intake, setIntake] = useState<any>(null);
   const [builds, setBuilds] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lang, setLang] = useState("");
+  const [langSaved, setLangSaved] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     void api.learners().then((l) => { setLearners(l); setLearnerId(resolveLearner(learnerId, l)); });
   }, []);
+
+  useEffect(() => {
+    setLang(learners.find((l) => l.id === learnerId)?.workingLanguage ?? "");
+    setLangSaved(false);
+  }, [learnerId, learners]);
 
   const load = useCallback(async (id: string) => {
     if (!id) return;
@@ -69,6 +76,44 @@ export function HomePage() {
             {learners.map((l) => <option key={l.id} value={l.id}>{l.email}</option>)}
           </select>
         </label>
+      </div>
+
+      {/* Sits on the home page rather than buried in settings because nothing else can
+          infer it. Many concepts are language-neutral — "memory addresses" under "Data
+          Structures" implies nothing — so without this the item generator picks, and it
+          picked C for a learner working through JavaScript. */}
+      <div className="lang-row">
+        <label className="field">
+          you write code in
+          <input
+            value={lang}
+            onChange={(e) => { setLang(e.target.value); setLangSaved(false); }}
+            placeholder="e.g. JavaScript, Python, Rust"
+            list="lang-options"
+          />
+          <datalist id="lang-options">
+            {["JavaScript", "TypeScript", "Python", "Java", "Go", "Rust", "C", "C++", "SQL"]
+              .map((l) => <option key={l} value={l} />)}
+          </datalist>
+        </label>
+        <button
+          onClick={() => {
+            void api.updateLearner(learnerId, { workingLanguage: lang })
+              .then(() => api.learners())
+              .then((l) => { setLearners(l); setLangSaved(true); })
+              .catch(() => undefined);
+          }}
+          disabled={!learnerId || lang === (learners.find((l) => l.id === learnerId)?.workingLanguage ?? "")}
+        >
+          save
+        </button>
+        <span className="muted" style={{ fontSize: 12.5 }}>
+          {langSaved
+            ? "Saved. New questions and examples use it; existing ones are regenerated when they do not match."
+            : lang
+              ? "Every example and assessment is written in this."
+              : "Unset — questions may arrive in whichever language the concept is usually taught in."}
+        </span>
       </div>
 
       <div className="home-cards">

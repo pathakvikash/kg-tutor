@@ -39,15 +39,22 @@ the prerequisite, and a learner who knows binary search trees but slips on alias
 then recorded as not knowing binary search trees. Use the prerequisite failure modes to
 make the item unanswerable by someone who lacks them — never as the thing being asked.
 
-mustDemonstrate lists what a correct answer has to show. Write it as observable claims,
-not as a model answer.
+Write exactly FOUR items: one "familiar", two "functional", one "solid". Language
+variants mean a concept can now hold a bank per language, so an unbounded count multiplies
+— and this is already the most expensive call the system makes.
 
-Write the item in the setting the concept is actually studied in. A concept reached
-through "Asynchronous JavaScript" gets JavaScript, not Python — a learner working through
-JS who is handed a Python traceback has to translate before they can even start, and the
-item stops measuring the concept and starts measuring their Python. When the concept is
-genuinely language-neutral and no setting is given, prefer pseudocode or prose over
-picking a language at random.
+mustDemonstrate lists what a correct answer has to show. Write it as observable claims,
+not as a model answer. Two or three short claims, not a rubric.
+
+If a language is given, write EVERY item in it, and set codeLanguage to it. That
+instruction outranks the topic and outranks whatever language the concept is usually
+taught in: "memory addresses" is usually taught in C, and a learner working in JavaScript
+handed a "realloc" bug has to learn C before they can answer, at which point the item is
+measuring their C. Express the idea in the given language even where that language hides
+the mechanism — reason about what references actually hold, rather than reaching for
+pointer syntax it does not have.
+
+If no language is given, prefer pseudocode or prose over picking one at random.
 
 If the question is about a snippet, put the snippet in the "code" field with its
 language in "codeLanguage" — NOT inside "prompt". Code embedded in prose loses its line
@@ -68,6 +75,7 @@ export async function generateItems(
   prisma: PrismaClient,
   llm: LLMProvider,
   conceptId: string,
+  opts: { language?: string | null | undefined } = {},
 ): Promise<{ created: number }> {
   const concept = await prisma.concept.findUniqueOrThrow({ where: { id: conceptId } });
   const prereqs = await prisma.edge.findMany({
@@ -92,6 +100,8 @@ export async function generateItems(
         topics.length > 0
           ? `Studied as part of: ${topics.map((t) => t.topic.name).join(", ")}`
           : "",
+        // The strongest signal available, and the only one that was missing.
+        opts.language ? `Write every item in: ${opts.language}` : "",
         // Named as the bar, not the subject. Headed "failure modes to probe for", this
         // list became the topic: a binary-search-tree item came back asking about
         // shallow-copy aliasing, because that is its prerequisite's failure mode.
@@ -121,7 +131,9 @@ export async function generateItems(
         conceptId,
         prompt: item.prompt,
         code: item.code ?? null,
-        codeLanguage: item.codeLanguage ?? null,
+        // The requested language wins over whatever the model labelled it, so selection
+        // can rely on the tag actually meaning something.
+        codeLanguage: item.code ? (opts.language ?? item.codeLanguage ?? null) : null,
         rubric: { mustDemonstrate: item.mustDemonstrate } as Prisma.InputJsonValue,
         targetsLevel: item.targetsLevel as MasteryLevel,
         requiresTransfer: item.requiresTransfer,
@@ -137,11 +149,35 @@ export async function generateItems(
  * Picks an item for the level being tested. Prefers canonical over candidate, then the
  * item that best separates learners who understand from those who do not. (07)
  */
+/** Languages close enough that an item written in one reads fine to the other. */
+const SAME_FAMILY: Record<string, string[]> = {
+  javascript: ["javascript", "js", "typescript", "ts", "jsx", "tsx", "node"],
+  typescript: ["typescript", "ts", "javascript", "js", "tsx", "jsx"],
+  python: ["python", "py"],
+  rust: ["rust", "rs"],
+  go: ["go", "golang"],
+  java: ["java"],
+  c: ["c"],
+  "c++": ["c++", "cpp"],
+  sql: ["sql", "postgres", "postgresql"],
+};
+
+/**
+ * Picks an item for the level being tested. Prefers canonical over candidate, then the
+ * item that best separates learners who understand from those who do not. (07)
+ *
+ * `language` sorts before all of that, because a mismatch does not make the item weaker,
+ * it makes it measure something else: a JavaScript learner asked to diagnose a `realloc`
+ * bug is being tested on C. An item with no code at all is language-neutral and always
+ * acceptable. A wrong-language item is returned only when there is nothing else — better
+ * a hard question than no question — and the caller can generate a variant instead.
+ */
 export async function selectItem(
   prisma: PrismaClient,
   conceptId: string,
   targetsLevel: MasteryLevel,
   excludeItemIds: string[] = [],
+  opts: { language?: string | null | undefined } = {},
 ) {
   const items = await prisma.assessmentItem.findMany({
     where: {
@@ -152,12 +188,32 @@ export async function selectItem(
     },
   });
   if (items.length === 0) return null;
+
+  const want = opts.language?.toLowerCase().trim();
+  const family = want ? (SAME_FAMILY[want] ?? [want]) : null;
+  const rank = (lang: string | null): number => {
+    if (!family) return 1;                                  // no preference stated
+    if (!lang) return 1;                                    // prose or pseudocode: fine
+    return family.includes(lang.toLowerCase().trim()) ? 2 : 0;
+  };
+
   return items.sort(
     (a, b) =>
+      rank(b.codeLanguage) - rank(a.codeLanguage) ||
       Number(b.status === "canonical") - Number(a.status === "canonical") ||
       b.discrimination - a.discrimination ||
       a.timesUsed - b.timesUsed,
   )[0]!;
+}
+
+/** True when the best available item is in a language the learner does not write. */
+export function isWrongLanguage(
+  item: { codeLanguage: string | null },
+  language: string | null | undefined,
+): boolean {
+  if (!language || !item.codeLanguage) return false;
+  const family = SAME_FAMILY[language.toLowerCase().trim()] ?? [language.toLowerCase().trim()];
+  return !family.includes(item.codeLanguage.toLowerCase().trim());
 }
 
 export interface ItemStatsUpdate {
