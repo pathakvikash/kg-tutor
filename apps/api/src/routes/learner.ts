@@ -144,13 +144,20 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/learners/:id/due", async (req) => {
     const { id } = req.params as { id: string };
     const limit = Number((req.query as { limit?: string }).limit ?? 20);
-    const items = await dueForReview(prisma, id, { limit: Math.min(limit, 50) });
+    // The full queue first, then the page of it. `total` was computed after slicing, so
+    // it reported the cap rather than the backlog: 25 items due read as "20", and the
+    // review session's "1 of 10" implied ten was all there was.
+    const all = await dueForReview(prisma, id);
+    const items = all.slice(0, Math.min(Math.max(limit, 1), 50));
     return {
-      total: items.length,
+      total: all.length,
+      returned: items.length,
+      truncated: all.length > items.length,
+      // Counted over the whole queue, to match `total`.
       byKind: {
-        misconception: items.filter((i) => i.kind === "misconception").length,
-        inferred: items.filter((i) => i.kind === "inferred").length,
-        decayed: items.filter((i) => i.kind === "decayed").length,
+        misconception: all.filter((i) => i.kind === "misconception").length,
+        inferred: all.filter((i) => i.kind === "inferred").length,
+        decayed: all.filter((i) => i.kind === "decayed").length,
       },
       items,
     };

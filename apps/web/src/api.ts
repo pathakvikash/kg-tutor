@@ -23,9 +23,48 @@ export interface GraphPayload {
   edges: GraphEdge[];
 }
 
-async function get<T>(url: string): Promise<T> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+/**
+ * A failure that callers can reason about.
+ *
+ * `get` used to throw `${status} ${await res.text()}`, so a JSON error body arrived as a
+ * raw blob and got rendered as prose — on Metrics, on Graph, and inside the lesson
+ * transcript. And with no status attached, a page could not tell "404, this learner has
+ * no plan yet" from "500, the backend is broken", so both were shown as the same
+ * confident wrong sentence.
+ */
+export class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly remedy: string | null = null,
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+  /** True when the resource is simply absent — usually an empty state, not a fault. */
+  get isMissing(): boolean { return this.status === 404; }
+}
+
+/** Pulls {error, remedy} out of a JSON body, falling back to the raw text. */
+async function failure(res: Response): Promise<HttpError> {
+  const text = await res.text();
+  try {
+    const body = JSON.parse(text) as { error?: unknown; remedy?: string; detail?: string };
+    const message =
+      typeof body.error === "string"
+        ? body.error
+        : body.error
+          ? JSON.stringify(body.error)
+          : body.detail ?? text;
+    return new HttpError(res.status, message || `HTTP ${res.status}`, body.remedy ?? null);
+  } catch {
+    return new HttpError(res.status, text || `HTTP ${res.status}`);
+  }
+}
+
+async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, signal ? { signal } : {});
+  if (!res.ok) throw await failure(res);
   return res.json() as Promise<T>;
 }
 async function send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", url: string, body?: unknown): Promise<T> {
@@ -37,16 +76,8 @@ async function send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", url: string,
       ? {}
       : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
   });
-  if (!res.ok) {
-    let detail = await res.text();
-    try {
-      const body = JSON.parse(detail);
-      // The remedy is the whole point of an auth failure; dropping it leaves the user
-      // with a problem statement and no next step.
-      detail = [body.error, body.remedy].filter(Boolean).join(" — ") || detail;
-    } catch { /* keep the raw text */ }
-    throw new Error(detail || `HTTP ${res.status}`);
-  }
+  // Same typed failure as get(), so no caller has to care which helper it used.
+  if (!res.ok) throw await failure(res);
   return res.status === 204 ? (undefined as T) : (res.json() as Promise<T>);
 }
 
@@ -119,6 +150,9 @@ export async function askStream(
   }
 }
 
+/** Shared by the nav badge, the home card and the review session. */
+export const DUE_LIMIT = 25;
+
 export const api = {
   graph: (params: { topicId?: string; learnerId?: string } = {}) => {
     const q = new URLSearchParams();
@@ -135,8 +169,14 @@ export const api = {
   /** The language every example and item should be written in. */
   updateLearner: (id: string, patch: Record<string, unknown>) =>
     send<any>("PATCH", `/api/learners/${id}`, patch),
-  /** What has decayed, was never demonstrated, or has an unresolved misconception. */
-  due: (id: string, limit = 20) => get<any>(`/api/learners/${id}/due?limit=${limit}`),
+  /**
+   * What has decayed, was never demonstrated, or has an unresolved misconception.
+   *
+   * One limit for every surface. Four call sites asked with three different limits while
+   * the route computed `total` *after* slicing, so a 25-item backlog read as 25 in the
+   * nav, 20 on the card, 8 rows in the list and "1 of 10" in the session.
+   */
+  due: (id: string, limit = DUE_LIMIT) => get<any>(`/api/learners/${id}/due?limit=${limit}`),
   /** One more level of prerequisites under a single concept. */
   deepen: (conceptId: string) => post<any>(`/api/concepts/${conceptId}/deepen`, {}),
   setGoal: (id: string, topicId: string, depth: string) =>

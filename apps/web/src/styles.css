@@ -7,13 +7,17 @@
   --ink-mid: #3c4c4a;
   --ink-soft: #63706e;
   --rule: #dae2e0;
-  --rule-strong: #bcc8c6;
+  /* Was #bcc8c6 at 1.72:1 — and this border is the only thing separating a
+     field from the card behind it. */
+  --rule-strong: #96a5a2;
   --accent: #a96400;
   --accent-bg: #f7ecd9;
   --structure: #1d5b57;
 
   --m-unknown: #c2ccca;
-  --m-familiar: #9ec6c0;
+  /* Was #9ec6c0: 1.13:1 against --m-unknown, i.e. two of the four mastery
+     levels were indistinguishable. */
+  --m-familiar: #79b1a9;
   --m-functional: #4f9a90;
   --m-solid: #1d5b57;
 }
@@ -26,7 +30,7 @@
     --ink-mid: #b4c0be;
     --ink-soft: #8b9997;
     --rule: #243130;
-    --rule-strong: #354543;
+    --rule-strong: #556966;
     --accent: #e8a63c;
     --accent-bg: #2c2314;
     --structure: #4fa69e;
@@ -35,7 +39,106 @@
     --m-familiar: #3d6560;
     --m-functional: #4f9a90;
     --m-solid: #7fd0c6;
+
+    /* On the dark amber, ink reads and white does not. */
+    --on-accent: #1a1207;
+    --accent-text: var(--accent);
+    --danger: #f2b8b5;
+    --danger-bg: #2a1614;
+    --positive-text: var(--m-functional);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Foundation: tokens
+   ───────────────────────────────────────────────────────────────────────────────
+   :root used to declare fifteen custom properties and all fifteen were colour, so
+   every other dimension in the app was a literal. An audit of this file counted 20
+   distinct spacing values, 13 border-radii and 19 font sizes — including 9.5px,
+   10.5px, 11.5px, 12.5px and 13.5px, which is what hand-tuning without a scale
+   looks like. These are the other axes.
+
+   The contrast values quoted below were measured against the real token values in
+   both themes; several were outright WCAG failures rather than matters of taste.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Type. One definition each, replacing 44 repeated font stacks — one of which
+     (the mono at :51) had silently drifted from the other 33. */
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "Zilla Slab", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+  /* Spacing. A 4px base, six steps. Anything outside this is a bug or a one-off
+     with a comment explaining itself. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  /* Radius, by what the thing is: control, inline surface, panel, pill. The app
+     had drifted to nine numeric radii with no rule for choosing between them. */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-pill: 999px;
+
+  /* Type scale — only the sizes that actually recur. */
+  --t-micro: 10.5px;
+  --t-meta: 11.5px;
+  --t-small: 12.5px;
+  --t-body: 14px;
+  --t-section: 15px;
+  --t-lead: 16px;
+  --t-h: 20px;
+  --t-display: 26px;
+
+  /* Text ON the accent. White on this amber measured 2.11:1 — the primary button,
+     app-wide, was below the 4.5:1 floor for its own label. */
+  --on-accent: #ffffff;
+  /* The accent AS text is 3.98:1 here, and it is used as text in nine places, so
+     it needs a darker sibling rather than a caveat. */
+  --accent-text: #8a5100;
+
+  --danger: #b3261e;
+  --danger-bg: #fdecea;
+  /* --m-functional as text measures 3.30:1; used as text in three places. */
+  --positive-text: #3c7c74;
+
+  --focus-outline-width: 2px;
+  --focus-outline-offset: 2px;
+  --focus-color: var(--accent);
+
+  /* The app's one elevation was a black shadow, invisible on the dark ground. */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06);
+
+  /* There was no z-index and no position rule anywhere, so nothing could be
+     layered on purpose — which a skip link and a sticky heading both need. */
+  --z-canvas: 0;
+  --z-panel: 10;
+  --z-sticky: 20;
+  --z-overlay: 100;
+
+  --dur-fast: 120ms;
+  --dur-mid: 260ms;
+  --dur-slow: 400ms;
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+
+  /* Line length. Three pages set none at all and ran ~2500px lines at 2560px. */
+  --measure-narrow: 620px;
+  --measure: 720px;
+  --measure-wide: 940px;
+  --measure-table: 1080px;
+
+  /* Per-primitive knobs, so a variant overrides a variable instead of restating
+     the whole rule. */
+  --panel-pad: var(--s-4);
+  --panel-bg: var(--surface);
+  --bubble-pad: var(--s-3) var(--s-4);
+  --bubble-size: var(--t-body);
+  --chip-size: var(--t-micro);
 }
 
 * { box-sizing: border-box; }
@@ -52,15 +155,31 @@ code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 
 
 .app { display: flex; flex-direction: column; height: 100%; }
 
+/* At 380px, .nav overflowed the bar with no document scroll, so Learner, Curate,
+   Metrics and Settings were simply unreachable — half the app, on a phone. The
+   brand was starting the squeeze: "kg-tutor" has a soft-wrap opportunity at its
+   hyphen, so it rendered as "kg-" / "tutor" at every width from 320 to 860px. */
 .topbar {
-  display: flex; align-items: center; gap: 20px;
-  padding: 0 18px; height: 52px; flex: none;
+  display: flex; align-items: center; gap: var(--s-5);
+  padding: 0 var(--s-4); min-height: 52px; flex: none;
   background: var(--surface); border-bottom: 1px solid var(--rule);
 }
-.brand { font-family: "Zilla Slab", Georgia, serif; font-weight: 700; font-size: 17px; }
-.nav { display: flex; gap: 4px; }
+.brand, .badge { flex: none; white-space: nowrap; }
+/* The nav scrolls rather than overflowing invisibly. Momentum scrolling on iOS,
+   and the scrollbar is hidden because the fade plus the active-link auto-scroll
+   already communicate that there is more. */
+.nav {
+  flex: 1 1 auto; min-width: 0;
+  overflow-x: auto; overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.nav::-webkit-scrollbar { display: none; }
+.nav a { flex: none; white-space: nowrap; }
+.brand { font-family: var(--font-serif); font-weight: 700; font-size: var(--t-lead); }
+.nav { display: flex; gap: var(--s-1); }
 .nav a {
-  padding: 5px 11px; border-radius: 4px; text-decoration: none;
+  padding: 5px 11px; border-radius: var(--r-sm); text-decoration: none;
   color: var(--ink-mid); font-weight: 500;
 }
 .nav a:hover { background: var(--surface-alt); }
@@ -134,10 +253,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .mdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-.card {
-  background: var(--surface); border: 1px solid var(--rule);
-  border-radius: 6px; padding: 14px;
-}
+/* The base surface is .panel now. `.card` survives only as an alias so the eight
+   pages that use the name keep working; the block that used to be here silently
+   lost to a later redefinition for the whole app. */
 .card .k {
   font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: 0.09em;
   text-transform: uppercase; color: var(--ink-soft);
@@ -785,3 +903,173 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
 }
 .lang-row .field input { min-width: 200px; }
 .lang-row .muted { flex: 1 1 240px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Foundation: primitives
+   ───────────────────────────────────────────────────────────────────────────────
+   Thirteen near-identical panel declarations, six button treatments and an
+   uppercase mono micro-label written thirteen times with nine different
+   size/tracking/weight triples. These are the shared versions. Page-specific
+   classes above are being migrated onto them; where an old name survives it is
+   kept as an alias so nothing breaks in a half-finished state.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Focus. There was not one :focus, :focus-visible or outline declaration in
+   787 lines, so nothing in the app could be operated by keyboard with confidence.
+   Outline rather than box-shadow: it survives the react-flow viewport transform
+   and any overflow: hidden ancestor. ─────────────────────────────────────────── */
+:where(a, button, select, input, textarea, [tabindex], summary):focus-visible {
+  outline: var(--focus-outline-width) solid var(--focus-color);
+  outline-offset: var(--focus-outline-offset);
+  border-radius: var(--r-sm);
+}
+/* react-flow sets outline: none on nodes and never restores a ring. */
+.react-flow__node:focus-visible {
+  outline: var(--focus-outline-width) solid var(--focus-color);
+  outline-offset: var(--focus-outline-offset);
+}
+
+/* ── Visually hidden, and the skip target ─────────────────────────────────────
+   Retires six places where the only explanation was a title attribute, which no
+   keyboard or screen-reader user ever receives. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.skip-link {
+  position: absolute; left: var(--s-2); top: -100px; z-index: var(--z-overlay);
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--accent); border-radius: var(--r-sm);
+  padding: var(--s-2) var(--s-3); font-size: var(--t-small); text-decoration: none;
+}
+.skip-link:focus { top: var(--s-2); }
+
+/* ── Surface ─────────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  padding: var(--panel-pad);
+}
+.panel--tight { --panel-pad: var(--s-3); }
+.panel--inset { background: var(--surface-alt); }
+.panel--dashed { border-style: dashed; }
+/* Alias: the pages still say .card. Deliberately carries no display value — the
+   flex-column that had leaked onto the base class was reshaping the Metrics stat
+   blocks, which were never designed for it. Use .stack for rhythm. */
+.card { background: var(--panel-bg); border: 1px solid var(--rule); border-radius: var(--r-lg); padding: var(--panel-pad); }
+
+/* ── Layout utilities. Replaces ten hand-rolled inline flex rows. ───────────── */
+.row { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.row--tight { gap: var(--s-1); }
+.row--baseline { align-items: baseline; }
+.stack { display: flex; flex-direction: column; gap: var(--s-2); }
+.stack--tight { gap: var(--s-1); }
+.stack--loose { gap: var(--s-4); }
+
+/* ── Title-plus-action row that actually wraps ───────────────────────────────── */
+.head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--s-4); flex-wrap: wrap; row-gap: var(--s-2);
+}
+@media (max-width: 620px) {
+  /* The trailing control goes full width and leads, rather than being squeezed
+     into a column too narrow to read its own value. */
+  .head > :last-child:not(:only-child) { order: -1; width: 100%; }
+}
+
+/* ── The uppercase mono micro-label ─────────────────────────────────────────── */
+.eyebrow {
+  font-family: var(--font-mono); font-size: var(--t-micro); font-weight: 500;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft);
+  margin: 0;
+}
+
+/* ── Emphasis rail. Emphasis was drawn three incompatible ways at eight sites;
+   an inset shadow does not change the box model, so it cannot shift text. ───── */
+.rail { box-shadow: inset 3px 0 0 var(--rail, var(--accent)); }
+.rail--accent { --rail: var(--accent); }
+.rail--danger { --rail: var(--danger); }
+.rail--positive { --rail: var(--m-solid); }
+
+/* ── Callout, with tone. A failed irreversible write used to look exactly like a
+   success: both were .banner. ────────────────────────────────────────────────── */
+.notice {
+  border: 1px solid var(--rule); border-left: 3px solid var(--rule-strong);
+  border-radius: var(--r-md); background: var(--surface-alt);
+  padding: var(--s-3) var(--s-4); font-size: var(--t-small); line-height: 1.55;
+}
+.notice--info { border-left-color: var(--structure); }
+.notice--warn { border-left-color: var(--accent); background: var(--accent-bg); color: var(--ink); }
+.notice--error { border-left-color: var(--danger); background: var(--danger-bg); color: var(--ink); }
+.notice--ok { border-left-color: var(--m-solid); }
+.notice strong { display: block; margin-bottom: var(--s-1); }
+.notice > :last-child { margin-bottom: 0; }
+
+/* ── Loading placeholder, so a designed empty state stops being shown before the
+   first response has resolved — "nothing is due" and "we have not asked yet" are
+   different claims. ─────────────────────────────────────────────────────────── */
+.skeleton {
+  background: var(--surface-alt); border-radius: var(--r-sm);
+  height: 1em; animation: pulse 1.6s ease-in-out infinite;
+}
+.skeleton--line { height: 0.85em; margin-bottom: var(--s-2); }
+.skeleton--w40 { width: 40%; } .skeleton--w60 { width: 60%; } .skeleton--w80 { width: 80%; }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+/* ── Busy: spinner + label + elapsed, announced. Replaces the {busy ?? "Label"}
+   pattern at eleven sites, which swapped a control's own name for its status and
+   so removed its accessible name exactly when it changed. ────────────────────── */
+.busy { display: inline-flex; align-items: center; gap: var(--s-2); font-size: var(--t-small); color: var(--ink-soft); }
+.busy--block { display: flex; padding: var(--s-2) 0; }
+
+/* ── Tables scroll locally instead of dragging the page sideways ─────────────── */
+.table-wrap { overflow-x: auto; max-width: 100%; }
+.table-wrap > table { min-width: 520px; }
+
+/* ── Mastery, with a shape channel as well as a hue. Two of the four levels were
+   1.13:1 apart in light mode, so colour could not be the only encoding. ─────── */
+.mastery-mark {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  flex: none; box-sizing: border-box;
+}
+.mastery-mark[data-level="unknown"] { border: 1.5px dashed var(--m-unknown); background: none; }
+.mastery-mark[data-level="familiar"] { border: 1.5px solid var(--m-familiar); background: none; }
+.mastery-mark[data-level="functional"] { border: 1.5px solid var(--m-functional); background: var(--m-functional); }
+.mastery-mark[data-level="solid"] {
+  border: 1.5px solid var(--m-solid); background: var(--m-solid);
+  border-radius: var(--r-sm); /* square-ish: readable with no colour at all */
+}
+
+/* ── Content measure. Three pages had no max-width and ran ~2500px lines. ───── */
+.page--narrow { max-width: var(--measure-narrow); margin-inline: auto; }
+.page--measure { max-width: var(--measure); margin-inline: auto; }
+.page--wide { max-width: var(--measure-wide); margin-inline: auto; }
+.page--table { max-width: var(--measure-table); margin-inline: auto; }
+
+/* The transcript had no horizontal padding at narrow widths, so text touched
+   both edges of the screen. */
+@media (max-width: 760px) {
+  .chat, .composer { padding-inline: var(--s-4); }
+}
+
+/* <main> was inserted between .app and the pages, so it has to be transparent to
+   the flex column the graph canvas measures itself against. */
+.app-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.app-main:focus { outline: none; }
+.app-main:focus-visible { outline: none; }
+
+/* Below this, the provider badge is competing with navigation for the same row and
+   losing on priority: it is a status label, and the nav is how you move. Hidden
+   rather than shrunk, because the same information is on the Settings page it links
+   to. Measured at 380px: the nav went from 121px of usable width to 259px, i.e. from
+   two visible links to four. */
+@media (max-width: 620px) {
+  .topbar .badge { display: none; }
+  .topbar { gap: var(--s-3); padding-inline: var(--s-3); }
+}
+/* A fade at the trailing edge, so a scrollable nav looks scrollable. */
+.nav {
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 18px), transparent 100%);
+}
+@media (min-width: 900px) { .nav { mask-image: none; } }

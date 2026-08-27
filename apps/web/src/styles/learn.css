@@ -1,0 +1,6 @@
+/* Page-scoped styles for: learn
+ *
+ * One file per page so that page work can happen in parallel without two people
+ * editing the same stylesheet. Shared tokens and primitives live in styles.css and are
+ * NOT redefined here — if something belongs to more than one page, it belongs there.
+ */
