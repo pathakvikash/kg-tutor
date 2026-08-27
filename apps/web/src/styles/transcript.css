@@ -1,15 +1,5 @@
 /* Transcript page styles; loaded after styles.css, so equal-specificity rules here win. */
 
-/* Scoped dark tokens: styles.css redeclares these after its own dark block. */
-@media (prefers-color-scheme: dark) {
-  .w-root,
-  .build-log {
-    --danger: #f2b8b5;
-    --danger-bg: #2a1614;
-    --positive-text: var(--m-functional);
-  }
-}
-
 /* Two classes, to beat .inspector h4 and .build-section h4 on specificity. */
 .md .md-h {
   font-family: var(--font-serif);

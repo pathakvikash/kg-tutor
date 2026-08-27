@@ -18,6 +18,15 @@
   --m-familiar: #79b1a9;
   --m-functional: #4f9a90;
   --m-solid: #1d5b57;
+
+  /* White text fails contrast on this amber. */
+  --on-accent: #ffffff;
+  /* Use this, not --accent, when the accent is text. */
+  --accent-text: #8a5100;
+  --danger: #b3261e;
+  --danger-bg: #fdecea;
+  --positive-text: #3c7c74;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -78,20 +87,9 @@
   --t-h: 24px;
   --t-display: 32px;
 
-  /* White text fails contrast on this amber. */
-  --on-accent: #ffffff;
-  /* Use this, not --accent, when the accent is text. */
-  --accent-text: #8a5100;
-
-  --danger: #b3261e;
-  --danger-bg: #fdecea;
-  --positive-text: #3c7c74;
-
   --focus-outline-width: 2px;
   --focus-outline-offset: 2px;
   --focus-color: var(--accent);
-
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06);
 
   --z-canvas: 0;
   --z-panel: 10;
