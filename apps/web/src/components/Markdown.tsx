@@ -3,6 +3,11 @@ import { highlight, resolveLanguage } from "./highlight";
 
 // Builds React elements, never HTML, so model output has no injection surface.
 
+/** A header row followed by a separator row; a lone pipe in prose is not a table. */
+function isTableStart(line: string, next: string): boolean {
+  return line.includes("|") && next.includes("-") && /^\s*\|?[\s:-]*-[\s:|-]*\|?\s*$/.test(next);
+}
+
 function inline(text: string, keyPrefix: string): ReactNode[] {
   const out: ReactNode[] = [];
   // Order matters: code first, so `**` inside a code span stays literal.
@@ -83,9 +88,8 @@ export function Markdown({ text }: { text: string }) {
       continue;
     }
 
-    // A pipe table; without this the rows fall through to the paragraph branch.
     const nextLine = lines[i + 1] ?? "";
-    if (line.includes("|") && /^\s*\|?[\s:-]*-[\s:|-]*\|?\s*$/.test(nextLine) && nextLine.includes("-")) {
+    if (isTableStart(line, nextLine)) {
       const cells = (row: string) =>
         row.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
       const header = cells(line);
@@ -158,14 +162,16 @@ export function Markdown({ text }: { text: string }) {
       continue;
     }
 
-    const para: string[] = [];
+    // Every earlier branch has declined this line, so consume it before testing the next.
+    const para: string[] = [line];
+    i++;
     while (
       i < lines.length &&
       (lines[i] ?? "").trim() !== "" &&
       !(lines[i] ?? "").trimStart().startsWith("```") &&
       !/^#{1,4}\s/.test(lines[i] ?? "") &&
       !/^\s*>\s?/.test(lines[i] ?? "") &&
-      !(lines[i] ?? "").includes("|") &&
+      !isTableStart(lines[i] ?? "", lines[i + 1] ?? "") &&
       !/^\s*([-*+]|\d+\.)\s+/.test(lines[i] ?? "")
     ) {
       para.push(lines[i] ?? "");
