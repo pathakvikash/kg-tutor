@@ -46,7 +46,12 @@ variants mean a concept can now hold a bank per language, so an unbounded count 
 mustDemonstrate lists what a correct answer has to show. Write it as observable claims,
 not as a model answer. Two or three short claims, not a rubric.
 
-If a language is given, write EVERY item in it, and set codeLanguage to it. That
+If a language is given, write EVERY item in it, and set codeLanguage to it — including
+when the only code is a short identifier or declaration inside the prompt text rather
+than in the "code" field. An item whose prompt says "a student declares int scores[100]
+in C" is a C item even with an empty code field, and leaving codeLanguage empty makes it
+look language-neutral to everything downstream. Set codeLanguage to "none" ONLY when the
+item names no language and contains no code in any form. That
 instruction outranks the topic and outranks whatever language the concept is usually
 taught in: "memory addresses" is usually taught in C, and a learner working in JavaScript
 handed a "realloc" bug has to learn C before they can answer, at which point the item is
@@ -192,9 +197,11 @@ export async function selectItem(
   const want = opts.language?.toLowerCase().trim();
   const family = want ? (SAME_FAMILY[want] ?? [want]) : null;
   const rank = (lang: string | null): number => {
-    if (!family) return 1;                                  // no preference stated
-    if (!lang) return 1;                                    // prose or pseudocode: fine
-    return family.includes(lang.toLowerCase().trim()) ? 2 : 0;
+    if (!family) return 2;                                  // no preference stated
+    const tag = lang?.toLowerCase().trim();
+    if (tag === "none") return 2;                           // declared language-free
+    if (!tag) return 1;                                     // untagged: unknown
+    return family.includes(tag) ? 2 : 0;                    // matching, or another language
   };
 
   return items.sort(
@@ -206,14 +213,27 @@ export async function selectItem(
   )[0]!;
 }
 
-/** True when the best available item is in a language the learner does not write. */
+/**
+ * True when the best available item is not in a language the learner writes.
+ *
+ * An untagged item counts as wrong, not as neutral. That distinction is the whole bug:
+ * a question reading "a student declares `int scores[100];` in C" carries its C inline
+ * in the prompt, so the `code` field is empty and `codeLanguage` is null — and treating
+ * null as "prose, therefore fine for everyone" served exactly that question to a learner
+ * who had said they write JavaScript. The generator now tags "none" for genuinely
+ * language-free items, so null means untagged rather than neutral, and an untagged item
+ * gets one tagged replacement generated rather than being trusted.
+ */
 export function isWrongLanguage(
   item: { codeLanguage: string | null },
   language: string | null | undefined,
 ): boolean {
-  if (!language || !item.codeLanguage) return false;
-  const family = SAME_FAMILY[language.toLowerCase().trim()] ?? [language.toLowerCase().trim()];
-  return !family.includes(item.codeLanguage.toLowerCase().trim());
+  if (!language) return false;
+  const tag = item.codeLanguage?.toLowerCase().trim();
+  if (tag === "none") return false;          // explicitly language-free
+  if (!tag) return true;                     // untagged: unknown, so not trusted
+  const want = language.toLowerCase().trim();
+  return !(SAME_FAMILY[want] ?? [want]).includes(tag);
 }
 
 export interface ItemStatsUpdate {

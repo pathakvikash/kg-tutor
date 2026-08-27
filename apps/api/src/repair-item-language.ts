@@ -25,6 +25,31 @@ const TOPIC_LANGUAGE: [RegExp, string][] = [
   [/\bsql\b|\bpostgres\b/i, "sql"],
 ];
 
+/**
+ * Language given away by the prompt or code text rather than by the tag.
+ *
+ * Deliberately narrow: each pattern is something that cannot plausibly appear in the
+ * other languages here, so a false positive retires a good item. "array" or "function"
+ * would match everything; `malloc` and `printf` do not.
+ */
+const PROSE_MARKERS: [RegExp, string][] = [
+  [/\bin C\b|\bmalloc\b|\bcalloc\b|\brealloc\b|\bprintf\b|\bsizeof\b|\bstruct\s+\w+\s*\{|\bint\s+\w+\s*\[/, "c"],
+  [/\bdef\s+\w+\s*\(|\bin Python\b|\bself\.|\b__init__\b|\bprint\(/, "python"],
+  [/\bpublic\s+static\s+void\b|\bSystem\.out\.|\bin Java\b/, "java"],
+  [/\bfn\s+\w+\s*\(|\blet\s+mut\b|\bin Rust\b|\bVec<|\b&str\b/, "rust"],
+  [/\bfunc\s+\w+\s*\(|\bin Go\b|\b:=\s/, "go"],
+];
+
+/** The language an item is written in, from its tag or, failing that, its text. */
+function detectLanguage(item: { codeLanguage: string | null; prompt: string; code: string | null }): string | null {
+  const tag = item.codeLanguage?.toLowerCase().trim();
+  if (tag && tag !== "none") return tag;
+  if (tag === "none") return null;
+  const text = `${item.prompt}\n${item.code ?? ""}`;
+  for (const [pattern, lang] of PROSE_MARKERS) if (pattern.test(text)) return lang;
+  return null;
+}
+
 /** Languages that are close enough not to count as a mismatch. */
 const COMPATIBLE: Record<string, string[]> = {
   javascript: ["javascript", "js", "typescript", "ts", "jsx", "tsx", "node"],
@@ -37,8 +62,16 @@ const COMPATIBLE: Record<string, string[]> = {
 async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
 
+  /**
+   * Every live item, not only the tagged ones.
+   *
+   * The first version of this only looked at items with a codeLanguage, which missed the
+   * whole class that caused the complaint: a question reading "a student declares
+   * `int scores[100];` in C" carries its language inline in the prompt, so the code field
+   * is empty and codeLanguage is null. Untagged did not mean neutral, it meant unexamined.
+   */
   const items = await prisma.assessmentItem.findMany({
-    where: { codeLanguage: { not: null }, status: { not: "retired" } },
+    where: { status: { not: "retired" } },
     include: { concept: { include: { topics: { include: { topic: true } } } } },
   });
 
@@ -56,9 +89,10 @@ async function main(): Promise<void> {
     if (implied.size !== 1) continue;
 
     const expected = [...implied][0]!;
-    const actual = (item.codeLanguage ?? "").toLowerCase().trim();
+    const actual = detectLanguage(item) ?? "";
+    if (actual === "") continue;                          // genuinely language-free
     if (COMPATIBLE[expected]?.includes(actual)) continue;
-    if (actual === "" || actual === "text" || actual === "pseudocode") continue;
+    if (actual === "text" || actual === "pseudocode") continue;
 
     doomed.push({
       id: item.id,

@@ -234,10 +234,42 @@ describe("language-aware item selection", () => {
     expect(picked?.id).toBe(best.id);
   });
 
+  /**
+   * The reported failure, exactly: "A student declares `int scores[100];` in C" carries
+   * its C inline in the prompt, so `code` is empty and codeLanguage is null. Treating
+   * null as neutral served that question to a learner who writes JavaScript.
+   */
+  it("treats an untagged item as unknown rather than neutral", () => {
+    expect(isWrongLanguage({ codeLanguage: null }, "JavaScript")).toBe(true);
+  });
+
+  it("respects an explicit language-free tag", () => {
+    expect(isWrongLanguage({ codeLanguage: "none" }, "JavaScript")).toBe(false);
+  });
+
+  it("prefers a matching item over an untagged one", async () => {
+    const c = await concept("some concept");
+    await make(c, null, null, 0.9);                       // untagged, high discrimination
+    const want = await make(c, "const x = [];", "javascript", 0.1);
+    const picked = await selectItem(prisma, c, "functional", [], { language: "JavaScript" });
+    expect(picked?.id).toBe(want.id);
+  });
+
+  it("prefers a declared language-free item over another language", async () => {
+    const c = await concept("some concept");
+    const neutral = await make(c, null, "none", 0.1);
+    await make(c, "int x[10];", "c", 0.9);
+    const picked = await selectItem(prisma, c, "functional", [], { language: "JavaScript" });
+    expect(picked?.id).toBe(neutral.id);
+  });
+
   it("does not call a matching item wrong, in either casing", () => {
     expect(isWrongLanguage({ codeLanguage: "JavaScript" }, "javascript")).toBe(false);
     expect(isWrongLanguage({ codeLanguage: "python" }, "JavaScript")).toBe(true);
-    expect(isWrongLanguage({ codeLanguage: null }, "JavaScript")).toBe(false);
+    // Was asserted false here, which is the bug this suite now pins: an untagged item
+    // is unknown, and a "C in the prompt text" item is untagged.
+    expect(isWrongLanguage({ codeLanguage: null }, "JavaScript")).toBe(true);
+    // No stated language means nothing to mismatch against.
     expect(isWrongLanguage({ codeLanguage: "c" }, null)).toBe(false);
   });
 });
