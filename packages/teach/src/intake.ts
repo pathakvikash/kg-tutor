@@ -70,8 +70,9 @@ export function buildChains(
     }
     chains.push(path.reverse());
   }
-  // A single-concept chain teaches the probe nothing a lesson would not.
-  return chains.filter((c) => c.length > 0);
+  // A single-concept chain teaches the probe nothing, unless it is all the topic has.
+  const searchable = chains.filter((c) => c.length > 1);
+  return searchable.length > 0 ? searchable : chains;
 }
 
 export function initialState(chains: string[][]): IntakeState {

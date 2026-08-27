@@ -24,6 +24,17 @@ describe("buildChains", () => {
     expect(chains).toEqual([["a", "b"]]);
   });
 
+  it("drops single-concept chains when a searchable one exists", () => {
+    const chains = buildChains([...IDS, "lone"], EDGES);
+    expect(chains).not.toContainEqual(["lone"]);
+    expect(chains).toContainEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("keeps single-concept chains when the topic has no edges at all", () => {
+    const chains = buildChains(["solo", "other"], []);
+    expect(chains).toEqual([["solo"], ["other"]]);
+  });
+
   it("terminates on a cycle rather than looping forever", () => {
     const chains = buildChains(["p", "q"], [{ srcId: "p", dstId: "q" }, { srcId: "q", dstId: "p" }]);
     expect(chains.length).toBeGreaterThan(0);
