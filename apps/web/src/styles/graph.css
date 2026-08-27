@@ -196,3 +196,10 @@
 }
 .chip--action::after { content: " →"; font-size: var(--t-micro); }
 .chip--action:hover { background: var(--accent-bg); }
+
+/* styles.css owns the inert look (opacity + not-allowed) for every aria-disabled
+   control. Two base hover rules out-specify it, though: `button:hover` still repaints
+   the label accent, and `button.primary:hover` sets opacity back to 0.9 — so hovering
+   an inert Answer or Ask button made it look pressable again. */
+.graph-page button[aria-disabled="true"]:hover { color: var(--ink); }
+.graph-page button.primary[aria-disabled="true"]:hover { opacity: 0.55; color: #fff; }

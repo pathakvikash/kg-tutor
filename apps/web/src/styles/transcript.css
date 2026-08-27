@@ -78,14 +78,19 @@
 }
 
 /* One column per region does not survive a narrow column. auto-fit wraps instead, and
-   140px is about where a mono identifier stops breaking mid-token. */
-.w-regions { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+   140px is about where a mono identifier stops breaking mid-token.
+
+   Qualified by .w-root — the ancestor .w-regions always has — to reach 0-2-0. The base
+   collapse in styles.css is `.w-regions:not([style*="grid-template-columns"])`, also
+   0-2-0, so a bare `.w-regions` here lost to it at every viewport under 700px no matter
+   how wide the widget column really was: two 241px tracks in a ~520px container, where
+   auto-fit fits more than two. Equal specificity, later file, so this one wins. */
+.w-root .w-regions { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 @container (max-width: 288px) {
   /* 288px = two 140px tracks plus the 8px gap, i.e. exactly where auto-fit drops to
-     one column on its own. The rule exists only to beat the viewport-keyed
-     `!important` two-column rule in styles.css, which at a 244px bubble would
-     otherwise force two ~118px columns. */
-  .w-regions { grid-template-columns: 1fr !important; }
+     one column on its own. Needed because a 244px bubble is still under the base
+     rule's 700px viewport query, which would otherwise force two ~118px columns. */
+  .w-root .w-regions { grid-template-columns: 1fr; }
 }
 /* A 140px column ellipsised "microtask queue" down to "microtask q…". A label on two
    lines is readable; a truncated one is not. */
@@ -100,7 +105,11 @@
    current-vs-done was carried by background-colour alone. The button is 25px with its
    8px padding pulled back out by a negative margin, so the row keeps its original
    rhythm; the visible dot is a pseudo-element inset to the content box, which is the
-   only way to keep a 1px ring at 9px while the border box is 25px. */
+   only way to keep a 1px ring at 9px while the border box is 25px.
+
+   The reset below is 0-2-0 and that is now enough: styles.css expresses the done and
+   current fills as --dot-bg / --dot-border rather than as `background` at 0-3-0, so
+   `background: none` here clears all three states instead of pending ones only. */
 .w-tl-dots {
   gap: var(--s-4); /* 25px targets tile edge-to-edge at 16px; at 5px they overlapped */
   row-gap: var(--s-4);
@@ -155,16 +164,11 @@
 }
 
 /* aria-disabled rather than disabled, so the press that reaches the last step does not
-   blur focus to <body>. The look has to be restated: :disabled no longer matches, and
-   the base button:hover would otherwise still turn a dead control amber. */
-.w-tl-head button[aria-disabled="true"] {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.w-tl-head button[aria-disabled="true"]:hover {
-  border-color: var(--rule-strong);
-  color: var(--ink);
-}
+   blur focus to <body>. The dimming and the cursor come from the one global
+   [aria-disabled="true"] rule in styles.css; only the hover colour is left here, because
+   that global resets border-color and `button:hover` would still turn a dead control's
+   label amber. */
+.w-tl-head button[aria-disabled="true"]:hover { color: var(--ink); }
 
 /* ── Quiz options: an outcome that survives greyscale ─────────────────────────
    Was border-colour plus text-colour only, with a raw #b3261e that never got a dark
@@ -191,10 +195,17 @@
   line-height: inherit;
 }
 .w-root .w-opt-label { min-width: 0; }
+/* Every option gains aria-disabled once answered, so the global rule for it fades the
+   CHOSEN one — glyph, border and verdict colour — to 0.55. An answered option is inert,
+   not blocked, so neither the dimming nor the not-allowed cursor applies here. */
+.w-root .w-opt[aria-disabled="true"] {
+  opacity: 1;
+  cursor: default;
+}
 /* 0.4 put the unchosen options below every contrast floor while they are still the
-   text a learner re-reads to see what they missed. */
+   text a learner re-reads to see what they missed. Declared after the rule above, at
+   equal specificity, so the unchosen ones keep their fade. */
 .w-root .w-opt.dim { opacity: 0.62; }
-.w-root .w-opt[aria-disabled="true"] { cursor: default; }
 .w-root .w-opt.dim:hover {
   border-color: var(--rule-strong);
   color: var(--ink);

@@ -16,17 +16,7 @@
 .page.review-session > * { margin: 0; }
 .page.review-session > * + * { margin-top: var(--s-4); }
 
-/* A button that is a direct child of a flex column stretches to the column's width,
-   which turned "Check this one" into a ~690px accent bar. */
-.review-session .stack > button,
-.review-session .stack > .btn { align-self: flex-start; }
-
 .review-session h2 { font-size: var(--t-h); }
-
-/* A control that is busy keeps its name, its focus and its tab stop, so button:disabled's
-   own dimming never applies — this is the only thing left saying "not right now".
-   Scoped here because styles.css is not mine to change; it belongs beside .busy. */
-.review-session button[aria-disabled="true"] { opacity: 0.55; }
 
 .rs-count { font-size: var(--t-small); color: var(--ink-soft); }
 .rs-note { font-size: var(--t-small); color: var(--ink-soft); }

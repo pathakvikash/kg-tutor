@@ -122,9 +122,13 @@
   background: var(--ink-mid);
 }
 
-/* The claim repeats the numbers above it in prose, so it stops competing with them. */
-.cur-claim summary { cursor: pointer; font-size: var(--t-small); color: var(--ink-mid); }
-.cur-claim p { margin: var(--s-2) 0 0; color: var(--ink-mid); line-height: 1.55; }
+/* The claim restates the numbers above it in prose. Quieter than the meters, but on the
+   page rather than behind a disclosure: it is the acceptance criterion, and it is the only
+   place the unprompted-request count appears. */
+.cur-claim {
+  margin: 0; max-width: var(--measure);
+  font-size: var(--t-small); color: var(--ink-mid); line-height: 1.55;
+}
 
 .cur-fm { margin-top: var(--s-3); }
 .cur-fm-label {
@@ -177,6 +181,8 @@
 .cur-dismiss input { width: 100%; min-width: 0; }
 .cur-dismissed { margin-top: var(--s-2); font-size: var(--t-small); }
 .cur-dismissed ul { list-style: none; margin: var(--s-2) 0 0; padding: 0; }
+/* The second group: stored here, but not what this list is hiding right now. */
+.cur-dismissed-note { margin: var(--s-3) 0 0; color: var(--ink-mid); }
 .cur-dismissed li {
   display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: baseline;
   padding: var(--s-1) 0;

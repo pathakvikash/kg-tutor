@@ -5,6 +5,36 @@ import { Markdown } from "./Markdown";
 import { DEPTH_LABEL } from "../vocabulary";
 
 /**
+ * Builds the learner has walked away from.
+ *
+ * There is no cancel endpoint, so the job carries on server-side; what this stops is the
+ * reattachment pulling them back into a build they abandoned — which after a reload
+ * could mean the old topic instead of the one they just started. Session-scoped, and a
+ * blocked storage just means the reattachment behaves as it did before.
+ */
+const DISMISSED_BUILDS = "kg.dismissedBuilds";
+
+function dismissedBuilds(): string[] {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(DISMISSED_BUILDS) ?? "[]");
+    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
+  } catch { return []; }
+}
+
+export function isDismissedBuild(id: string): boolean {
+  return dismissedBuilds().includes(id);
+}
+
+function dismissBuild(id: string): void {
+  try {
+    const all = dismissedBuilds();
+    if (!all.includes(id)) {
+      sessionStorage.setItem(DISMISSED_BUILDS, JSON.stringify([...all, id].slice(-20)));
+    }
+  } catch { /* nothing to remember it in */ }
+}
+
+/**
  * The initial assessment, conversational. (07)
  *
  * Three things are asked, not probed — goal, depth and what they already know are not
@@ -97,7 +127,8 @@ export function Intake({
       try {
         const jobs = await api.expansions();
         if (cancelled) return;
-        const live = jobs.find((j: any) => j.status === "queued" || j.status === "running");
+        const live = jobs.find((j: any) =>
+          (j.status === "queued" || j.status === "running") && !isDismissedBuild(j.id));
         if (!live) return;
         setJob(live);
         setBuildQueue([live.topicName]);
@@ -151,6 +182,11 @@ export function Intake({
     finally { setBusy(null); }
   };
 
+  /* Derived, rather than set from inside the setPollFails updater: StrictMode
+     double-invokes updaters, and an impure one stops being harmless the moment a second
+     piece of state depends on it. */
+  useEffect(() => { if (pollFails >= 5) setLostContact(true); }, [pollFails]);
+
   const startBuilding = () => {
     setPollFails(0); setLostContact(false); setError(null); setStage("building");
   };
@@ -180,15 +216,13 @@ export function Intake({
         if (id) setTopicId(id);
         setStage("goal");
       } catch (e) {
-        // A 404 means this job is gone, not slow. Either way, a frozen progress bar at
-        // 5% forever is the one outcome the learner cannot act on, so count the misses
-        // and eventually say so.
+        // A 404 means this job is gone, not slow, and is a verdict on its own. Anything
+        // else only becomes one after a run of them: a frozen progress bar at 5% forever
+        // is the one outcome the learner cannot act on, so count the misses and
+        // eventually say so.
         const fatal = e instanceof HttpError && e.isMissing;
-        setPollFails((n) => {
-          const next = n + 1;
-          if (fatal || next >= 5) setLostContact(true);
-          return next;
-        });
+        setPollFails((n) => n + 1);
+        if (fatal) setLostContact(true);
       }
     }, 1200);
     return () => clearInterval(timer);
@@ -196,7 +230,9 @@ export function Intake({
 
   const retryBuild = async () => {
     if (!job) return;
-    setBusy("restarting the build");
+    // Cleared here, not only on success: the reason the last attempt failed is not the
+    // reason this one is running.
+    setBusy("restarting the build"); setError(null);
     try {
       const j = await api.retryExpansion(job.id);
       setJob(j);
@@ -207,6 +243,10 @@ export function Intake({
 
   /** Back to the goal box with the text still in it. */
   const startOver = () => {
+    // The build itself cannot be called off from here, so at least stop it claiming the
+    // learner again: without this, the next mount or reload reattached to the very job
+    // they just said was not what they meant.
+    if (job?.id) dismissBuild(job.id);
     setStage("ask"); setJob(null); setBuildQueue([]); setResolved(null);
     setError(null); setPollFails(0); setLostContact(false);
     setGoalInput((prev) => prev || goalText || "");
@@ -321,6 +361,14 @@ export function Intake({
               It stopped answering. The work may still be running server-side, or the job
               may be gone — either way nothing more will appear here on its own.
             </p>
+            {/* A lost job is exactly the case where the retry 404s too, and this block
+                rendered no error at all: the button cleared its spinner, nothing changed,
+                and no reason was given. */}
+            {error && (
+              <p className="retry-failed">
+                <strong>That retry did not take:</strong> {error}
+              </p>
+            )}
             <div className="row">
               <button className="primary" onClick={() => void retryBuild()} aria-disabled={!!busy || undefined}>
                 Retry the build

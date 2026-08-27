@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, askStream, DUE_LIMIT, HttpError } from "../api";
 import { Busy } from "../components/Busy";
 import { Markdown } from "../components/Markdown";
-import { Intake } from "../components/Intake";
+import { Intake, isDismissedBuild } from "../components/Intake";
 import { Widget } from "../widget/Widget";
 import { resolveLearner, useStickyLearner } from "../useLearner";
 import { Roadmap } from "../components/Roadmap";
@@ -204,7 +204,8 @@ export function LearnPage() {
       try {
         const jobs = await api.expansions();
         if (cancelled) return;
-        if (jobs.some((j: any) => j.status === "queued" || j.status === "running")) {
+        if (jobs.some((j: any) =>
+          (j.status === "queued" || j.status === "running") && !isDismissedBuild(j.id))) {
           setShowIntake(true);
         }
       } catch { /* nothing running */ }
@@ -247,6 +248,23 @@ export function LearnPage() {
       if (i < 0) return prev;
       const next = [...prev];
       next[i] = fn(next[i]!);
+      return next;
+    });
+
+  /**
+   * Resolve a bubble that is still marked streaming: drop it if nothing arrived, else
+   * label it as cut short. A stream can end without a `done` or `failed` event — the
+   * reader loop in `askStream` simply breaks on EOF — and a caret that blinks forever
+   * over an empty bubble is the one outcome the learner cannot act on.
+   */
+  const settleStream = (lid: string) =>
+    setTurns((prev) => {
+      const i = prev.findIndex((t) => t.lid === lid);
+      if (i < 0 || !prev[i]!.meta?.streaming) return prev;
+      const t = prev[i]!;
+      if (!t.text.trim()) return [...prev.slice(0, i), ...prev.slice(i + 1)];
+      const next = [...prev];
+      next[i] = { ...t, meta: { ...t.meta, streaming: false, stopped: true } };
       return next;
     });
 
@@ -445,6 +463,8 @@ export function LearnPage() {
 
     const streamLid = nextLid();
     let visualFor: string | null = null;
+    /** Whether the answer already reached an end the learner was told about. */
+    let settled = false;
 
     try {
       await askStream(learnerId, current.conceptId, text, {
@@ -483,6 +503,7 @@ export function LearnPage() {
         },
         onDone: () => {
           if (!live(token)) return;
+          settled = true;
           patch(streamLid, (t) => ({ ...t, meta: { ...t.meta, streaming: false } }));
           setStreaming(false);
           // Only after the text has landed, so the simulation is not competing with it.
@@ -490,17 +511,10 @@ export function LearnPage() {
         },
         onFailed: (message) => {
           if (!live(token)) return;
+          settled = true;
           // An empty bubble with a blinking caret is worse than no bubble: it never
           // resolves. Partial text stays, labelled as cut short.
-          setTurns((prev) => {
-            const i = prev.findIndex((t) => t.lid === streamLid);
-            if (i < 0) return prev;
-            const t = prev[i]!;
-            if (!t.text.trim()) return [...prev.slice(0, i), ...prev.slice(i + 1)];
-            const next = [...prev];
-            next[i] = { ...t, meta: { ...t.meta, streaming: false, stopped: true } };
-            return next;
-          });
+          settleStream(streamLid);
           setStreaming(false);
           setError({
             title: "The answer failed.", message, remedy: null,
@@ -510,12 +524,27 @@ export function LearnPage() {
       });
     } catch (err) {
       if (!live(token)) return;
+      settled = true;
       setError({
         title: "The answer failed.", ...failureOf(err),
         retryLabel: "Ask again", retry: () => void ask(text),
       });
     } finally {
-      if (live(token)) { setBusy(null); setStreaming(false); }
+      if (live(token)) {
+        setBusy(null); setStreaming(false);
+        // The stream can end with no `done` and no `failed` — a server restart, a
+        // dropped connection — and returning quietly left the bubble streaming for
+        // good. Silence is not success, so it is resolved and said out loud.
+        if (!settled) {
+          settleStream(streamLid);
+          setError({
+            title: "The answer stopped before it finished.",
+            message: "The connection to the tutor closed mid-answer.",
+            remedy: null,
+            retryLabel: "Ask again", retry: () => void ask(text),
+          });
+        }
+      }
     }
   };
 
@@ -554,7 +583,10 @@ export function LearnPage() {
    * only becomes obvious when the learner can step through it themselves.
    */
   const showMe = async (focus?: string) => {
-    if (!current || readOnly) return;
+    // `locked` too: this used to fire mid-answer from an aria-disabled button, and
+    // begin() then invalidated the live stream's token — the answer was discarded in
+    // silence and the composer stayed stuck on "Stop".
+    if (!current || readOnly || locked) return;
     const token = begin();
     setBusy({ label: "building an interactive example" }); setError(null);
     try {
@@ -642,11 +674,11 @@ export function LearnPage() {
                   </>
                 )}
                 <span>step {stepIndex} of {stepCount}</span>
-                {override && <span className="pill pill--accent">detour</span>}
+                {override && <span className="lesson-pill lesson-pill--accent">detour</span>}
               </div>
             </div>
-            {pending && !readOnly && <span className="pill pill--structure">check pending</span>}
-            {readOnly && <span className="pill">read-only</span>}
+            {pending && !readOnly && <span className="lesson-pill lesson-pill--structure">check pending</span>}
+            {readOnly && <span className="lesson-pill">read-only</span>}
           </div>
         )}
 
@@ -1090,7 +1122,7 @@ export function LearnPage() {
                         {s.completed ? "✓ " : `${s.position + 1}. `}{s.name}
                       </strong>
                       {/* A chip, not a colour: the accent alone was the only encoding. */}
-                      {isCurrent && <span className="pill pill--accent">now</span>}
+                      {isCurrent && <span className="lesson-pill lesson-pill--accent">now</span>}
                     </div>
                     <div className="fm">{s.currentMastery} → needs {s.requiredLevel}</div>
                   </div>

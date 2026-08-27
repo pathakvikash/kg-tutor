@@ -39,7 +39,9 @@
 }
 .lesson-head-meta .sep { color: var(--rule-strong); }
 
-.pill {
+/* Page-scoped on purpose: a bare `.pill` in a page sheet is a shared primitive in all
+   but name, and the next page to write className="pill" would inherit this one. */
+.lesson-pill {
   font-family: var(--font-mono);
   font-size: var(--chip-size);
   letter-spacing: 0.07em;
@@ -51,12 +53,12 @@
   color: var(--ink-soft);
   background: var(--surface);
 }
-.pill--accent {
+.lesson-pill--accent {
   border-color: var(--accent);
   color: var(--accent-text);
   background: var(--accent-bg);
 }
-.pill--structure { border-color: var(--structure); color: var(--structure); }
+.lesson-pill--structure { border-color: var(--structure); color: var(--structure); }
 
 /* ── The conversation reads as a conversation, at any width ───────────────────── */
 .chat {
@@ -246,6 +248,9 @@
 /* ── Intake ──────────────────────────────────────────────────────────────────── */
 .intake-actions { margin-top: var(--s-3); }
 .build-hint { font-size: var(--t-small); }
+/* Sits inside a notice that is already red, so it only needs to read as a second, later
+   sentence rather than as a second alarm. */
+.retry-failed { margin: 0 0 var(--s-2); font-size: var(--t-small); }
 .probe-hint { font-size: var(--t-small); margin-bottom: var(--s-3); }
 .probe-prompt { margin: var(--s-3) 0; }
 .build-progress { margin-top: var(--s-3); }

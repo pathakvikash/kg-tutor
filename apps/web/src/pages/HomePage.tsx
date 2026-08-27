@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api, HttpError } from "../api";
 import { Busy } from "../components/Busy";
@@ -12,6 +12,25 @@ const KINDS = Object.keys(DUE_KIND) as (keyof typeof DUE_KIND)[];
 
 /** How many rows the list draws before deferring to the review session itself. */
 const ROWS = 8;
+
+/**
+ * Cost of being ignored, highest first. Also the fallback order when nothing leads.
+ */
+const CARDS = ["intake", "due", "plan"] as const;
+
+/**
+ * How long a finished build stays on the page.
+ *
+ * Tracking ids seen live is not enough on its own: a build that reached done or failed
+ * before this mount — you started it and navigated away, you reloaded, or the server
+ * restarted and failStrandedJobs() marked it failed at boot — was never observed by a
+ * poll, so filtering to the tracked set hid exactly the outcomes worth reading,
+ * including the restart explanation the API writes out in full.
+ */
+const RECENT_MS = 12 * 60 * 60 * 1000;
+
+/** Finished builds pile up; the newest few are the ones anyone still reads. */
+const JOBS = 4;
 
 /**
  * The outcome of one read, not just its value.
@@ -175,10 +194,19 @@ export function HomePage() {
       setJobsFailed({ kind: "failed", ...describe(r.reason) });
       return;
     }
-    for (const j of r.value) {
-      if (j.status === "queued" || j.status === "running") tracked.current.add(j.id);
-    }
-    setJobs(r.value.filter((j: any) => tracked.current.has(j.id)));
+    const now = Date.now();
+    const keep = r.value.filter((j: any) => {
+      if (tracked.current.has(j.id)) return true;
+      if (j.status === "queued" || j.status === "running") return true;
+      const at = Date.parse(j.finishedAt ?? j.createdAt ?? "");
+      return Number.isFinite(at) && now - at < RECENT_MS;
+    });
+    // Everything shown is tracked from here on, so it stays for the rest of the session
+    // even once it ages out of the window, and so `tracked.size` means "this browser
+    // knows about at least one build".
+    for (const j of keep) tracked.current.add(j.id);
+    // The route answers newest-first, so this keeps the newest.
+    setJobs(keep.slice(0, JOBS));
     setJobsFailed(null);
   }, []);
 
@@ -271,7 +299,12 @@ export function HomePage() {
     nextStep ? "plan" : "",
   ].filter(Boolean);
   const firstRun = ready && !broken && present.length === 0;
-  const lead = ready ? present[0] ?? (firstRun ? "plan" : "") : "";
+  // With nothing to offer and a read that failed, the card that says so leads. Without
+  // this the whole lead treatment — the span, the serif, the rail — silently left the
+  // page in exactly the state where the learner most needs something to act on.
+  const failedLead = CARDS.find((k) =>
+    (k === "intake" ? intake : k === "due" ? due : plan).kind === "failed") ?? "";
+  const lead: string = ready ? present[0] ?? (firstRun ? "plan" : failedLead) : "";
   const rank = (key: string): string | null => {
     const i = present.indexOf(key);
     return i === 0 ? "now" : i === 1 ? "next" : null;
@@ -365,10 +398,22 @@ export function HomePage() {
           <Link className={ctaClass("plan")} to="/learn">Continue</Link>
         </>
       ) : planData ? (
-        <p className="muted">
-          Every step on the current plan is satisfied. Set a new goal, or explore the
-          graph and assess yourself on anything.
-        </p>
+        // Two real destinations rather than prose naming them: this branch can be the
+        // lead card, and a full-width lead whose only content is a sentence about
+        // things elsewhere is a dead end.
+        <>
+          <p className="muted">
+            Every step on the current plan is satisfied. Nothing is finished for good —
+            confidence fades, so what you proved comes back to be re-proved.
+          </p>
+          <div className="row">
+            {/* Label matched to the control it lands on (LearnPage's plan-complete card). */}
+            <Link className={ctaClass("plan")} to="/learn">Set a new goal</Link>
+            <Link className="btn" to={`/graph?learner=${encodeURIComponent(learnerId)}`}>
+              Explore the graph
+            </Link>
+          </div>
+        </>
       ) : (
         <>
           <p className="muted">
@@ -381,7 +426,10 @@ export function HomePage() {
     </article>
   );
 
-  const buildCard = (jobs.length > 0 || jobsFailed) && (
+  // The read runs on every mount, so a dead /api/expansions used to put a build-queue
+  // error on the page of someone who has never expanded a topic. The failure is only
+  // reported once this browser has actually seen a build.
+  const buildCard = (jobs.length > 0 || (jobsFailed && tracked.current.size > 0)) && (
     <article key="build" className="panel stack home-card">
       <CardHead title="Building" lead={false} rank={null} />
       {jobsFailed && jobs.length === 0 ? (
@@ -401,7 +449,7 @@ export function HomePage() {
                         ? "complete"
                         : j.status === "failed"
                           ? "stopped"
-                          : j.phase ?? j.status}
+                          : j.status}
                     </span>
                   </div>
                   {live && (
@@ -416,7 +464,14 @@ export function HomePage() {
                       >
                         <div className="bar" style={{ width: `${pct}%` }} />
                       </div>
-                      <Busy label={`${pct}% — ${j.phase ?? "working"}`} clock={false} />
+                      {/* The live region carries the phase and nothing else. With the
+                          percentage in it, a 3-second poll announced a new number for
+                          the whole of a multi-minute build; the number is on the
+                          progressbar, which is queried rather than announced. */}
+                      <div className="row row--baseline home-job-tick">
+                        <Busy label={j.phase ?? "working"} clock={false} />
+                        <span className="mono muted" aria-hidden="true">{pct}%</span>
+                      </div>
                     </>
                   )}
                   {j.status === "done" && (
@@ -456,8 +511,20 @@ export function HomePage() {
     </article>
   );
 
-  // A first run has exactly one thing to do, so the card that offers it leads.
-  const order = firstRun ? [planCard, dueCard, intakeCard] : [intakeCard, dueCard, planCard];
+  /**
+   * The lead card is rendered first, whatever it is.
+   *
+   * The grid turns DOM order into position, so a full-width lead could sit underneath a
+   * third-width card with nothing in it — "now" asserted in the pill and denied by the
+   * layout, which is the contradiction the pill exists to remove. Reachable whenever
+   * nothing is due and a next step exists.
+   */
+  const byKey: Record<string, ReactNode> = {
+    intake: intakeCard, due: dueCard, plan: planCard,
+  };
+  const order = [lead, ...CARDS.filter((k) => k !== lead)]
+    .filter(Boolean)
+    .map((k) => byKey[k]);
 
   return (
     <div className="page home page--wide">

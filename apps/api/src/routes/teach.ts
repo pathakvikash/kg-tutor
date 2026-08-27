@@ -135,6 +135,8 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
         requiresTransfer: z.boolean().default(false),
         itemId: z.string().optional(),
         sessionId: z.string().optional(),
+        /** Only used when sessionId is absent; see openSession. */
+        kind: z.enum(["lesson", "review"]).default("lesson"),
         reexplanationsUsed: z.number().int().default(0),
         detoursUsedInChain: z.number().int().default(0),
         detourDepth: z.number().int().default(0),
@@ -145,7 +147,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
     const llm = getLlm();
     if (!llm) return reply.code(503).send(NO_MODEL);
 
-    const sessionId = body.data.sessionId ?? (await openSession(id));
+    const sessionId = body.data.sessionId ?? (await openSession(id, body.data.kind));
 
     /**
      * The stored item wins over whatever the client sent.

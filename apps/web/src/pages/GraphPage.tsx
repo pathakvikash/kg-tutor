@@ -698,9 +698,9 @@ function Graph() {
 
   const hopTo = useCallback(
     (id: string, opts: { keepFocus?: boolean } = {}) => {
-      // One click reaches here twice — once through onNodeClick and once through the
-      // selection listener — and two history entries per hop would break the back button.
-      // The flag is set after the guard so a no-op hop cannot leave it armed.
+      // Re-selecting the node you are already on must not push a history entry, or the
+      // back button walks a stack of identical states. The flag is set after the guard so
+      // a no-op hop cannot leave it armed.
       if (selectedRef.current === id) return;
       if (opts.keepFocus) keepCanvasFocus.current = true;
       setSelection({ kind: "node", id }, { push: true });
@@ -713,36 +713,40 @@ function Graph() {
     },
     [setSelection],
   );
-  const hopToRef = useRef(hopTo);
-  hopToRef.current = hopTo;
 
   /**
-   * The keyboard path into the inspector.
+   * Arrow-key traversal along edges plus Enter/Space to commit, handled on the canvas
+   * rather than on the node: the focused element is react-flow's own wrapper, so a
+   * handler inside the node never sees its keydown. With nodesDraggable off these keys
+   * were otherwise inert.
    *
-   * react-flow gives every node tabIndex=0 and an Enter/Space handler, but that handler
-   * calls its own internal selection and never onNodeClick — so every piece of substance
-   * on this page was mouse-only. Selection, however it happens, now writes the URL.
-   */
-  const onSelectionChange = useCallback(({ nodes: picked }: { nodes: Node[] }) => {
-    const id = picked[0]?.id;
-    // An empty payload also arrives whenever the node array is re-adopted, which is not
-    // the user deselecting anything; the pane click handler owns clearing.
-    if (!id || id === selectedRef.current) return;
-    hopToRef.current(id);
-  }, []);
-
-  /**
-   * Arrow-key traversal along edges, handled on the canvas rather than on the node: the
-   * focused element is react-flow's own wrapper, so a handler inside the node never sees
-   * its keydown. With nodesDraggable off these keys were otherwise inert.
+   * Enter/Space has to be handled here too. react-flow gives every node tabIndex=0 and
+   * its own Enter/Space handler, but that handler routes into the store's
+   * addSelectedNodes -> triggerNodeChanges, which only writes anything when the graph is
+   * uncontrolled (`defaultNodes`) or an `onNodesChange` is supplied. This page owns the
+   * node array — selection is derived from the URL — so react-flow drops the change
+   * silently, onSelectionChange never fires, and Enter did nothing at all. Hopping here
+   * is what hands focus to the inspector heading.
    */
   const onCanvasKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const g = graph;
     if (!g) return;
-    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    const commit = event.key === "Enter" || event.key === " ";
+    if (!commit && !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
     const el = (event.target as HTMLElement).closest?.(".react-flow__node") as HTMLElement | null;
     const from = el?.dataset.id;
     if (!from) return;
+
+    if (commit) {
+      // Space on a focused node would otherwise scroll the page under the canvas.
+      event.preventDefault();
+      // Already selected means hopTo is a no-op, and the effect that moves focus is
+      // keyed on the selection — so send focus across directly. Either way Enter is the
+      // one gesture that leaves the canvas.
+      if (from === selectedRef.current) headingRef.current?.focus();
+      else hopTo(from);
+      return;
+    }
 
     const allowed = (id: string) => (visible ? visible.has(id) : true);
     const up = g.edges.filter((e) => e.target === from).map((e) => e.source).filter(allowed);
@@ -988,7 +992,6 @@ function Graph() {
                   onNodeClick={(_, n) => hopTo(n.id)}
                   onEdgeClick={(_, e) => setSelection({ kind: "edge", id: e.id })}
                   onPaneClick={() => { setSelection(null); setTrail([]); }}
-                  onSelectionChange={onSelectionChange}
                   // This graph is authored by the model, so nothing here is editable by
                   // dragging. Draggable nodes meant every orb carried react-flow's `nopan`
                   // class (dragging a 130px orb refused to pan the canvas), both invisible

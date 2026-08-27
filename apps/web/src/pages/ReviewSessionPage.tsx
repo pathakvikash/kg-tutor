@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
-import { api, DUE_LIMIT, HttpError } from "../api";
+import { api, HttpError } from "../api";
 import type { Mastery } from "../api";
 import { Busy } from "../components/Busy";
 import { Markdown } from "../components/Markdown";
@@ -30,7 +30,15 @@ const RECHECK_COOLDOWN_MS = 5 * 60_000;
 /** One question call plus one grading call, plus the time to write an answer. */
 const MINUTES_PER_ITEM = 1.5;
 
-const PASS_KEY = "kg-tutor:review-pass";
+/**
+ * One key per learner. A single global key meant switching learner in the nav silently
+ * discarded the other person's half-finished pass and their cooldown map, because the
+ * `learnerId` guard below failed and `graded` reset to {}.
+ */
+const passKey = (learnerId: string) => `kg-tutor:review-pass:${learnerId}`;
+
+/** A saved pass is the queue plus every generated question, so typing must not write one per key. */
+const SAVE_DEBOUNCE_MS = 400;
 
 type Failure = { message: string; remedy: string | null };
 
@@ -58,10 +66,10 @@ type Saved = {
   savedAt: number;
 };
 
-function readSaved(): Saved | null {
+function readSaved(learnerId: string): Saved | null {
   // Throws outright in some contexts, not only when empty, so it cannot be left unguarded.
   try {
-    const raw = localStorage.getItem(PASS_KEY);
+    const raw = localStorage.getItem(passKey(learnerId));
     return raw ? (JSON.parse(raw) as Saved) : null;
   } catch {
     return null;
@@ -70,7 +78,7 @@ function readSaved(): Saved | null {
 
 function writeSaved(saved: Saved): void {
   try {
-    localStorage.setItem(PASS_KEY, JSON.stringify(saved));
+    localStorage.setItem(passKey(saved.learnerId), JSON.stringify(saved));
   } catch {
     /* resuming is a convenience; failing to remember must not break the pass */
   }
@@ -136,11 +144,34 @@ export function ReviewSessionPage() {
   const answerRef = useRef<HTMLTextAreaElement | null>(null);
   const verdictRef = useRef<HTMLDivElement | null>(null);
 
+  /**
+   * Who exists. Retried as well as loaded on mount: this is the call that fails first, and
+   * a Retry that only re-fetched /due left `learners` at [] with a full queue in state —
+   * the page then printed "No learners yet" over a loaded pass.
+   *
+   * Returns the resolved id so the retry knows whether the learner effect will fire.
+   */
+  const loadLearners = useCallback(async (want: string): Promise<string> => {
+    // null is "not asked yet" again, so the retry has a visible in-progress state; without
+    // this, a first-time learner (nothing stored, learners fetch failed) clicked Retry and
+    // nothing on the page changed at all.
+    setLearners(null);
+    setFatal(null);
+    try {
+      const l = await api.learners();
+      setLearners(l);
+      const id = resolveLearner(want, l);
+      setLearnerId(id);
+      return id;
+    } catch (e) {
+      setLearners([]);
+      setFatal(asFailure(e));
+      return "";
+    }
+  }, [setLearnerId]);
+
   useEffect(() => {
-    void api
-      .learners()
-      .then((l) => { setLearners(l); setLearnerId(resolveLearner(learnerId, l)); })
-      .catch((e) => { setLearners([]); setFatal(asFailure(e)); });
+    void loadLearners(learnerId);
   }, []);
 
   /** `cooldown` is a parameter rather than state: a retry has to use the current map. */
@@ -173,9 +204,21 @@ export function ReviewSessionPage() {
     }
   }, []);
 
+  /**
+   * Both calls, in order, because either can be the one that failed.
+   *
+   * The learner effect below reloads the queue whenever the id changes, so asking again
+   * here would double-fetch; when the id resolves to the same learner nothing fires and
+   * this is the only thing that reloads it.
+   */
+  const retry = useCallback(async () => {
+    const id = await loadLearners(learnerId);
+    if (id && id === learnerId) await loadQueue(id, graded);
+  }, [loadLearners, loadQueue, learnerId, graded]);
+
   useEffect(() => {
     if (!learnerId) return;
-    const saved = readSaved();
+    const saved = readSaved(learnerId);
     const mine = saved && saved.learnerId === learnerId ? saved : null;
     const cooldown = prune(mine?.graded ?? {}, Date.now());
     setGraded(cooldown);
@@ -190,10 +233,18 @@ export function ReviewSessionPage() {
   const result = conceptId ? verdicts[conceptId] ?? null : null;
 
   // While a decision on a saved pass is outstanding, writing would destroy the thing
-  // being offered.
+  // being offered. `drafts` changes on every keystroke, so the write itself is on a
+  // trailing edge — and the pending payload is held so navigating away inside that
+  // window still saves it rather than dropping the last thing typed.
+  const unsaved = useRef<Saved | null>(null);
   useEffect(() => {
-    if (!learnerId || pending || !loaded) return;
-    writeSaved({
+    if (!learnerId || pending || !loaded) {
+      // A new load resets the pass, so anything still queued describes a pass that no
+      // longer exists and must not be flushed on the way out.
+      unsaved.current = null;
+      return;
+    }
+    const payload: Saved = {
       learnerId,
       at,
       items: queue,
@@ -202,8 +253,18 @@ export function ReviewSessionPage() {
       asked, drafts, verdicts, skips,
       graded: prune(graded, Date.now()),
       savedAt: Date.now(),
-    });
+    };
+    unsaved.current = payload;
+    const t = setTimeout(() => {
+      writeSaved(payload);
+      unsaved.current = null;
+    }, SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(t);
   }, [learnerId, pending, loaded, at, queue, sessionId, asked, drafts, verdicts, skips, graded]);
+
+  useEffect(() => () => {
+    if (unsaved.current) writeSaved(unsaved.current);
+  }, []);
 
   const tally = useMemo(() => {
     let passed = 0, failed = 0, skipped = 0;
@@ -225,7 +286,8 @@ export function ReviewSessionPage() {
     try {
       // The level it was held at, not the next one up: this is a re-check, not a promotion.
       const level = current.mastery === "unknown" ? "familiar" : current.mastery;
-      const q = await api.check(learnerId, current.conceptId, level);
+      // "review", so this pass gets its own session rather than writing into the lesson.
+      const q = await api.check(learnerId, current.conceptId, level, "review");
       // The session the question turn was written into. The answer has to land in the same
       // one, or the transcript holds a question that is never replied to.
       if (q?.sessionId) setSessionId(q.sessionId);
@@ -243,6 +305,7 @@ export function ReviewSessionPage() {
     setError(null);
     try {
       const r = await api.attempt(learnerId, {
+        kind: "review",
         conceptId: current.conceptId,
         prompt: question.prompt,
         response: answer,
@@ -340,9 +403,7 @@ export function ReviewSessionPage() {
         <h2>Review</h2>
         {failureNotice(fatal, "Could not find out what is due.")}
         <div className="row rs-actions">
-          <button className="primary" onClick={() => void loadQueue(learnerId, graded)}>
-            Retry
-          </button>
+          <button className="primary" onClick={() => void retry()}>Retry</button>
           <Link className="btn" to="/">Home</Link>
         </div>
       </div>
@@ -364,7 +425,10 @@ export function ReviewSessionPage() {
     );
   }
 
-  if (learners.length === 0) {
+  // A loaded queue is proof the learner exists — it came from that learner's own /due —
+  // so an empty list only means the roster call is the one that failed. Never claim
+  // "no learners" over a pass that is sitting in state.
+  if (learners.length === 0 && queue.length === 0) {
     return (
       <div className={PAGE}>
         <h2>No learners yet</h2>
@@ -400,18 +464,20 @@ export function ReviewSessionPage() {
   // ── Every item in the pass has been seen ──────────────────────────────────────
   if (queue.length > 0 && at >= queue.length) {
     const remaining = Math.max(0, total - queue.length);
-    const batch = Math.min(DUE_LIMIT, remaining);
     return (
       <div className={PAGE}>
         <h2>Pass finished</h2>
         <div
           className="progress"
           role="progressbar"
-          aria-label="items checked in this pass"
+          aria-label="progress through this pass"
           aria-valuemin={0}
           aria-valuemax={queue.length}
           aria-valuenow={queue.length}
-          aria-valuetext={`all ${queue.length} seen`}
+          aria-valuetext={
+            `all ${queue.length} seen` +
+            (tally.skipped > 0 ? `, ${tally.skipped} skipped rather than checked` : "")
+          }
         >
           <div className="bar rs-bar-full" />
         </div>
@@ -445,9 +511,12 @@ export function ReviewSessionPage() {
         )}
 
         <div className="row rs-actions">
-          {batch > 0 ? (
+          {/* Not "Next 25": the cooldown filter runs after the next /due, so a pass whose
+              failures sort straight back to the top can serve none of them and land on
+              "Just checked" instead. The backlog size is stated below, where it is true. */}
+          {remaining > 0 ? (
             <button className="primary" onClick={() => void loadQueue(learnerId, graded)}>
-              Next {batch}
+              Next batch
             </button>
           ) : (
             <button onClick={() => void loadQueue(learnerId, graded)}>Check again</button>
@@ -525,14 +594,19 @@ export function ReviewSessionPage() {
         </div>
       </div>
 
+      {/* "N checked" was a lie for a pass with skips: a skip advances the bar without an
+          answer, and the done screen's own tally distinguishes the two. */}
       <div
         className="progress"
         role="progressbar"
-        aria-label="items checked in this pass"
+        aria-label="progress through this pass"
         aria-valuemin={0}
         aria-valuemax={queue.length}
         aria-valuenow={answered}
-        aria-valuetext={`${answered} of ${queue.length} checked`}
+        aria-valuetext={
+          `${answered} of ${queue.length} seen` +
+          (tally.skipped > 0 ? `, ${tally.skipped} skipped rather than checked` : "")
+        }
       >
         <div className="bar" style={{ width: `${(answered / queue.length) * 100}%` }} />
       </div>

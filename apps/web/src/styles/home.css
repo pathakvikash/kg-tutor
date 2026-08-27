@@ -35,9 +35,10 @@
 .btn--bare:hover { color: var(--ink); }
 
 /* Inert but still focusable: the convention is aria-disabled rather than disabled,
-   because disabling a focused control blurs it to <body>. */
-.home [aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
-.home [aria-disabled="true"]:hover { border-color: var(--rule-strong); color: var(--ink); }
+   because disabling a focused control blurs it to <body>. styles.css owns the look
+   (opacity, cursor, hover border); the only gap left is `button:hover`, which repaints
+   an inert control amber. */
+.home [aria-disabled="true"]:hover { color: var(--ink); }
 .home .btn--primary[aria-disabled="true"]:hover {
   border-color: var(--accent);
   color: var(--on-accent);
@@ -122,6 +123,10 @@
 .home-job { min-width: 0; }
 .home-job > .row { justify-content: space-between; }
 .home-job-state { font-size: var(--t-meta); }
+/* Phase on the left, percentage on the right: the percentage is decoration beside a
+   progressbar that already carries the value. */
+.home-job-tick { justify-content: space-between; gap: var(--s-3); }
+.home-job-tick .mono { font-size: var(--t-meta); }
 .home-job-report, .home-job-note { font-size: var(--t-small); }
 
 /* ── The due list ─────────────────────────────────────────────────────────────

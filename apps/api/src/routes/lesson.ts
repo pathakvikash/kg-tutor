@@ -202,7 +202,8 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/lesson/:learnerId/transcript", async (req) => {
     const { learnerId } = req.params as { learnerId: string };
     const session = await prisma.session.findFirst({
-      where: { learnerId, endedAt: null },
+      // The lesson transcript is the lesson's, so a review pass cannot appear in it.
+      where: { learnerId, kind: "lesson", endedAt: null },
       orderBy: { startedAt: "desc" },
     });
     if (!session) return { sessionId: null, turns: [] };
@@ -230,6 +231,13 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
         learnerId: z.string(),
         conceptId: z.string(),
         level: z.enum(["familiar", "functional", "solid"]).default("functional"),
+        /**
+         * Which activity is asking. The review pass and the lesson both call this, and
+         * a question written into the wrong transcript is not merely untidy: the
+         * lesson's answered-since scan reads the newest turns to decide whether its own
+         * pending check has been answered.
+         */
+        kind: z.enum(["lesson", "review"]).default("lesson"),
       })
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
@@ -252,7 +260,7 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     }
     if (!item) return reply.code(422).send({ error: "no item could be produced for this concept" });
 
-    const sessionId = await openSession(body.data.learnerId);
+    const sessionId = await openSession(body.data.learnerId, body.data.kind);
     await saveTurn(sessionId, body.data.learnerId, body.data.conceptId, "question", item.prompt, {
       itemId: item.id,
       requiresTransfer: item.requiresTransfer,

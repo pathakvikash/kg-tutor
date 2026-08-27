@@ -130,8 +130,14 @@ function DegradedNotice({ p }: { p: any }) {
     <div className="notice notice--warn metrics-degraded">
       <strong>Degraded run{p.llm ? ` · model: ${p.llm}` : ""}</strong>
       <p>
-        {lead.charAt(0).toUpperCase() + lead.slice(1)} — the numbers below describe seeded
-        and test data, not live model behaviour.
+        {lead.charAt(0).toUpperCase() + lead.slice(1)}.{" "}
+        {/* Whether the numbers are real depends on whether a MODEL is real, not on
+            whether anything at all is stubbed. With claude-code live and only the
+            embedding stubbed, the spend below is money that was actually spent — and
+            telling the reader to disregard an accurate figure is its own kind of wrong. */}
+        {p.llm
+          ? "The counts and costs below are from real calls; what is weakened is described above."
+          : "Nothing here reflects live model behaviour — the numbers describe seeded and test data only."}
       </p>
       {caveats.length > 0 && (
         <ul className="metrics-caveats">

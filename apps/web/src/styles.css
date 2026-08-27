@@ -1085,3 +1085,13 @@ a.badge:hover { border-color: var(--accent); color: var(--accent); }
   cursor: not-allowed;
 }
 [aria-disabled="true"]:hover { border-color: var(--rule); }
+
+/* A page is a flex item inside .app-main, so its default min-width: auto makes it size
+   to its own min-content — and a table's min-width propagates all the way up, through
+   .table-wrap's overflow container, to here. Measured on Curate at a 550px viewport:
+   a 560px table made the document 588px wide, so the whole page scrolled sideways and
+   every paragraph clipped mid-word. This is the fix for the primitive, not for the page:
+   Learner and Metrics have tables too.
+   The scroll belongs to .table-wrap. Nothing above it should ever grow to fit a table. */
+.page, .app-main { min-width: 0; max-width: 100%; }
+.page--narrow, .page--measure, .page--wide, .page--table { width: 100%; }

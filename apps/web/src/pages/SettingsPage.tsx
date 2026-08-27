@@ -8,7 +8,7 @@ interface CatalogEntry {
   label: string;
   models: string[];
   note?: string;
-  /** Not sent by the route yet; read here so a server-side default wins as soon as it is. */
+  /** Optional so an older API build still parses; when present the server default wins. */
   defaultSmall?: string;
   defaultStrong?: string;
 }
@@ -42,12 +42,12 @@ type Feedback = {
 const NONE = "none";
 
 /**
- * Explicit per-provider defaults.
+ * Fallback per-provider defaults.
  *
  * The tiers were assigned positionally — models[0] and models[length - 1] — so picking a
  * provider promoted the strong tier to the most expensive entry in its catalogue, and did
- * it again every time you glanced at another provider and came back. CATALOG carries no
- * defaults field, so they live here until the route sends them.
+ * it again every time you glanced at another provider and came back. The route now sends
+ * defaultSmall/defaultStrong and those win; this map only covers an older API.
  */
 const DEFAULTS: Record<string, { small: string; strong: string }> = {
   "claude-code": { small: "haiku", strong: "sonnet" },
@@ -58,10 +58,10 @@ const DEFAULTS: Record<string, { small: string; strong: string }> = {
 /**
  * What to actually do about a provider that saved but did not load.
  *
- * The 422 body sends `error` and no `remedy`, though api.ts joins the two precisely
- * because the remedy is the point of an auth failure — and it names neither the variable
- * nor the restart, which is required, since the key is read when the provider is
- * constructed. A server-sent remedy wins over these.
+ * The route's own 422 remedy wins over these. They stay as the fallback for an API build
+ * that sends `error` alone, since a bare problem statement names neither the variable nor
+ * the restart — and the restart is required, the key being read when the provider is
+ * constructed.
  */
 const REMEDY: Record<string, string> = {
   anthropic:
@@ -114,6 +114,18 @@ function parseLive(llm: string | null): Tiers | null {
   const [provider = "", models = ""] = llm.split(":");
   const [small = "", strong = ""] = models.split("/");
   return { provider, small, strong };
+}
+
+/**
+ * The server's "no model configured — … return 503" caveat, dropped everywhere.
+ *
+ * Every branch that renders caveats renders it while status.llm is null, and
+ * providerStatus() always emits that line then — so it would repeat, in a phrasing that
+ * names an HTTP status the learner never sees, whatever the notice above it already says
+ * in plain terms.
+ */
+function otherCaveats(caveats?: string[]): string[] {
+  return (caveats ?? []).filter((c) => !c.startsWith("no model configured"));
 }
 
 function StateRow({
@@ -267,7 +279,7 @@ export function SettingsPage() {
         title: "Saved, but not usable yet.",
         body: "The API accepted the change and still reports no model loaded.",
         remedy: REMEDY[fresh.current.provider] ?? null,
-        caveats: fresh.status.caveats ?? [],
+        caveats: otherCaveats(fresh.status.caveats),
       };
     }
     return {
@@ -308,7 +320,7 @@ export function SettingsPage() {
           title: "Saved, but not usable yet.",
           body: e.message,
           remedy: e.remedy ?? REMEDY[provider] ?? null,
-          caveats: fresh?.status.caveats ?? [],
+          caveats: otherCaveats(fresh?.status.caveats),
         });
       } else {
         const d = describe(e);
@@ -369,9 +381,7 @@ export function SettingsPage() {
     data.current.provider === NONE
       ? "no model"
       : (data.catalog[data.current.provider]?.label ?? data.current.provider);
-  // Stated in plain terms in the banner above the table instead; the server's own
-  // phrasing for this one names an HTTP status the learner never sees.
-  const caveats = (status.caveats ?? []).filter((c) => !c.startsWith("no model configured"));
+  const caveats = otherCaveats(status.caveats);
 
   const tierField = (tier: "small" | "strong", label: string, purpose: string) => {
     const value = tier === "small" ? small : strong;

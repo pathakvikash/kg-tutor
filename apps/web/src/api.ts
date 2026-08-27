@@ -189,8 +189,13 @@ export const api = {
   scan: () => post<any>("/api/review/scan"),
   explain: (learnerId: string, conceptId: string) =>
     post<any>("/api/lesson/explain", { learnerId, conceptId }),
-  check: (learnerId: string, conceptId: string, level = "functional") =>
-    post<any>("/api/lesson/check", { learnerId, conceptId, level }),
+  /**
+   * `kind` decides which transcript the question is written into. A review pass must say
+   * "review" or its questions land in the open lesson session, where the lesson's
+   * answered-since scan can mistake a review answer for the reply to its own check.
+   */
+  check: (learnerId: string, conceptId: string, level = "functional", kind: "lesson" | "review" = "lesson") =>
+    post<any>("/api/lesson/check", { learnerId, conceptId, level, kind }),
   ask: (learnerId: string, conceptId: string, question: string) =>
     post<any>("/api/lesson/ask", { learnerId, conceptId, question }),
   attempt: (learnerId: string, payload: Record<string, unknown>) =>

@@ -36,9 +36,18 @@ async function reviewFetch<T>(url: string, init?: RequestInit): Promise<T> {
     let remedy: string | null = null;
     let message = text;
     try {
-      const body = JSON.parse(text) as { error?: unknown; remedy?: string };
+      const body = JSON.parse(text) as { error?: unknown; remedy?: string; detail?: string };
       remedy = body.remedy ?? null;
-      if (typeof body.error === "string") message = body.error;
+      // The same three shapes api.ts's failure() reads, in the same order: a string error,
+      // a structured one (a zod flatten arrives as an object), then detail. Dropping the
+      // last two turned a `{error: {...}}` body back into the raw blob this page exists
+      // to stop rendering.
+      message =
+        typeof body.error === "string"
+          ? body.error
+          : body.error
+            ? JSON.stringify(body.error)
+            : body.detail ?? text;
     } catch { /* keep the raw text */ }
     throw new HttpError(res.status, message || `HTTP ${res.status}`, remedy);
   }
@@ -186,13 +195,17 @@ function Failed({ what, error, onRetry }: { what: string; error: Error; onRetry:
   );
 }
 
-function Placeholder({ rows = 3 }: { rows?: number }) {
+function Placeholder({ rows = 3, what }: { rows?: number; what?: string }) {
   const widths = ["skeleton--w80", "skeleton--w60", "skeleton--w40"];
   return (
-    <div className="cur-sk" aria-hidden="true">
-      {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className={`skeleton skeleton--line ${widths[i % widths.length]}`} />
-      ))}
+    // The skeleton is decoration; the fact that a request is in flight is not.
+    <div className="cur-sk" aria-busy="true">
+      <p className="sr-only">{what ? `Loading ${what.toLowerCase()}…` : "Loading…"}</p>
+      <div aria-hidden="true">
+        {Array.from({ length: rows }, (_, i) => (
+          <div key={i} className={`skeleton skeleton--line ${widths[i % widths.length]}`} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -207,7 +220,7 @@ function Loaded<T>({
   rows?: number;
   children: (data: T) => React.ReactNode;
 }) {
-  if (res.phase === "loading") return <Placeholder rows={rows} />;
+  if (res.phase === "loading") return <Placeholder rows={rows} what={what} />;
   if (res.phase === "failed") return <Failed what={what} error={res.error} onRetry={onRetry} />;
   return <>{children(res.data)}</>;
 }
@@ -335,6 +348,9 @@ export function ReviewPage() {
   const announce = (text: string) => setOutcome({ text, token: Date.now() });
 
   const refreshAll = () => {
+    // Three loads fired mid-accept race the accept's own reload; every other handler
+    // on this page already refuses while an operation is running.
+    if (locked) return;
     void loadProposals(); void loadQueue(); void loadNegative(minAttempts);
   };
 
@@ -344,13 +360,23 @@ export function ReviewPage() {
     setScanNote(null);
     try {
       const r = await api.scan();
-      const promoted = r.results.filter((x: any) => x.proposed);
-      const misses = r.results.filter((x: any) => !x.proposed);
+      /* `proposed` is the route's `created` flag, and it is false in two unrelated cases:
+         the candidate missed the bar, or it passed and its proposal was already open and
+         got updated. Splitting on it labelled every re-scan of an open proposal a near
+         miss and printed a reason it never had. What actually failed is what carries a
+         rejection reason — that is the same condition the server used for `passes`. */
+      const misses = r.results.filter((x: any) => (x.rejectedFor ?? []).length > 0);
+      const passed = r.results.filter((x: any) => (x.rejectedFor ?? []).length === 0);
+      const fresh = passed.filter((x: any) => x.proposed).length;
       setScanNote({
         tone: "ok",
         text:
           `Scanned ${r.scanned} candidate edge${r.scanned === 1 ? "" : "s"}; ` +
-          `${promoted.length} met the bar and ${misses.length} did not.`,
+          `${passed.length} met the bar and ${misses.length} did not.` +
+          (passed.length > 0
+            ? ` ${fresh} new proposal${fresh === 1 ? "" : "s"}, ` +
+              `${passed.length - fresh} already open and re-checked against current evidence.`
+            : ""),
         nearMisses: misses,
       });
       await loadProposals();
@@ -531,7 +557,11 @@ export function ReviewPage() {
               {open.map((p) => {
                 const kind = kindOf(p.kind);
                 const hasEnds = Boolean(p.src && p.dst);
-                const canAccept = kind.acceptable && hasEnds;
+                /* A uuid where a name should be means the concept row is gone — the route
+                   falls back to the raw id. applyProposal refuses such a proposal outright,
+                   so offering Accept here promises a write that cannot happen. */
+                const endsLive = hasEnds && !UUID.test(p.src) && !UUID.test(p.dst);
+                const canAccept = kind.acceptable && endsLive;
                 const text = failureModes[p.id] ?? "";
                 const check = checkFailureMode(text, p.src, p.dst);
                 const err = rowError[p.id];
@@ -561,10 +591,10 @@ export function ReviewPage() {
                         <Meter label="goals" value={p.distinctGoals} target={BAR.goals}
                           format={(n) => String(n)} />
                       </div>
-                      <details className="cur-claim">
-                        <summary>The claim in full</summary>
-                        <p>{p.claim}</p>
-                      </details>
+                      {/* Kept visible beside the meters: the prose is the acceptance
+                          criterion, and it carries one datum the meters do not — how many
+                          learners asked for the prerequisite unprompted. */}
+                      <p className="cur-claim">{p.claim}</p>
                     </div>
 
                     {canAccept ? (
@@ -601,9 +631,11 @@ export function ReviewPage() {
                       </div>
                     ) : (
                       <p className="notice notice--warn">
-                        {hasEnds
-                          ? "This kind cannot be executed from here — Accept would write a hard edge, which is not what it proposes. Reject it, or act on it directly in the graph."
-                          : "This proposal has no source or target concept on record, so no edge can be written from it."}
+                        {!hasEnds
+                          ? "This proposal has no source or target concept on record, so no edge can be written from it."
+                          : !endsLive
+                            ? "One end of this proposal is a concept that no longer exists, so no edge can be written from it. Reject it — the graph has moved on since it was raised."
+                            : "This kind cannot be executed from here — Accept would write a hard edge, which is not what it proposes. Reject it, or act on it directly in the graph."}
                       </p>
                     )}
 
@@ -784,9 +816,15 @@ export function ReviewPage() {
         {(n) => {
           const unobserved = (n.unobserved ?? []).filter((u: any) => !dismissed[u.edgeId]);
           const bypassed = (n.bypassed ?? []).filter((b: any) => !dismissed[b.edgeId]);
-          const hiddenCount =
-            (n.unobserved ?? []).length + (n.bypassed ?? []).length -
-            unobserved.length - bypassed.length;
+          /* The count and the list have to be the same set. The rows hidden from *this*
+             payload are one group; dismissals stored for edges this payload does not
+             contain — no longer flagged, or below the current threshold — are another, and
+             saying "3 dismissed" over a list of ten was the disagreement. */
+          const hiddenHere = [...(n.unobserved ?? []), ...(n.bypassed ?? [])]
+            .filter((r: any) => dismissed[r.edgeId])
+            .map((r: any) => [r.edgeId, dismissed[r.edgeId]] as [string, string]);
+          const hereIds = new Set(hiddenHere.map(([id]) => id));
+          const elsewhere = Object.entries(dismissed).filter(([id]) => !hereIds.has(id));
           if (unobserved.length === 0 && bypassed.length === 0) {
             return (
               <>
@@ -794,10 +832,10 @@ export function ReviewPage() {
                   Nothing flagged at {minAttempts}+ attempts — or not enough traffic yet to
                   judge.
                 </div>
-                {hiddenCount > 0 && (
+                {hiddenHere.length + elsewhere.length > 0 && (
                   <DismissedList
-                    dismissed={dismissed}
-                    count={hiddenCount}
+                    here={hiddenHere}
+                    elsewhere={elsewhere}
                     open={showDismissed}
                     onToggle={() => setShowDismissed(!showDismissed)}
                     onUndismiss={undismiss}
@@ -850,10 +888,10 @@ export function ReviewPage() {
                 target with none of them showing it; a prerequisite is flagged when 10 or
                 more learners reached the target and over 70% never demonstrated it.
               </p>
-              {hiddenCount > 0 && (
+              {hiddenHere.length + elsewhere.length > 0 && (
                 <DismissedList
-                  dismissed={dismissed}
-                  count={hiddenCount}
+                  here={hiddenHere}
+                  elsewhere={elsewhere}
                   open={showDismissed}
                   onToggle={() => setShowDismissed(!showDismissed)}
                   onUndismiss={undismiss}
@@ -960,30 +998,47 @@ function DismissButton({
   );
 }
 
+/** The number on the button is the number of rows behind it, in both groups. */
 function DismissedList({
-  dismissed, count, open, onToggle, onUndismiss,
+  here, elsewhere, open, onToggle, onUndismiss,
 }: {
-  dismissed: Record<string, string>;
-  count: number;
+  here: [string, string][];
+  elsewhere: [string, string][];
   open: boolean;
   onToggle: () => void;
   onUndismiss: (edgeId: string) => void;
 }) {
+  const rows = (entries: [string, string][]) => (
+    <ul>
+      {entries.map(([edgeId, reason]) => (
+        <li key={edgeId}>
+          <Link to={`/graph?edge=${edgeId}`}>edge {edgeId.slice(0, 8)}</Link>
+          <span className="cur-detail">{reason}</span>
+          <button className="linkish" onClick={() => onUndismiss(edgeId)}>restore</button>
+        </li>
+      ))}
+    </ul>
+  );
+  const total = here.length + elsewhere.length;
   return (
     <div className="cur-dismissed">
       <button className="linkish" aria-expanded={open} onClick={onToggle}>
-        {count} dismissed in this browser
+        {total} dismissed in this browser
       </button>
       {open && (
-        <ul>
-          {Object.entries(dismissed).map(([edgeId, reason]) => (
-            <li key={edgeId}>
-              <Link to={`/graph?edge=${edgeId}`}>edge {edgeId.slice(0, 8)}</Link>
-              <span className="cur-detail">{reason}</span>
-              <button className="linkish" onClick={() => onUndismiss(edgeId)}>restore</button>
-            </li>
-          ))}
-        </ul>
+        <>
+          {here.length > 0 && rows(here)}
+          {elsewhere.length > 0 && (
+            <>
+              <p className="cur-detail cur-dismissed-note">
+                {elsewhere.length === 1
+                  ? "One dismissal is for an edge this list does not currently flag:"
+                  : `${elsewhere.length} dismissals are for edges this list does not currently flag:`}
+              </p>
+              {rows(elsewhere)}
+            </>
+          )}
+        </>
       )}
     </div>
   );

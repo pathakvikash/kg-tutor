@@ -9,14 +9,28 @@ import { prisma } from "./context.js";
  * answer, not the verdict. The client pushed both into local state, then refreshed from
  * the transcript, and the screen reverted to the moment before the answer was given.
  */
-export async function openSession(learnerId: string): Promise<string> {
+/**
+ * A lesson and a review pass are different activities that both write turns.
+ *
+ * This returned the newest un-ended session whatever it was for, so a review question
+ * was written into the open lesson transcript — appearing under concepts the lesson had
+ * never covered — and the lesson's "has anything been answered since the last question?"
+ * scan could read a review answer as the reply to its own pending check. Scoping by kind
+ * keeps them apart without ending either one.
+ */
+export type SessionKind = "lesson" | "review";
+
+export async function openSession(
+  learnerId: string,
+  kind: SessionKind = "lesson",
+): Promise<string> {
   const existing = await prisma.session.findFirst({
-    where: { learnerId, endedAt: null },
+    where: { learnerId, kind, endedAt: null },
     orderBy: { startedAt: "desc" },
   });
   if (existing) return existing.id;
   const created = await prisma.session.create({
-    data: { learnerId, variant: assignVariant(learnerId) },
+    data: { learnerId, kind, variant: assignVariant(learnerId) },
   });
   return created.id;
 }

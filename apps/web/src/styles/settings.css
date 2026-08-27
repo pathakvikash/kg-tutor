@@ -113,19 +113,14 @@
   gap: var(--s-3);
 }
 /* aria-disabled, not disabled: a real `disabled` on the button that was just pressed
-   moves focus to <body>. It still has to look unavailable. */
-.settings button[aria-disabled="true"] {
-  opacity: 0.5;
-  cursor: default;
-}
-.settings button[aria-disabled="true"]:hover {
-  border-color: var(--rule-strong);
+   moves focus to <body>. The shared [aria-disabled="true"] rule gives it the inert look;
+   these two only stop the button hover rules from repainting it — `button:hover`
+   recolours the text, and `button.primary:hover` lifts opacity back to 0.9. */
+.settings button[aria-disabled="true"]:not(.primary):hover {
   color: var(--ink);
 }
 .settings button.primary[aria-disabled="true"]:hover {
-  border-color: var(--accent);
-  color: var(--on-accent);
-  opacity: 0.5;
+  opacity: 0.55;
 }
 
 /* ── The two-tier rationale, demoted to a disclosure: it is an explanation, and the
