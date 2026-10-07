@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { expandTopicShallow } from "@kg/graph";
 import { prisma, getLlm, resolverDeps } from "../context.js";
+import { requireAdmin } from "../admin.js";
 
 /** Expansion takes minutes, so it runs as a polled job rather than one long request */
 async function runJob(jobId: string): Promise<void> {
@@ -75,6 +76,7 @@ export async function failStrandedJobs(): Promise<number> {
 
 export async function expandJobRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/expansions", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const body = z
       .object({ topicName: z.string().min(1), description: z.string().optional() })
       .safeParse(req.body);
@@ -96,6 +98,7 @@ export async function expandJobRoutes(app: FastifyInstance): Promise<void> {
     prisma.expansionJob.findMany({ orderBy: { createdAt: "desc" }, take: 20 }));
 
   app.post("/api/expansions/:id/retry", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const { id } = req.params as { id: string };
     const old = await prisma.expansionJob.findUnique({ where: { id } });
     if (!old) return reply.code(404).send({ error: "job not found" });

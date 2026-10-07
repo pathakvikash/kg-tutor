@@ -4,7 +4,7 @@ import { expandPrerequisitesOf, expandTopicShallow, type ExpandReport } from "@k
 import { executeJs, routeChatQuestion, runAttempt, selectItem, generateItems } from "@kg/teach";
 import { prisma, getLlm, resolverDeps } from "../context.js";
 import { openSession, saveTurn } from "../sessions.js";
-import { requireAdmin } from "../admin.js";
+import { isProduction, requireAdmin } from "../admin.js";
 
 const NO_MODEL = {
   error: "no model configured",
@@ -15,6 +15,7 @@ const NO_MODEL = {
 
 export async function teachRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/topics/expand", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const body = z
       .object({ topicName: z.string().min(1), topicDescription: z.string().optional() })
       .safeParse(req.body);
@@ -34,6 +35,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/concepts/:id/deepen", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const { id } = req.params as { id: string };
     const llm = getLlm();
     const resolver = resolverDeps();
@@ -99,6 +101,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/concepts/:id/items/generate", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const { id } = req.params as { id: string };
     const llm = getLlm();
     if (!llm) return reply.code(503).send(NO_MODEL);
@@ -206,6 +209,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
 
   /** Runs learner code; not a security sandbox, see @kg/teach/execute */
   app.post("/api/execute", async (req, reply) => {
+    if (isProduction()) return reply.code(404).send({ error: "not found" });
     if (!requireAdmin(req, reply)) return reply;
     const body = z
       .object({ code: z.string(), harness: z.string().optional(), timeoutMs: z.number().optional() })

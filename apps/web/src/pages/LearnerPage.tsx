@@ -378,7 +378,7 @@ export function LearnerPage() {
         <label className="field">
           learner
           <select value={id} onChange={(e) => setId(e.target.value)}>
-            {learners.map((l) => <option key={l.id} value={l.id}>{l.email}</option>)}
+            {learners.map((l) => <option key={l.id} value={l.id}>{l.email ?? l.name ?? l.id}</option>)}
           </select>
         </label>
       </div>

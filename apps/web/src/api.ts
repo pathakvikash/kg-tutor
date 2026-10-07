@@ -76,8 +76,32 @@ async function send<T>(
   return res.status === 204 ? (undefined as T) : (res.json() as Promise<T>);
 }
 
+/** Retries once with a prompted admin token; refuses plainly when none works */
+async function adminSend<T>(
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  url: string,
+  body?: unknown,
+): Promise<T> {
+  const attempt = (token: string | null) =>
+    send<T>(method, url, body, token ? { authorization: `Bearer ${token}` } : {});
+  const refused = new HttpError(403, "Admin only in the public demo");
+  try {
+    return await attempt(sessionStorage.getItem("kg-admin-token"));
+  } catch (e) {
+    if (!(e instanceof HttpError) || e.status !== 403) throw e;
+    const entered = window.prompt("Admin token");
+    if (!entered) throw refused;
+    sessionStorage.setItem("kg-admin-token", entered);
+    try {
+      return await attempt(entered);
+    } catch (e2) {
+      if (e2 instanceof HttpError && e2.status === 403) throw refused;
+      throw e2;
+    }
+  }
+}
+
 const post = <T>(url: string, body?: unknown) => send<T>("POST", url, body);
-const del = <T>(url: string) => send<T>("DELETE", url);
 
 export interface AskStreamHandlers {
   onOpen?: (d: any) => void;
@@ -155,7 +179,7 @@ export const api = {
   updateLearner: (id: string, patch: Record<string, unknown>) =>
     send<any>("PATCH", `/api/learners/${id}`, patch),
   due: (id: string, limit = DUE_LIMIT) => get<any>(`/api/learners/${id}/due?limit=${limit}`),
-  deepen: (conceptId: string) => post<any>(`/api/concepts/${conceptId}/deepen`, {}),
+  deepen: (conceptId: string) => adminSend<any>("POST", `/api/concepts/${conceptId}/deepen`, {}),
   setGoal: (id: string, topicId: string, depth: string) =>
     post<any>(`/api/learners/${id}/goals`, { topicId, depth }),
   rebuildPlan: (id: string) => post<any>(`/api/learners/${id}/plan/rebuild`),
@@ -163,7 +187,7 @@ export const api = {
   reviewQueue: () => get<any[]>("/api/review/queue"),
   proposals: () => get<any[]>("/api/review/proposals"),
   negative: () => get<any>("/api/review/negative"),
-  scan: () => post<any>("/api/review/scan"),
+  scan: () => adminSend<any>("POST", "/api/review/scan"),
   explain: (learnerId: string, conceptId: string) =>
     post<any>("/api/lesson/explain", { learnerId, conceptId }),
   /** `kind` picks which transcript this is written into; a review pass must say "review" */
@@ -178,44 +202,35 @@ export const api = {
   completeStep: (learnerId: string, conceptId: string) =>
     post<any>(`/api/learners/${learnerId}/steps/${conceptId}/complete`),
   startExpansion: (topicName: string, description?: string) =>
-    post<any>("/api/expansions", { topicName, description }),
+    adminSend<any>("POST", "/api/expansions", { topicName, description }),
   expansion: (id: string) => get<any>(`/api/expansions/${id}`),
   expansions: () => get<any[]>("/api/expansions"),
   openIntake: (learnerId: string) => get<any>(`/api/intake/open/${learnerId}`),
   resumeIntake: (learnerId: string) =>
     get<any>(`/api/intake/open/${learnerId}?withQuestion=1`),
   abandonIntake: (id: string) => post<any>(`/api/intake/${id}/abandon`),
-  retryExpansion: (id: string) => post<any>(`/api/expansions/${id}/retry`),
+  retryExpansion: (id: string) => adminSend<any>("POST", `/api/expansions/${id}/retry`),
   startIntake: (payload: Record<string, unknown>) => post<any>("/api/intake/start", payload),
   answerIntake: (id: string, answer: string) => post<any>(`/api/intake/${id}/answer`, { answer }),
   sessions: (learnerId: string) => get<any[]>(`/api/learners/${learnerId}/sessions`),
   sessionTranscript: (id: string) => get<any>(`/api/sessions/${id}/transcript`),
   resumeSession: (id: string) => post<any>(`/api/sessions/${id}/resume`),
   modelSettings: () => get<any>("/api/settings/model"),
-  setModel: async (payload: Record<string, unknown>) => {
-    const put = (token: string | null) =>
-      send<any>("PUT", "/api/settings/model", payload, token ? { authorization: `Bearer ${token}` } : {});
-    const saved = sessionStorage.getItem("kg-admin-token");
-    try {
-      return await put(saved);
-    } catch (e) {
-      if (!(e instanceof HttpError) || e.status !== 403) throw e;
-      const entered = window.prompt("Admin token");
-      if (!entered) throw e;
-      sessionStorage.setItem("kg-admin-token", entered);
-      return put(entered);
-    }
-  },
-  deleteSession: (id: string) => del<any>(`/api/sessions/${id}`),
-  deleteAllSessions: (learnerId: string) => del<any>(`/api/learners/${learnerId}/sessions`),
+  setModel: (payload: Record<string, unknown>) => adminSend<any>("PUT", "/api/settings/model", payload),
+  deleteSession: (id: string) => adminSend<any>("DELETE", `/api/sessions/${id}`),
+  deleteAllSessions: (learnerId: string) =>
+    adminSend<any>("DELETE", `/api/learners/${learnerId}/sessions`),
   widget: (learnerId: string, conceptId: string, focus?: string) =>
     post<any>("/api/lesson/widget", { learnerId, conceptId, focus }),
   resolveGoal: (goal: string) => post<any>("/api/roadmap/resolve", { goal }),
-  createOutcome: (payload: Record<string, unknown>) => post<any>("/api/roadmap/outcome", payload),
+  createOutcome: (payload: Record<string, unknown>) => adminSend<any>("POST", "/api/roadmap/outcome", payload),
   roadmap: (learnerId: string) => get<any>(`/api/roadmap/${learnerId}`),
   acceptProposal: (id: string, failureMode: string) =>
-    post<any>(`/api/review/proposals/${id}/accept`, { failureMode, reviewedBy: "reviewer" }),
-  rejectProposal: (id: string) => post<any>(`/api/review/proposals/${id}/reject`, { reviewedBy: "reviewer" }),
+    adminSend<any>("POST", `/api/review/proposals/${id}/accept`, { failureMode, reviewedBy: "reviewer" }),
+  rejectProposal: (id: string) =>
+    adminSend<any>("POST", `/api/review/proposals/${id}/reject`, { reviewedBy: "reviewer" }),
+  reverseProposal: (id: string, reason: string) =>
+    adminSend<{ retired: number }>("POST", `/api/review/proposals/${id}/reverse`, { reason }),
 };
 
 export const MASTERY_ORDER: Mastery[] = ["unknown", "familiar", "functional", "solid"];

@@ -601,7 +601,10 @@ export function SettingsPage() {
                     ) : learners === "failed" ? (
                       <span className="muted">could not be read</span>
                     ) : (
-                      (learners.find((l) => l.id === learnerId)?.email ?? "none selected")
+                      (() => {
+                        const l = learners.find((x) => x.id === learnerId);
+                        return l ? (l.email ?? l.name ?? l.id) : "none selected";
+                      })()
                     )}
                   </td>
                   <td>

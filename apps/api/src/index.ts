@@ -18,11 +18,12 @@ import { roadmapRoutes } from "./routes/roadmap.js";
 import { widgetRoutes } from "./routes/widget.js";
 import { providerStatus, refreshLlm } from "./context.js";
 import { installErrorHandler } from "./errors.js";
+import { isProduction } from "./admin.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webDist = resolve(here, "../../web/dist");
 const PORT = Number(process.env.PORT ?? 4000);
-const HOST = process.env.HOST ?? "0.0.0.0";
+const HOST = process.env.HOST ?? (isProduction() ? "0.0.0.0" : "127.0.0.1");
 const RATE_MAX = Number(process.env.RATE_LIMIT_MAX ?? 60);
 const RATE_LLM_MAX = Number(process.env.RATE_LIMIT_LLM_MAX ?? 10);
 const CORS_ORIGINS = (process.env.CORS_ORIGIN ?? "")
@@ -37,6 +38,7 @@ const LLM_ROUTES = new Set([
   "POST /api/lesson/ask",
   "POST /api/lesson/ask/stream",
   "POST /api/lesson/widget",
+  "POST /api/intake/start",
   "POST /api/topics/expand",
   "POST /api/concepts/:id/deepen",
   "POST /api/concepts/:id/items/generate",
@@ -59,6 +61,7 @@ const app = Fastify({
 await app.register(cors, {
   origin: CORS_ORIGINS.length > 0 ? CORS_ORIGINS : false,
   methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  maxAge: 600,
 });
 // Registered before the plugin, whose own onRoute hook reads this config
 app.addHook("onRoute", (route) => {

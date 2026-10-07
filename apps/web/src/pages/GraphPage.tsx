@@ -725,7 +725,7 @@ function Graph() {
             learner
             <select value={learnerId} onChange={(e) => setLearnerId(e.target.value)}>
               <option value="">none</option>
-              {learners.map((l) => <option key={l.id} value={l.id}>{l.email}</option>)}
+              {learners.map((l) => <option key={l.id} value={l.id}>{l.email ?? l.name ?? l.id}</option>)}
             </select>
           </label>
         </div>

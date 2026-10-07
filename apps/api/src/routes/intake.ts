@@ -7,6 +7,7 @@ import {
   type IntakeState, type ProbeChoice,
 } from "@kg/teach";
 import { prisma, getLlm } from "../context.js";
+import { requireAdmin } from "../admin.js";
 
 const NO_MODEL = { error: "no model configured", detail: "Choose one in Settings." };
 
@@ -335,6 +336,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.delete("/api/sessions/:id", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const { id } = req.params as { id: string };
     const session = await prisma.session.findUnique({ where: { id } });
     if (!session) return reply.code(404).send({ error: "session not found" });
@@ -351,7 +353,8 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     return result;
   });
 
-  app.delete("/api/learners/:id/sessions", async (req) => {
+  app.delete("/api/learners/:id/sessions", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const { id } = req.params as { id: string };
     const sessions = await prisma.session.findMany({ where: { learnerId: id }, select: { id: true } });
     const ids = sessions.map((s) => s.id);

@@ -4,6 +4,7 @@ import { completeJson } from "@kg/llm";
 import { activePlanWhere, reconcilePlan } from "@kg/planner";
 import { atLeast } from "@kg/shared";
 import { prisma, getLlm } from "../context.js";
+import { requireAdmin } from "../admin.js";
 
 const resolveSchema = z.object({
   /** subject = a body of knowledge; outcome = a capability or role */
@@ -59,6 +60,7 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/roadmap/outcome", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const body = z
       .object({
         canonicalName: z.string(),

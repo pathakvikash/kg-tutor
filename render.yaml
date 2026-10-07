@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     # tsx and prisma are devDependencies, so install them despite NODE_ENV=production
-    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm --filter @kg/db db:generate
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm --filter @kg/db db:generate
     # preDeployCommand needs a paid plan, so migrate on start instead
     startCommand: pnpm db:deploy && pnpm --filter @kg/api start
     healthCheckPath: /api/health
@@ -22,4 +22,4 @@ services:
       - key: EMBEDDING_API_KEY
         sync: false
       - key: TRUST_PROXY
-        sync: false
+        value: "1"

@@ -15,8 +15,9 @@ export function installErrorHandler(app: FastifyInstance): void {
       req.log.warn({ err: err.message }, "model call failed");
       return reply.code(502).send({ error: err.message, kind: "provider_error" });
     }
-    req.log.error({ err }, "unhandled error");
     const status = (err as { statusCode?: number }).statusCode ?? 500;
+    if (status === 429) req.log.info("rate limited");
+    else req.log.error({ err }, "unhandled error");
     return reply.code(status).send({
       error: status >= 500 ? "Something went wrong on our side." : err.message,
       kind: "server_error",

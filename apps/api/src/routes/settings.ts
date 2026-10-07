@@ -41,7 +41,9 @@ void _providersCoverCatalog;
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/settings/model", async () => ({
     current: await loadModelSettings(),
-    catalog: CATALOG,
+    catalog: isProduction()
+      ? Object.fromEntries(Object.entries(CATALOG).filter(([k]) => k !== "claude-code"))
+      : CATALOG,
     status: providerStatus(),
   }));
 

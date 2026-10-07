@@ -12,8 +12,6 @@ The graph, the assessment item bank and the explanation library all improve with
 use. A chatbot tutor has nowhere to keep what it learns, so its quality and cost stay
 flat.
 
-<!-- screenshot: docs/screenshot.png -->
-
 ## Status
 
 v0: the engine, HTTP API and web UI exist and run end to end. It has only been
@@ -44,10 +42,9 @@ exercised against scripted and deterministic providers, never a live hosted mode
 - Expansion jobs run in-process and are lost on restart (they are marked failed on
   the next start).
 - There is no Dockerfile, and no user auth. The only protection is a per-IP rate limit
-  and an admin token on the model settings and code execution routes.
+  and an admin token on routes that change the shared graph, spend strong-tier model
+  calls, delete sessions or change model settings.
 - The deploy path in the Deploy section has not been run end to end.
-
-Running notes are in `context/progress.md`.
 
 ## Architecture
 
@@ -162,12 +159,6 @@ Web environment (Vercel): `VITE_API_URL`.
 
 There is no daily spend cap, because only the Claude Code provider records cost.
 Set a monthly limit on the key in the Anthropic console.
-
-## Design
-
-The 22 decisions and 8 operating policies, with the trade-off accepted for each, are
-in `context/decisions.md`. That folder is gitignored, so it only exists in the
-author's checkout.
 
 ## Roadmap
 

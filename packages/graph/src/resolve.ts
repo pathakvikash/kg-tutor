@@ -91,7 +91,7 @@ export async function proposeConcept(
       },
     });
 
-    // Another session may have taken the name before we got the lock
+    // Another session may have taken the name before the lock was held
     const existing = await tx.conceptAlias.findUnique({
       where: { name: normalizeName(input.name) },
     });

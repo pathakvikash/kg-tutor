@@ -4,6 +4,7 @@ import { activePlanWhere, buildPlan, loadMastery, reconcilePlan } from "@kg/plan
 import { atLeast } from "@kg/shared";
 import { selectProbes, assignVariant, dueForReview } from "@kg/teach";
 import { prisma } from "../context.js";
+import { isProduction } from "../admin.js";
 
 export async function learnerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/learners", async () => {
@@ -13,7 +14,7 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
     });
     return learners.map((l) => ({
       id: l.id,
-      email: l.email,
+      ...(isProduction() ? {} : { email: l.email }),
       name: l.name,
       background: l.background,
       workingLanguage: l.workingLanguage,

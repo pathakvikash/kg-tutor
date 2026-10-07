@@ -6,6 +6,7 @@ import {
   reverseProposal, reviewQueueByTraversal,
 } from "@kg/evidence";
 import { prisma } from "../context.js";
+import { requireAdmin } from "../admin.js";
 
 export async function reviewRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/review/queue", async () => reviewQueueByTraversal(prisma, 100));
@@ -32,7 +33,8 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
     }));
   });
 
-  app.post("/api/review/scan", async () => {
+  app.post("/api/review/scan", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const candidates = await findMissingEdgeCandidates(prisma);
     const results = [];
     for (const c of candidates) {
@@ -50,6 +52,7 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/review/proposals/:id/accept", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const { id } = req.params as { id: string };
     const body = z.object({ failureMode: z.string(), reviewedBy: z.string() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
@@ -61,14 +64,16 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post("/api/review/proposals/:id/reject", async (req) => {
+  app.post("/api/review/proposals/:id/reject", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const { id } = req.params as { id: string };
     const body = req.body as { reviewedBy?: string };
     await rejectProposal(prisma, id, body?.reviewedBy ?? "unknown");
     return { ok: true };
   });
 
-  app.post("/api/review/proposals/:id/reverse", async (req) => {
+  app.post("/api/review/proposals/:id/reverse", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const { id } = req.params as { id: string };
     const body = req.body as { reason?: string };
     return reverseProposal(prisma, id, body?.reason ?? "reversed from review UI");

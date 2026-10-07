@@ -10,7 +10,7 @@ type Async<T> =
 
 const asError = (e: unknown): Error => (e instanceof Error ? e : new Error(String(e)));
 
-/** For the two calls api.ts has no wrapper for; same HttpError shape */
+/** For the call api.ts has no wrapper for; same HttpError shape */
 async function reviewFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl(url), init);
   if (!res.ok) {
@@ -34,13 +34,6 @@ async function reviewFetch<T>(url: string, init?: RequestInit): Promise<T> {
 
 const getNegative = (minAttempts: number) =>
   reviewFetch<any>(`/api/review/negative?minAttempts=${minAttempts}`);
-
-const reverseProposal = (id: string, reason: string) =>
-  reviewFetch<{ retired: number }>(`/api/review/proposals/${id}/reverse`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ reason }),
-  });
 
 /* Accept writes a hard edge unconditionally, so only new_hard_edge is acceptable */
 const KIND: Record<string, { label: string; blurb: string; acceptable: boolean }> = {
@@ -386,7 +379,7 @@ export function ReviewPage() {
     setBusy({ op: `reverse:${p.id}`, label: "retiring the promoted edge" });
     setRowError({ ...rowError, [p.id]: "" });
     try {
-      const r = await reverseProposal(p.id, reason || "reversed from Curate");
+      const r = await api.reverseProposal(p.id, reason || "reversed from Curate");
       setConfirming({ ...confirming, [p.id]: null });
       announce(
         r.retired === 0

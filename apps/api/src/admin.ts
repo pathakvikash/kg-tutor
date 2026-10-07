@@ -9,7 +9,7 @@ function sameToken(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-/** Sends the refusal and returns false unless the bearer token matches ADMIN_TOKEN. */
+/** Sends the refusal and returns false unless the bearer token matches ADMIN_TOKEN */
 export function requireAdmin(req: FastifyRequest, reply: FastifyReply): boolean {
   const expected = process.env.ADMIN_TOKEN;
   if (!expected) {
