@@ -17,11 +17,11 @@ const schema = z.object({
 });
 
 export interface LLMAdjudicatorOptions {
-  /** Called when a returned id was never offered — worth alerting on, not just logging. */
+  /** Called when a returned id was never offered; worth alerting on, not just logging */
   onDowngrade?: (input: AdjudicationInput, decision: ResolverDecision) => void;
 }
 
-/** Rubric-bound, so it runs on the small tier at temperature 0 to stay reproducible. (17) */
+/** Rubric-bound, so it runs on the small tier at temperature 0 to stay reproducible */
 export class LLMAdjudicator implements Adjudicator {
   readonly name: string;
 
@@ -42,7 +42,7 @@ export class LLMAdjudicator implements Adjudicator {
         system: ADJUDICATION_SYSTEM_PROMPT,
         user: buildAdjudicationPrompt(input),
         tier: "small",
-      // A false "same" merges two concepts irreversibly, so keep a small real budget.
+      // A false "same" merges two concepts irreversibly, so keep a small real budget
       effort: "low",
         temperature: 0,
       },

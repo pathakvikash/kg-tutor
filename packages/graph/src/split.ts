@@ -2,24 +2,22 @@ import type { Prisma, PrismaClient } from "@kg/db";
 import { checkConceptName } from "@kg/shared";
 import { proposeConcept, type ResolverDeps } from "./resolve.js";
 
-/** Splitting a compound moves edges and topic links, but never mastery or items. */
+/** Edges and topic links move to the halves; mastery stays on the compound */
 export interface SplitResult {
   conceptId: string;
   name: string;
   reason: string;
-  /** Resolved halves, with whether the resolver reused an existing concept. */
   parts: { name: string; conceptId: string; reused: boolean }[];
   edgesRewritten: number;
   itemsRetired: number;
   masteryRowsStranded: number;
 }
 
-/** Names and senses for a compound's halves; sense is immutable, so a wrong half is permanent. */
+/** Names and senses for a compound's halves; sense is immutable, so a wrong half is permanent */
 export type PartsFor = (compound: {
   name: string;
   sense: string;
   reason: string;
-  /** The blunt split, as a starting point. */
   suggested: string[];
 }) => Promise<{ name: string; sense: string }[]>;
 
@@ -33,7 +31,7 @@ export async function splitCompoundConcept(
   const check = checkConceptName(concept.canonicalName);
   if (check.ok) return null;
 
-  // A compound with no usable halves is deprecated without a successor, not guessed at.
+  // No usable halves means deprecate with no successor, not guess
   const suggested = (check.parts ?? []).filter((h) => checkConceptName(h).ok);
   const proposed = partsFor
     ? await partsFor({
@@ -44,7 +42,7 @@ export async function splitCompoundConcept(
       })
     : suggested.map((name) => ({ name, sense: concept.sense }));
 
-  // A namer that returns another compound would recreate the problem.
+  // The namer may hand back another compound
   const halves = proposed.filter((h) => checkConceptName(h.name).ok);
 
   const parts: SplitResult["parts"] = [];
@@ -73,7 +71,7 @@ export async function splitCompoundConcept(
       for (const e of edges) {
         const srcId = e.srcId === conceptId ? part.conceptId : e.srcId;
         const dstId = e.dstId === conceptId ? part.conceptId : e.dstId;
-        // Both ends can resolve to the same half, and the DAG trigger rejects a self-edge.
+        // Both ends can resolve to the same half; the DAG trigger rejects self-edges
         if (srcId === dstId) continue;
         const existing = await tx.edge.findFirst({
           where: { srcId, dstId, type: e.type, retiredAt: null },
@@ -107,7 +105,6 @@ export async function splitCompoundConcept(
           winnerId: part.conceptId,
           loserId: conceptId,
           rewrittenEdges: edges.map((e) => e.id) as Prisma.InputJsonValue,
-          // Named for what it is: nothing was moved, and that is the point.
           movedStates: {
             masteryNotMoved: states.map((s) => ({ learnerId: s.learnerId, mastery: s.mastery })),
           } as Prisma.InputJsonValue,
@@ -118,7 +115,7 @@ export async function splitCompoundConcept(
       });
     }
 
-    // Items written for a compound ask about both halves at once.
+    // Items written for a compound test both halves at once
     const retired = await tx.assessmentItem.updateMany({
       where: { conceptId, status: { not: "retired" } },
       data: { status: "retired" },
@@ -133,7 +130,7 @@ export async function splitCompoundConcept(
       where: { id: conceptId },
       data: {
         deprecatedAt: new Date(),
-        // The schema allows one successor; the MergeRecords carry the full split.
+        // Schema allows one successor; MergeRecords carry the full split
         supersededById: parts[0]?.conceptId ?? null,
       },
     });
@@ -156,7 +153,6 @@ export async function splitCompoundConcept(
   };
 }
 
-/** Everything adjacent, so the resolver can judge a half against the right neighbourhood. */
 async function neighbourIds(prisma: PrismaClient, conceptId: string): Promise<string[]> {
   const edges = await prisma.edge.findMany({
     where: { OR: [{ srcId: conceptId }, { dstId: conceptId }], retiredAt: null },

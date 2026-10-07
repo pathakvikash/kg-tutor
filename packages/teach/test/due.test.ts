@@ -31,7 +31,6 @@ describe("dueForReview", () => {
     expect(await dueForReview(prisma, l)).toEqual([]);
   });
 
-  /** Confidence decays with elapsed time, whether or not the learner comes back. */
   it("surfaces a concept whose confidence has decayed past the floor", async () => {
     const l = await learner();
     const c = await concept("hash tables");
@@ -109,7 +108,6 @@ describe("dueForReview", () => {
 });
 
 describe("resolveMisconceptions", () => {
-  /** Without this the queue only ever grows: a belief recorded once stayed open forever. */
   it("clears open beliefs on the concept and leaves other concepts alone", async () => {
     const l = await learner();
     const a = await concept("bst");
@@ -130,7 +128,7 @@ describe("resolveMisconceptions", () => {
   it("takes a resolved concept out of the queue", async () => {
     const l = await learner();
     const c = await concept("union-find");
-    // Needs lastEvidenceAt, or confidence decays to 0 and the concept is due as "decayed".
+    // Needs lastEvidenceAt, or confidence decays to 0 and the concept is due as "decayed"
     await prisma.learnerConceptState.create({
       data: {
         learnerId: l, conceptId: c, mastery: "functional", confidence: 0.85,

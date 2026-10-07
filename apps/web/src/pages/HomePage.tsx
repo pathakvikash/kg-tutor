@@ -1,28 +1,22 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { api, HttpError } from "../api";
+import { api, apiUrl, HttpError } from "../api";
 import { Busy } from "../components/Busy";
 import { Markdown } from "../components/Markdown";
 import { DEPTH_LABEL, DUE_KIND, dueKindLabel } from "../vocabulary";
 import { resolveLearner, useStickyLearner } from "../useLearner";
 import { getLearner } from "../learnerStore";
 
-/** The queue's own ranking, highest cost of being ignored first. */
 const KINDS = Object.keys(DUE_KIND) as (keyof typeof DUE_KIND)[];
 
-/** How many rows the list draws before deferring to the review session itself. */
 const ROWS = 8;
 
-/** Cost of being ignored, highest first; also the fallback order when nothing leads. */
 const CARDS = ["intake", "due", "plan"] as const;
 
-/** How long a finished build stays on the page, including ones this mount never polled. */
 const RECENT_MS = 12 * 60 * 60 * 1000;
 
-/** Finished builds pile up; the newest few are the ones anyone still reads. */
 const JOBS = 4;
 
-/** The outcome of one read: pending, ok, absent and failed are four different claims. */
 type Outcome<T> =
   | { kind: "pending" }
   | { kind: "ok"; data: T }
@@ -41,14 +35,13 @@ function describe(e: unknown): { message: string; remedy: string | null } {
 function settle<T>(r: PromiseSettledResult<T>): Outcome<T> {
   if (r.status === "fulfilled") return { kind: "ok", data: r.value };
   const e: unknown = r.reason;
-  // 404 is the resource being genuinely absent — an empty state, not a fault.
   if (e instanceof HttpError && e.isMissing) return { kind: "absent" };
   return { kind: "failed", ...describe(e) };
 }
 
-/** api.ts has no create, and POST /api/learners was otherwise unreachable. */
+/** api.ts has no wrapper for POST /api/learners */
 async function createLearner(email: string): Promise<{ id: string }> {
-  const res = await fetch("/api/learners", {
+  const res = await fetch(apiUrl("/api/learners"), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email }),
@@ -76,7 +69,6 @@ function Failed({ what, at, onRetry }: { what: string; at: Failure; onRetry: () 
   );
 }
 
-/** "now" / "next" states the rank in words, so it survives without colour or position. */
 function CardHead({ title, lead, rank }: { title: string; lead: boolean; rank: string | null }) {
   return (
     <div className="row row--baseline home-card-head">
@@ -91,7 +83,6 @@ function CardHead({ title, lead, rank }: { title: string; lead: boolean; rank: s
   );
 }
 
-/** Where a session starts: what is due, what is unfinished and what is next. */
 export function HomePage() {
   const [roster, setRoster] = useState<Outcome<any[]>>(PENDING);
   const [learnerId, setLearnerId] = useStickyLearner();
@@ -112,7 +103,7 @@ export function HomePage() {
   const [langFor, setLangFor] = useState("");
   const [save, setSave] = useState<{ kind: "idle" | "saving" | "ok" } | Failure>({ kind: "idle" });
 
-  // A newer learner's reads must win, whichever order the two flights land in.
+  // A newer learner's reads must win, whichever order the two flights land in
   const flight = useRef(0);
 
   const loadRoster = useCallback(async () => {
@@ -127,10 +118,8 @@ export function HomePage() {
 
   const load = useCallback(async (id: string) => {
     const mine = ++flight.current;
-    // Cleared first so the previous learner's rows never sit under the new name.
     setDue(PENDING); setPlan(PENDING); setIntake(PENDING);
     if (!id) return;
-    // Settled, not raced: one failed read must not hide the other cards.
     const [d, p, i] = await Promise.allSettled([api.due(id), api.plan(id), api.openIntake(id)]);
     if (flight.current !== mine) return;
     setDue(settle(d)); setPlan(settle(p)); setIntake(settle(i));
@@ -138,7 +127,6 @@ export function HomePage() {
 
   useEffect(() => { void load(learnerId); }, [learnerId, load]);
 
-  /** Builds are global, not per learner, and they outlive their own success. */
   const syncJobs = useCallback(async () => {
     const [r] = await Promise.allSettled([api.expansions()]);
     if (r.status !== "fulfilled") {
@@ -152,9 +140,8 @@ export function HomePage() {
       const at = Date.parse(j.finishedAt ?? j.createdAt ?? "");
       return Number.isFinite(at) && now - at < RECENT_MS;
     });
-    // Tracked so it survives ageing out, and so tracked.size means a build was seen.
+    // Tracked so it survives ageing out, and so tracked.size means a build was seen
     for (const j of keep) tracked.current.add(j.id);
-    // The route answers newest-first, so this keeps the newest.
     setJobs(keep.slice(0, JOBS));
     setJobsFailed(null);
   }, []);
@@ -170,7 +157,6 @@ export function HomePage() {
 
   const retryJob = useCallback(async (id: string) => {
     setRetrying(id);
-    // Retry writes a fresh job, so its new id has to be tracked.
     const [r] = await Promise.allSettled([api.retryExpansion(id)]);
     if (r.status === "fulfilled" && r.value?.id) tracked.current.add(r.value.id);
     if (r.status === "rejected") setJobsFailed({ kind: "failed", ...describe(r.reason) });
@@ -181,13 +167,12 @@ export function HomePage() {
   const learners: any[] = roster.kind === "ok" ? roster.data : [];
   const noLearners = roster.kind === "absent" || (roster.kind === "ok" && learners.length === 0);
   const hasRoster = roster.kind === "ok" && learners.length > 0;
-  // A remembered learner is enough to ask the other endpoints when the roster fails.
   const canShow = !!learnerId && !noLearners && roster.kind !== "pending";
   const serverLang: string = learners.find((l) => l.id === learnerId)?.workingLanguage ?? "";
 
   useEffect(() => {
     const record = learners.find((l) => l.id === learnerId);
-    // Adopted once per learner; keying on `learners` would undo it after each save.
+    // Adopted once per learner; keying on `learners` would undo it after each save
     if (!record || langFor === learnerId) return;
     setLang(record.workingLanguage ?? "");
     setLangFor(learnerId);
@@ -216,7 +201,7 @@ export function HomePage() {
       setLearnerId(r.value.id);
     } else {
       const d = describe(r.reason);
-      // The route answers a bad address with a zod tree, which is not a sentence.
+      // The route answers a bad address with a zod tree, which is not a sentence
       setCreateError(
         r.reason instanceof HttpError && r.reason.status === 400
           ? "That does not look like an email address."
@@ -235,14 +220,12 @@ export function HomePage() {
   const ready = due.kind !== "pending" && plan.kind !== "pending" && intake.kind !== "pending";
   const broken = due.kind === "failed" || plan.kind === "failed" || intake.kind === "failed";
 
-  // Ordered by what it costs to ignore, and the grid renders in this order.
   const present = [
     openIntake ? "intake" : "",
     dueTotal > 0 ? "due" : "",
     nextStep ? "plan" : "",
   ].filter(Boolean);
   const firstRun = ready && !broken && present.length === 0;
-  // With nothing to offer, the card reporting a failed read is what leads.
   const failedLead = CARDS.find((k) =>
     (k === "intake" ? intake : k === "due" ? due : plan).kind === "failed") ?? "";
   const lead: string = ready ? present[0] ?? (firstRun ? "plan" : failedLead) : "";
@@ -294,7 +277,6 @@ export function HomePage() {
       ) : (
         <>
           <p><b>{dueTotal}</b> concept{dueTotal === 1 ? "" : "s"} waiting.</p>
-          {/* One line per kind: the shared labels are clauses and do not join. */}
           <ul className="home-kinds">
             {KINDS.filter((k) => (dueData.byKind?.[k] ?? 0) > 0).map((k) => (
               <li key={k}>
@@ -338,14 +320,12 @@ export function HomePage() {
           <Link className={ctaClass("plan")} to="/learn">Continue</Link>
         </>
       ) : planData ? (
-        // This branch can be the lead card, so it needs real destinations, not prose.
         <>
           <p className="muted">
             Every step on the current plan is satisfied. Nothing is finished for good —
             confidence fades, so what you proved comes back to be re-proved.
           </p>
           <div className="row">
-            {/* Label matched to the control it lands on (LearnPage's plan-complete card). */}
             <Link className={ctaClass("plan")} to="/learn">Set a new goal</Link>
             <Link className="btn" to={`/graph?learner=${encodeURIComponent(learnerId)}`}>
               Explore the graph
@@ -364,7 +344,6 @@ export function HomePage() {
     </article>
   );
 
-  // A build failure is only reported once this browser has actually seen a build.
   const buildCard = (jobs.length > 0 || (jobsFailed && tracked.current.size > 0)) && (
     <article key="build" className="panel stack home-card">
       <CardHead title="Building" lead={false} rank={null} />
@@ -400,7 +379,6 @@ export function HomePage() {
                       >
                         <div className="bar" style={{ width: `${pct}%` }} />
                       </div>
-                      {/* The live region carries the phase only; the percentage is queried, not announced. */}
                       <div className="row row--baseline home-job-tick">
                         <Busy label={j.phase ?? "working"} clock={false} />
                         <span className="mono muted" aria-hidden="true">{pct}%</span>
@@ -444,7 +422,6 @@ export function HomePage() {
     </article>
   );
 
-  /** The grid turns DOM order into position, so the lead card renders first. */
   const byKey: Record<string, ReactNode> = {
     intake: intakeCard, due: dueCard, plan: planCard,
   };
@@ -534,7 +511,6 @@ export function HomePage() {
                 {buildCard}
               </>
             ) : (
-              /* Skeletons, not an empty state: nothing has been asked yet. */
               <>
                 <article className="panel stack home-card">
                   <CardHead title="Due for review" lead={false} rank={null} />
@@ -556,7 +532,7 @@ export function HomePage() {
               <ul className="home-due-rows">
                 {rows.map((it: any) => (
                   <li key={it.conceptId} className="home-due">
-                    {/* The belief stays outside the link: <Markdown> emits blocks and its own links. */}
+                    {/* The belief stays outside the link: <Markdown> emits blocks and its own links */}
                     <Link
                       className="btn--bare home-due-open"
                       to={
@@ -590,7 +566,6 @@ export function HomePage() {
             </section>
           )}
 
-          {/* Needs the roster: the field's current value comes from the learner record. */}
           {hasRoster && (
           <details className="panel home-lang">
             <summary className="home-lang-summary">
@@ -616,7 +591,7 @@ export function HomePage() {
                       .map((l) => <option key={l} value={l} />)}
                   </datalist>
                 </label>
-                {/* aria-disabled, not disabled: disabling the pressed control blurs focus. */}
+                {/* aria-disabled, not disabled: disabling the pressed control blurs focus */}
                 <button
                   aria-disabled={langInert}
                   onClick={() => { if (!langInert) void saveLang(); }}

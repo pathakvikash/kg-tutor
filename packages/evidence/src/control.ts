@@ -4,17 +4,16 @@ import { DEFAULT_THRESHOLDS, atLeast, type MasteryLevel, type Thresholds } from 
 export interface ControlledClaim {
   prerequisiteId: string;
   targetId: string;
-  /** Learners who did NOT know the prerequisite when they attempted the target. */
+  /** Learners who did NOT know the prerequisite when they attempted the target */
   treatmentN: number;
   treatmentFailureRate: number;
-  /** Learners who DID know it. Without this arm, difficulty is promoted as prerequisite. */
+  /** Learners who DID know it */
   controlN: number;
   controlFailureRate: number;
   effectSize: number;
   distinctLearners: number;
   distinctGoals: number;
   passes: boolean;
-  /** Why it failed, so a near-miss is visible instead of silently absent. */
   rejectedFor: string[];
 }
 
@@ -25,7 +24,7 @@ interface Attempt {
   goalId: string | null;
 }
 
-/** Keep the control arm: without it, difficulty is promoted as dependency. (11) */
+/** Without a control arm, plain difficulty gets promoted as dependency */
 export async function evaluateClaim(
   prisma: PrismaClient,
   prerequisiteId: string,
@@ -46,7 +45,6 @@ export async function evaluateClaim(
     if (seen.has(e.learnerId)) continue; // first attempt only; later ones are post-teaching
     seen.add(e.learnerId);
 
-    // What did they know about the prerequisite *before* attempting the target?
     const priorEvidence = await prisma.evidenceEvent.findFirst({
       where: {
         learnerId: e.learnerId,
@@ -107,7 +105,6 @@ export async function evaluateClaim(
   };
 }
 
-/** Mastery at or above this counts as "knew it" for the control split. */
 export function knewIt(mastery: MasteryLevel | undefined): boolean {
   return atLeast(mastery ?? "unknown", "functional");
 }

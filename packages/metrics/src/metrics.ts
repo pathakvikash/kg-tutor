@@ -17,11 +17,10 @@ export interface GraphReuse {
   proposals: number;
   bound: number;
   created: number;
-  /** Fraction of proposals that resolved to a concept that already existed. */
   reuseRate: number;
 }
 
-/** The earliest and cheapest falsification signal for the shared-graph premise. (14) */
+/** Earliest, cheapest signal that the shared-graph premise is wrong */
 export async function graphReuseRate(prisma: PrismaClient, w: Window = {}): Promise<GraphReuse> {
   const where = { outcome: { not: null }, ...(w.from || w.to ? { createdAt: range(w) } : {}) };
   const [bound, created] = await Promise.all([
@@ -32,7 +31,6 @@ export async function graphReuseRate(prisma: PrismaClient, w: Window = {}): Prom
   return { proposals, bound, created, reuseRate: proposals === 0 ? 0 : bound / proposals };
 }
 
-/** Reuse broken down by topic, so a thin corner of the graph is visible. */
 export async function graphReuseByTopic(
   prisma: PrismaClient,
 ): Promise<{ topic: string; reuseRate: number; proposals: number }[]> {
@@ -58,14 +56,11 @@ export async function graphReuseByTopic(
 
 export interface WastedTeaching {
   attempts: number;
-  /** Taught something the learner demonstrated on the first try at the target level. */
   alreadyKnew: number;
-  /** Attempted before its hard prerequisites were met — taught into a gap. */
   taughtIntoGap: number;
   wasteRate: number;
 }
 
-/** Read both halves together: a system can look good on one by being bad at the other. (14) */
 export async function wastedTeaching(
   prisma: PrismaClient,
   learnerId?: string,
@@ -81,7 +76,6 @@ export async function wastedTeaching(
     const key = `${e.learnerId}:${e.conceptId}`;
     if (firstSeen.has(key)) continue;
     firstSeen.set(key, e.kind);
-    // First contact was an unaided transfer: they already had it.
     if (e.kind === "transferred") alreadyKnew++;
   }
 
@@ -105,11 +99,9 @@ export async function wastedTeaching(
 export interface PersistenceResult {
   concepts: number;
   held: number;
-  /** Fraction of re-probes after a gap that confirmed the earlier estimate. */
   persistenceRate: number;
 }
 
-/** Whether a learner returning after a break is still placed correctly. (14) */
 export async function crossSessionPersistence(
   prisma: PrismaClient,
   minGapDays = 7,
@@ -144,13 +136,12 @@ export interface OutcomeCost {
   totalCostUsd: number;
   conceptsMastered: number;
   milestonesCompleted: number;
-  /** The metric that matters: cost per hour can be gamed by teaching cheaply and badly. */
+  /** Cost per hour can be gamed by teaching cheaply and badly */
   costPerConceptMastered: number | null;
   costPerMilestone: number | null;
   byPurpose: { purpose: string; costUsd: number; calls: number }[];
 }
 
-/** Cost per verified outcome, not per hour; expected to fall as the graph accumulates. (17) */
 export async function costPerOutcome(
   prisma: PrismaClient,
   w: Window = {},
@@ -165,7 +156,7 @@ export async function costPerOutcome(
   });
   const totalCostUsd = usage.reduce((a, u) => a + (u._sum.costUsd ?? 0), 0);
 
-  // LearnerConceptState carries updatedAt, not createdAt — it is mutated in place.
+  // LearnerConceptState has updatedAt only, since rows are mutated in place
   const states = await prisma.learnerConceptState.findMany({
     where: w.from || w.to ? { updatedAt: range(w) } : {},
   });
@@ -198,7 +189,6 @@ export interface ArmComparison {
   meanMasteryRank: number;
 }
 
-/** Graph-planned against the baseline tutor, which is the experiment. (14) */
 export async function compareArms(prisma: PrismaClient): Promise<ArmComparison[]> {
   const sessions = await prisma.session.findMany({ select: { learnerId: true, variant: true } });
   const byVariant = new Map<string, Set<string>>();

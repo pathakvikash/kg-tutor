@@ -4,19 +4,15 @@ import {
   type MasteryLevel, type Thresholds,
 } from "@kg/shared";
 
-/** Why a concept is due, independent of any plan; `selectProbes` covers the in-lesson case. */
 export type DueKind = "misconception" | "inferred" | "decayed";
 
 export interface DueItem {
   conceptId: string;
   conceptName: string;
   kind: DueKind;
-  /** Shown to the learner, so it has to say why this and not something else. */
   reason: string;
   mastery: MasteryLevel;
-  /** Decay already applied, so this is what it is worth today. */
   confidence: number;
-  /** For a misconception: the belief in the learner's own terms. */
   belief?: string;
   priority: number;
 }
@@ -59,7 +55,7 @@ export async function dueForReview(
       mastery: (state?.mastery ?? "unknown") as MasteryLevel,
       confidence,
       belief: m.belief,
-      // Above everything: a held misconception gets applied, so it does damage.
+      // Above everything: a held misconception gets applied, so it does damage
       priority: 2 + Math.min(m.observedCount, 5) / 10,
     });
   }
@@ -100,7 +96,7 @@ export async function dueForReview(
   return opts.limit ? sorted.slice(0, opts.limit) : sorted;
 }
 
-/** Call only on a real demonstration; an uncleared belief keeps the concept due forever. (10, 16) */
+/** Call only on a real demonstration; an uncleared belief keeps the concept due forever */
 export async function resolveMisconceptions(
   prisma: PrismaClient,
   learnerId: string,

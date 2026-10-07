@@ -6,9 +6,7 @@ export interface PairResult {
   pair: LabelledPair;
   actual: ResolverVerdict;
   correct: boolean;
-  /** Merged two concepts that should have stayed apart. Unrecoverable. */
   falseSame: boolean;
-  /** Missed a real duplicate. Repairable later. */
   falseDistinct: boolean;
 }
 
@@ -18,7 +16,7 @@ export interface EvalReport {
   accuracy: number;
   falseSames: PairResult[];
   falseDistincts: PairResult[];
-  /** The number to watch: a false `same` is permanent, a false `distinct` is repairable. (05) */
+  /** A false `same` is permanent, a false `distinct` is repairable */
   weightedError: number;
   byPair: PairResult[];
 }

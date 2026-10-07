@@ -1,4 +1,4 @@
-/** Identity vectors come from name plus sense, and sense is immutable, so never recompute. (05) */
+/** Identity vectors come from name plus sense, and sense is immutable, so never recompute */
 
 export const EMBEDDING_DIM = 1536;
 
@@ -7,12 +7,11 @@ export interface EmbeddingProvider {
   embed(texts: string[]): Promise<number[][]>;
 }
 
-/** The exact text a concept's identity vector is derived from. Do not change casually. */
+/** Changing this invalidates every stored identity vector */
 export function identityText(canonicalName: string, sense: string): string {
   return `${canonicalName.trim()}\n${sense.trim()}`;
 }
 
-/** pgvector's text input format. */
 export function toVectorLiteral(v: number[]): string {
   return `[${v.join(",")}]`;
 }
@@ -24,7 +23,7 @@ function normalize(v: number[]): number[] {
   return v.map((x) => x / n);
 }
 
-/** A hashed token bag for plumbing tests; it captures lexical overlap, not meaning. */
+/** Hashed token bag for plumbing tests; captures lexical overlap, not meaning */
 export class DeterministicEmbedding implements EmbeddingProvider {
   readonly name = "deterministic";
 
@@ -54,7 +53,6 @@ export interface OpenAICompatibleOptions {
   baseUrl?: string;
 }
 
-/** Any OpenAI-compatible `/embeddings` endpoint. */
 export class OpenAICompatibleEmbedding implements EmbeddingProvider {
   readonly name: string;
   private readonly opts: Required<OpenAICompatibleOptions>;

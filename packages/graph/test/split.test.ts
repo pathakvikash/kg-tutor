@@ -33,7 +33,6 @@ describe("splitCompoundConcept", () => {
     const r = await splitCompoundConcept(prisma, deps(alwaysDistinct), id);
     expect(r).not.toBeNull();
     expect(r!.parts.map((p) => p.name)).toEqual(["Hash Functions", "Hash Tables"]);
-    // Two edges, two halves, so four live edges — and the originals retired.
     expect(r!.edgesRewritten).toBe(4);
 
     for (const part of r!.parts) {
@@ -41,7 +40,6 @@ describe("splitCompoundConcept", () => {
         where: { srcId: before, dstId: part.conceptId, retiredAt: null },
       });
       expect(incoming?.strength).toBe("hard");
-      // The failure mode has to survive: a hard edge without one violates the DB guard.
       expect(incoming?.failureMode).toContain("one bucket");
       const outgoing = await prisma.edge.findFirst({
         where: { srcId: part.conceptId, dstId: after, retiredAt: null },
@@ -77,7 +75,6 @@ describe("splitCompoundConcept", () => {
     }
   });
 
-  // A level recorded against a compound was never a measurement of one thing.
   it("does not carry mastery onto the halves, and records that it did not", async () => {
     const learner = await prisma.learner.create({ data: { email: `s${Date.now()}@x.test` } });
     const id = await compound("Arrays or Linked Lists");

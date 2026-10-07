@@ -1,4 +1,4 @@
-/** Seeds a small JavaScript graph through the resolver: pnpm --filter @kg/api seed. */
+/** Seeds a small JavaScript graph through the resolver: pnpm --filter @kg/api seed */
 import { db } from "@kg/db";
 import { DeterministicEmbedding, proposeConcept, proposeEdge } from "@kg/graph";
 import type { Adjudicator } from "@kg/graph";
@@ -6,7 +6,6 @@ import { recordEvidence } from "@kg/teach";
 
 const prisma = db();
 
-// Everything seeded is deliberately distinct; dedup is exercised by its own tests.
 const adjudicator: Adjudicator = {
   name: "seed",
   async adjudicate() {
@@ -34,7 +33,7 @@ const CONCEPTS: [string, string][] = [
   ["error handling", "Detecting failures and responding to them rather than crashing."],
 ];
 
-/** [prerequisite, target, strength, failure mode] — hard edges must name a real failure. */
+/** [prerequisite, target, strength, failure mode]; hard edges must name a real failure */
 const EDGES: [string, string, "hard" | "soft", string | null][] = [
   ["variables", "functions", "hard", "The learner writes a function body that references an argument it never declared."],
   ["variables", "scope", "hard", "The learner expects a binding declared inside a block to be readable outside it."],
@@ -119,7 +118,7 @@ async function main(): Promise<void> {
       where: { topicId: topic.id, claim },
       include: { concepts: true },
     });
-    // An existing template is refilled, not skipped: its concepts may have been cascaded away.
+    // An existing template is refilled, not skipped: its concepts may have been cascaded away
     const t =
       existing ??
       (await prisma.milestoneTemplate.create({
@@ -143,7 +142,6 @@ async function main(): Promise<void> {
   }
   console.log(`topics: ${TOPICS.length}, milestones: ${MILESTONES.length}`);
 
-  // One learner partway through, so the path view has something real to show.
   const learner = await prisma.learner.upsert({
     where: { email: "demo@kg-tutor.test" },
     create: { email: "demo@kg-tutor.test", name: "Demo learner", background: "knows Python" },

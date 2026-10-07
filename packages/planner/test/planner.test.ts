@@ -12,7 +12,7 @@ async function scenario(depth: GoalDepth = "use") {
     data: { email: `l${Math.round(performance.now() * 1000)}@x.test` },
   });
 
-  // functions -> closures -> memoization, functions -> scope, variables behind functions.
+  // functions -> closures -> memoization, functions -> scope, variables behind functions
   const variables = await concept("variables");
   const functions = await concept("functions");
   const closures = await concept("closures");
@@ -24,7 +24,6 @@ async function scenario(depth: GoalDepth = "use") {
   await hard(functions, scope);
   await hard(closures, memo);
 
-  // Only closures and memoization are what the topic is actually about.
   await contains(topic.id, closures, true, 0.9);
   await contains(topic.id, memo, true, 0.4);
 
@@ -45,7 +44,6 @@ describe("resolveGoal", () => {
     });
     const ids = target.map((t) => t.conceptId).sort();
     expect(ids).toEqual([s.variables, s.functions, s.closures, s.memo].sort());
-    // `scope` is a prerequisite of nothing the goal wants, so it stays out.
     expect(ids).not.toContain(s.scope);
   });
 
@@ -57,8 +55,8 @@ describe("resolveGoal", () => {
     });
     const ids = target.map((t) => t.conceptId);
     expect(ids).toContain(s.closures);
-    expect(ids).not.toContain(s.functions); // known
-    expect(ids).not.toContain(s.variables); // behind something known
+    expect(ids).not.toContain(s.functions);
+    expect(ids).not.toContain(s.variables);
   });
 
   it("raises the bar for build compared with use", async () => {
@@ -112,7 +110,6 @@ describe("orderTargetSet", () => {
       hardPrereqs: edges.map((e) => ({ srcId: e.srcId, dstId: e.dstId, strength: e.strength })),
       mastery: new Map(),
     });
-    // variables -> functions -> closures -> memoization: three downstream, not one.
     expect(order.find((o) => o.conceptId === s.variables)?.unlockCount).toBe(3);
     expect(order.find((o) => o.conceptId === s.memo)?.unlockCount).toBe(0);
   });
@@ -133,7 +130,6 @@ describe("orderTargetSet", () => {
   });
 
   it("degrades to a usable order instead of looping when nothing is eligible", () => {
-    // Unreachable given the write-time DAG guard, but a hang is worse than a flagged order.
     const order = orderTargetSet({
       target: [
         { conceptId: "a", requiredLevel: "functional", relevance: 0, goalFacing: true },
@@ -168,7 +164,6 @@ describe("buildPlan", () => {
     const s = await scenario();
     const first = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
 
-    // The learner turns out to know functions, so its prerequisites leave the plan.
     await setMastery(s.learner.id, s.functions, "functional");
     const second = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
 
@@ -225,7 +220,6 @@ describe("describeDiff", () => {
 });
 
 describe("reconcilePlan", () => {
-  /** Mastery can arrive outside a lesson, so completion cannot be written only at lesson end. */
   it("completes steps whose mastery arrived without a lesson", async () => {
     const s = await scenario();
     const plan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
@@ -268,13 +262,11 @@ describe("reconcilePlan", () => {
     const second = await reconcilePlan(prisma, s.learner.id);
 
     expect(second.steps).toEqual([]);
-    // The completion time is when it was earned, not when it was last looked at.
     const again = await prisma.planStep.findUniqueOrThrow({ where: { id: step.id } });
     expect(again.completedAt).toEqual(stamped.completedAt);
     expect(first.steps).toContain(step.conceptId);
   });
 
-  /** An empty milestone is malformed. Satisfying it would award an unearned claim. */
   it("never completes a milestone that claims no concepts", async () => {
     const s = await scenario();
     const plan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
@@ -293,11 +285,9 @@ describe("reconcilePlan", () => {
 });
 
 describe("activePlanWhere", () => {
-  /** An abandoned goal keeps its last plan un-superseded, so ordering by version can pick it. */
   it("ignores an un-superseded plan whose goal is no longer active", async () => {
     const s = await scenario();
 
-    // An old goal that reached a higher version than the new one ever will.
     const oldTopic = await prisma.topic.create({ data: { name: "Old subject", description: "" } });
     const oldConcept = await concept("something else");
     await contains(oldTopic.id, oldConcept, true, 0.9);
@@ -312,7 +302,6 @@ describe("activePlanWhere", () => {
     const current = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
     expect(current.version).toBe(1);
 
-    // Both are un-superseded, so the naive query has two candidates and takes v3.
     const naive = await prisma.plan.findFirst({
       where: { learnerId: s.learner.id, supersededAt: null },
       orderBy: { version: "desc" },
@@ -337,7 +326,6 @@ describe("activePlanWhere", () => {
     const oldPlan = await buildPlan({ prisma, learnerId: s.learner.id, goalId: oldGoal.id });
     const current = await buildPlan({ prisma, learnerId: s.learner.id, goalId: s.goal.id });
 
-    // Mastery on both, so reconciling either would have something to complete.
     await setMastery(s.learner.id, oldConcept, "solid");
     for (const st of current.steps) await setMastery(s.learner.id, st.conceptId, "solid");
 

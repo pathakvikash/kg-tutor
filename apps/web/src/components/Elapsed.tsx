@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 
-/** The app's only latency copy; it escalates toward the provider's two-minute ceiling. */
 export function Elapsed({ slowAfter = 12 }: { slowAfter?: number }) {
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {

@@ -8,12 +8,11 @@ const itemSchema = arrayOrWrapped(
   "items",
   z.object({
     prompt: z.string().min(1),
-    /** Kept out of `prompt` so newlines survive rendering. */
+    /** Kept out of `prompt` so newlines survive rendering */
     code: z.string().nullable().default(null),
     codeLanguage: z.string().nullable().default(null),
     targetsLevel: z.enum(["familiar", "functional", "solid"]),
     requiresTransfer: z.boolean(),
-    /** What a correct answer must demonstrate — not a model answer to match against. */
     mustDemonstrate: z.array(z.string()).min(1),
   }),
 );
@@ -69,7 +68,6 @@ mid-sentence goes in backticks.
 
 Respond with JSON: {"items":[{"prompt","code","codeLanguage","targetsLevel","requiresTransfer","mustDemonstrate"}]}`;
 
-/** Items are stored, versioned objects on the Concept, never regenerated per learner. (07) */
 export async function generateItems(
   prisma: PrismaClient,
   llm: LLMProvider,
@@ -81,7 +79,7 @@ export async function generateItems(
     where: { dstId: conceptId, type: "prerequisite_of", strength: "hard", retiredAt: null },
     include: { src: true },
   });
-  // Items are shared across learners, so context comes from the topics, not the goal.
+  // Items are shared across learners, so context comes from the topics, not the goal
   const topics = await prisma.topicConcept.findMany({
     where: { conceptId },
     include: { topic: true },
@@ -97,9 +95,7 @@ export async function generateItems(
         topics.length > 0
           ? `Studied as part of: ${topics.map((t) => t.topic.name).join(", ")}`
           : "",
-        // The strongest signal available, and the only one that was missing.
         opts.language ? `Write every item in: ${opts.language}` : "",
-        // Framed as the bar the item must clear, never as its subject.
         prereqs.length > 0
           ? `A learner who has NOT mastered the prerequisites fails in these specific ways.\n` +
             `Write items that such a learner cannot answer — but keep every question about\n` +
@@ -126,7 +122,7 @@ export async function generateItems(
         conceptId,
         prompt: item.prompt,
         code: item.code ?? null,
-        // The requested language wins over the model's label, so the tag stays reliable.
+        // The requested language wins over the model's label, so the tag stays reliable
         codeLanguage: item.code ? (opts.language ?? item.codeLanguage ?? null) : null,
         rubric: { mustDemonstrate: item.mustDemonstrate } as Prisma.InputJsonValue,
         targetsLevel: item.targetsLevel as MasteryLevel,
@@ -139,7 +135,6 @@ export async function generateItems(
   return { created };
 }
 
-/** Languages close enough that an item written in one reads fine to the other. */
 const SAME_FAMILY: Record<string, string[]> = {
   javascript: ["javascript", "js", "typescript", "ts", "jsx", "tsx", "node"],
   typescript: ["typescript", "ts", "javascript", "js", "tsx", "jsx"],
@@ -152,7 +147,6 @@ const SAME_FAMILY: Record<string, string[]> = {
   sql: ["sql", "postgres", "postgresql"],
 };
 
-/** Picks an item for the level, ranking language first, then canonical, then discrimination. (07) */
 export async function selectItem(
   prisma: PrismaClient,
   conceptId: string,
@@ -173,11 +167,11 @@ export async function selectItem(
   const want = opts.language?.toLowerCase().trim();
   const family = want ? (SAME_FAMILY[want] ?? [want]) : null;
   const rank = (lang: string | null): number => {
-    if (!family) return 2;                                  // no preference stated
+    if (!family) return 2;
     const tag = lang?.toLowerCase().trim();
-    if (tag === "none") return 2;                           // declared language-free
-    if (!tag) return 1;                                     // untagged: unknown
-    return family.includes(tag) ? 2 : 0;                    // matching, or another language
+    if (tag === "none") return 2;
+    if (!tag) return 1;
+    return family.includes(tag) ? 2 : 0;
   };
 
   return items.sort(
@@ -189,15 +183,15 @@ export async function selectItem(
   )[0]!;
 }
 
-/** True when the item is not in a language the learner writes; untagged counts as wrong. */
+/** True when the item is not in a language the learner writes; untagged counts as wrong */
 export function isWrongLanguage(
   item: { codeLanguage: string | null },
   language: string | null | undefined,
 ): boolean {
   if (!language) return false;
   const tag = item.codeLanguage?.toLowerCase().trim();
-  if (tag === "none") return false;          // explicitly language-free
-  if (!tag) return true;                     // untagged: unknown, so not trusted
+  if (tag === "none") return false;
+  if (!tag) return true;
   const want = language.toLowerCase().trim();
   return !(SAME_FAMILY[want] ?? [want]).includes(tag);
 }
@@ -210,7 +204,7 @@ export interface ItemStatsUpdate {
   action: "kept" | "retired" | "promoted";
 }
 
-/** Item stats are the one tier that promotes automatically: local, statistical, self-correcting. (11) */
+/** Item stats promote automatically, since they are local, statistical and self-correcting */
 export async function updateItemStats(
   prisma: PrismaClient,
   conceptId: string,
@@ -252,7 +246,6 @@ export async function updateItemStats(
         (await downstreamRate(failed.map((f) => f.learnerId)));
     }
 
-    // Everyone passes or everyone fails: it separates nobody.
     const uninformative = successRate > 0.97 || successRate < 0.03;
     const antiPredictive = dependentIds.length > 0 && discrimination < -0.1;
     const action: ItemStatsUpdate["action"] =
@@ -275,7 +268,6 @@ export async function updateItemStats(
   return out;
 }
 
-/** Explanation candidates promote on whether the learners who saw them went on to pass. (12) */
 export async function promoteExplanations(
   prisma: PrismaClient,
   conceptId: string,

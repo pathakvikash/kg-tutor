@@ -8,26 +8,19 @@ import { Markdown } from "../components/Markdown";
 import { resolveLearner, useStickyLearner } from "../useLearner";
 import { DUE_KIND, dueKindLabel, MASTERY_MEANING, MASTERY_RANK } from "../vocabulary";
 
-/** One pass over what has gone stale: nothing here is taught, only checked. */
-
-/** Mirrors DEFAULT_THRESHOLDS.reprobeConfidenceFloor; @kg/shared is not a web dependency. */
+/** Mirrors DEFAULT_THRESHOLDS.reprobeConfidenceFloor; @kg/shared is not a web dependency */
 const REPROBE_FLOOR = 0.4;
 
-/** Re-serving a concept graded this recently asks the same question with nothing taught between. */
 const RECHECK_COOLDOWN_MS = 5 * 60_000;
 
-/** One question call plus one grading call, plus the time to write an answer. */
 const MINUTES_PER_ITEM = 1.5;
 
-/** One key per learner; a global key would discard another learner's pass. */
 const passKey = (learnerId: string) => `kg-tutor:review-pass:${learnerId}`;
 
-/** A saved pass is the queue plus every generated question, so typing must not write one per key. */
 const SAVE_DEBOUNCE_MS = 400;
 
 type Failure = { message: string; remedy: string | null };
 
-/** A pass on disk: items is fixed at the pass's start, and graded outlives the pass. */
 type Saved = {
   learnerId: string;
   at: number;
@@ -43,7 +36,7 @@ type Saved = {
 };
 
 function readSaved(learnerId: string): Saved | null {
-  // Throws outright in some contexts, not only when empty, so it cannot be left unguarded.
+  // Throws outright in some contexts, not only when empty, so it cannot be left unguarded
   try {
     const raw = localStorage.getItem(passKey(learnerId));
     return raw ? (JSON.parse(raw) as Saved) : null;
@@ -60,7 +53,6 @@ function writeSaved(saved: Saved): void {
   }
 }
 
-/** Cooldown entries past their window would otherwise accumulate forever. */
 function prune(graded: Record<string, number>, now: number): Record<string, number> {
   const live: Record<string, number> = {};
   for (const [id, at] of Object.entries(graded)) {
@@ -76,7 +68,6 @@ function asFailure(e: unknown): Failure {
   };
 }
 
-/** The server writes reasons as fragments; the card reads them as prose. */
 function sentence(text: string): string {
   const t = (text ?? "").trim();
   if (!t) return "";
@@ -86,7 +77,6 @@ function sentence(text: string): string {
 
 function confidencePhrase(kind: string, confidence: number): string {
   const value = confidence.toFixed(2);
-  // Only a decayed item is due *because* of the floor, so only it is measured against it.
   return kind === "decayed"
     ? `Confidence ${value}, below the ${REPROBE_FLOOR.toFixed(2)} re-probe floor.`
     : `Confidence ${value}.`;
@@ -96,7 +86,6 @@ const PAGE = "page page--measure review-session";
 
 export function ReviewSessionPage() {
   const [learnerId, setLearnerId] = useStickyLearner();
-  // null means "not asked yet", which is not the same claim as "there are none".
   const [learners, setLearners] = useState<any[] | null>(null);
 
   const [queue, setQueue] = useState<any[]>([]);
@@ -120,9 +109,7 @@ export function ReviewSessionPage() {
   const answerRef = useRef<HTMLTextAreaElement | null>(null);
   const verdictRef = useRef<HTMLDivElement | null>(null);
 
-  /** Returns the resolved id so a retry knows whether the learner effect will fire. */
   const loadLearners = useCallback(async (want: string): Promise<string> => {
-    // null again, so a retry has a visible in-progress state.
     setLearners(null);
     setFatal(null);
     try {
@@ -142,10 +129,8 @@ export function ReviewSessionPage() {
     void loadLearners(learnerId);
   }, []);
 
-  /** `cooldown` is a parameter rather than state: a retry has to use the current map. */
   const loadQueue = useCallback(async (id: string, cooldown: Record<string, number>) => {
     if (!id) return;
-    // Without this a retry keeps rendering the failure it is retrying.
     setFatal(null);
     setLoaded(false);
     setBusy("checking what has decayed");
@@ -172,7 +157,6 @@ export function ReviewSessionPage() {
     }
   }, []);
 
-  /** Reloads the queue only when the id is unchanged; the learner effect handles a change. */
   const retry = useCallback(async () => {
     const id = await loadLearners(learnerId);
     if (id && id === learnerId) await loadQueue(id, graded);
@@ -194,11 +178,10 @@ export function ReviewSessionPage() {
   const answer = conceptId ? drafts[conceptId] ?? "" : "";
   const result = conceptId ? verdicts[conceptId] ?? null : null;
 
-  // Writing while a saved pass is on offer would destroy the thing being offered.
+  // Writing while a saved pass is on offer would destroy the thing being offered
   const unsaved = useRef<Saved | null>(null);
   useEffect(() => {
     if (!learnerId || pending || !loaded) {
-      // A new load resets the pass, so a queued write must not be flushed.
       unsaved.current = null;
       return;
     }
@@ -242,11 +225,8 @@ export function ReviewSessionPage() {
     setBusy("writing a question");
     setError(null);
     try {
-      // The level it was held at, not the next one up: this is a re-check, not a promotion.
       const level = current.mastery === "unknown" ? "familiar" : current.mastery;
-      // "review", so this pass gets its own session rather than writing into the lesson.
       const q = await api.check(learnerId, current.conceptId, level, "review");
-      // The answer has to land in the same session as the question turn.
       if (q?.sessionId) setSessionId(q.sessionId);
       setAsked((m) => ({ ...m, [current.conceptId]: q }));
     } catch (e) {
@@ -268,7 +248,6 @@ export function ReviewSessionPage() {
         response: answer,
         requiresTransfer: question.requiresTransfer,
         itemId: question.itemId,
-        // Without this, review Q&A lands in whatever lesson session is still open.
         sessionId: question.sessionId ?? sessionId ?? undefined,
       });
       if (r?.sessionId) setSessionId(r.sessionId);
@@ -283,7 +262,6 @@ export function ReviewSessionPage() {
 
   const skip = () => {
     if (busy || !current) return;
-    // Counted and reversible, so the tally adds up and Back undoes it.
     setSkips((m) => ({ ...m, [current.conceptId]: true }));
     setError(null);
     setAt((i) => i + 1);
@@ -306,11 +284,9 @@ export function ReviewSessionPage() {
   const resume = () => {
     const saved = pending;
     if (!saved) return;
-    // Fresher item data where the server has it, but the pass keeps its own list.
     const fresh = new Map(queue.map((it) => [it.conceptId, it]));
     setQueue(saved.items.map((it) => fresh.get(it.conceptId) ?? it));
     setAt(Math.min(saved.at, Math.max(0, saved.items.length - 1)));
-    // total stays the number this load measured; the backlog moves on regardless.
     setAsked(saved.asked ?? {});
     setDrafts(saved.drafts ?? {});
     setVerdicts(saved.verdicts ?? {});
@@ -319,7 +295,7 @@ export function ReviewSessionPage() {
     setPending(null);
   };
 
-  // Async transitions unmount the control that had focus, so its replacement claims it.
+  // Async transitions unmount the control that had focus, so its replacement claims it
   useEffect(() => {
     if (question && !result) answerRef.current?.focus();
   }, [question, result, at]);
@@ -327,7 +303,7 @@ export function ReviewSessionPage() {
     if (result) verdictRef.current?.focus();
   }, [result, at]);
 
-  // The border has to be added back: box-sizing is border-box and scrollHeight excludes it.
+  // The border has to be added back: box-sizing is border-box and scrollHeight excludes it
   useEffect(() => {
     const el = answerRef.current;
     if (!el) return;
@@ -348,7 +324,6 @@ export function ReviewSessionPage() {
     </div>
   );
 
-  // Asked, and it failed. Not the same claim as "nothing is due".
   if (fatal) {
     return (
       <div className={PAGE}>
@@ -362,7 +337,6 @@ export function ReviewSessionPage() {
     );
   }
 
-  // Not asked yet
   if (learners === null || (learners.length > 0 && !loaded)) {
     return (
       <div className={PAGE}>
@@ -377,7 +351,6 @@ export function ReviewSessionPage() {
     );
   }
 
-  // A loaded queue proves the learner exists, so never claim "no learners" over it.
   if (learners.length === 0 && queue.length === 0) {
     return (
       <div className={PAGE}>
@@ -391,7 +364,6 @@ export function ReviewSessionPage() {
     );
   }
 
-  // A pass was interrupted
   if (pending) {
     return (
       <div className={PAGE}>
@@ -411,7 +383,6 @@ export function ReviewSessionPage() {
     );
   }
 
-  // Every item in the pass has been seen
   if (queue.length > 0 && at >= queue.length) {
     const remaining = Math.max(0, total - queue.length);
     return (
@@ -461,7 +432,6 @@ export function ReviewSessionPage() {
         )}
 
         <div className="row rs-actions">
-          {/* The cooldown filter runs after /due, so the next batch can serve none. */}
           {remaining > 0 ? (
             <button className="primary" onClick={() => void loadQueue(learnerId, graded)}>
               Next batch
@@ -481,7 +451,6 @@ export function ReviewSessionPage() {
     );
   }
 
-  // Asked, and there is nothing to serve
   if (queue.length === 0) {
     if (deferred.length > 0) {
       return (
@@ -542,7 +511,6 @@ export function ReviewSessionPage() {
         </div>
       </div>
 
-      {/* A skip advances the bar without an answer, so this counts seen, not checked. */}
       <div
         className="progress"
         role="progressbar"
@@ -574,7 +542,6 @@ export function ReviewSessionPage() {
           </p>
         </div>
 
-        {/* The belief stays hidden until answered: seeing it is enough to avoid it once. */}
         {!question && !result && (
           <div className="row rs-actions">
             <button className="primary" aria-disabled={busy !== null} onClick={() => void ask()}>

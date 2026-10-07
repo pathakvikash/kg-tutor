@@ -82,7 +82,6 @@ describe("arrayOrWrapped", () => {
   it("accepts a bare array, which is what models actually return", async () => {
     const { arrayOrWrapped } = await import("../src/provider.js");
     const schema = arrayOrWrapped("items", z.object({ a: z.number() }));
-    // Strictness here bought nothing and cost a 500 halfway through an intake.
     expect(schema.parse([{ a: 1 }, { a: 2 }])).toEqual({ items: [{ a: 1 }, { a: 2 }] });
   });
 
@@ -105,7 +104,6 @@ describe("startStream", () => {
     };
 
     const s = startStream(provider, { system: "s", user: "u", tier: "small" });
-    // An async generator is lazy, so one kicked off in parallel just starts late.
     await new Promise((r) => setTimeout(r, 0));
     expect(started).toBe(true);
 
@@ -172,10 +170,9 @@ describe("startStream", () => {
 });
 
 describe("extractJson tolerance", () => {
-  // `example.code` is multi-line code inside a JSON string, so one missed escape breaks it.
   it("recovers a document whose code field has raw newlines", () => {
     const raw = '{"hook":"You already use them.","explanation":"A **higher-order function** takes a function.","example":{"language":"javascript","code":"const nums = [1, 2, 3];\nconst doubled = nums.map(n => n * 2);\nconsole.log(doubled);","walkthrough":"map is higher-order."}}';
-    expect(() => JSON.parse(raw)).toThrow(); // genuinely invalid JSON
+    expect(() => JSON.parse(raw)).toThrow();
     const out = extractJson(raw) as any;
     expect(out.example.code).toContain("\n");
     expect(out.example.code.split("\n")).toHaveLength(3);
@@ -204,7 +201,6 @@ describe("extractJson tolerance", () => {
   });
 
   it("points at the character that broke the parse", () => {
-    // A complete document with an unescaped quote; only the position makes it diagnosable.
     const broken = '{"a":"he said "hi" to me","b":2}';
     expect(() => extractJson(broken)).toThrow(/⟪HERE⟫/);
     expect(() => extractJson(broken)).toThrow(/\d+-char response/);
@@ -218,7 +214,6 @@ describe("extractJson tolerance", () => {
 describe("completeJson local repairs", () => {
   const obj = z.object({ hook: z.string(), n: z.number() });
 
-  /** Observed on the explanation call: the whole object wrapped in a one-element array. */
   it("unwraps a single-element array when an object was asked for", async () => {
     let calls = 0;
     const llm = {
@@ -227,7 +222,6 @@ describe("completeJson local repairs", () => {
     } as any;
     await expect(completeJson(llm, { system: "s", user: "u", tier: "small" }, obj))
       .resolves.toEqual({ hook: "hi", n: 1 });
-    // The point is that it did not spend a second model call to find this out.
     expect(calls).toBe(1);
   });
 
@@ -253,7 +247,6 @@ describe("completeJson local repairs", () => {
 });
 
 describe("extractJson fence handling", () => {
-  // A leading non-JSON fence must not be claimed as the document.
   it("ignores a code fence that is not the JSON", () => {
     const raw = [
       "Here is the bridge from what they know:",

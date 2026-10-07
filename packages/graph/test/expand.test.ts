@@ -10,7 +10,7 @@ const FM_SCOPE =
 const FM_FUNC =
   "The learner reads a returned inner function as having already run, and expects its result.";
 
-// Scripted and deliberately noisy: two concepts recur in every sample, three appear once.
+// Scripted and noisy: two concepts recur in every sample, three appear once
 function scriptedModel() {
   const concepts = [
     { concepts: [
@@ -34,7 +34,7 @@ function scriptedModel() {
     closures: { prerequisites: [
       { name: "functions", sense: "A named, reusable unit of computation.",
         strength: "hard", failureMode: FM_FUNC },
-      // Consistently proposed as hard, but with empty justification -> must land soft.
+      // Always proposed hard with empty justification, so it must land soft
       { name: "scope", sense: "The region of code where a binding is visible.",
         strength: "hard", failureMode: "The learner will not fully understand closures." },
     ] },
@@ -53,7 +53,7 @@ function scriptedModel() {
       const match = /Concept: (.+)/.exec(req.user)?.[1]?.trim().toLowerCase() ?? "";
       return JSON.stringify(prereqs[match] ?? { prerequisites: [] });
     }
-    // Adjudication: nothing here is a duplicate of anything else.
+    // Nothing here duplicates anything else
     return JSON.stringify({ verdict: "distinct", relatedConceptId: null, reasoning: "scripted" });
   });
 }
@@ -78,7 +78,7 @@ describe("expandTopicShallow", () => {
     const names = (await prisma.concept.findMany()).map((c) => c.canonicalName.toLowerCase());
     expect(names).toContain("closures");
     expect(names).toContain("scope");
-    expect(names).toContain("functions"); // arrived as a prerequisite
+    expect(names).toContain("functions");
     for (const oneOff of ["hoisting", "currying", "iife"]) {
       expect(names).not.toContain(oneOff);
     }
@@ -101,12 +101,10 @@ describe("expandTopicShallow", () => {
     const hard = edges.filter((e) => e.strength === "hard");
     const soft = edges.filter((e) => e.strength === "soft");
 
-    // functions -> closures and functions -> scope carry real failure modes.
     expect(hard.map((e) => `${e.src.canonicalName}->${e.dst.canonicalName}`.toLowerCase()).sort())
       .toEqual(["functions->closures", "functions->scope"]);
     expect(hard.every((e) => e.failureMode && e.failureMode.length > 20)).toBe(true);
 
-    // scope -> closures was proposed hard with empty justification, so it landed soft.
     const demoted = soft.find((e) => e.src.canonicalName.toLowerCase() === "scope");
     expect(demoted, "unjustified hard edge should be kept as soft, not dropped").toBeDefined();
     expect(demoted?.failureMode).toBeNull();
@@ -131,7 +129,7 @@ describe("expandTopicShallow", () => {
     );
     expect(byName["closures"]).toBe(true);
     expect(byName["scope"]).toBe(true);
-    expect(byName["functions"]).toBe(false); // pulled in as a prerequisite
+    expect(byName["functions"]).toBe(false);
   });
 
   it("is idempotent — re-expanding binds instead of duplicating", async () => {
@@ -151,7 +149,6 @@ describe("expandTopicShallow", () => {
     expect(await prisma.concept.count()).toBe(countAfterFirst);
     expect(second.conceptsCreated).toBe(0);
     expect(second.conceptsBound).toBe(first.conceptsCreated + first.conceptsBound);
-    // Scoped to the topic under test, not to how many topics the database holds.
     expect(await prisma.topic.count({ where: { name: "JavaScript functions" } })).toBe(1);
   });
 });

@@ -1,4 +1,4 @@
-/** Writes capability claims for topics that have none: backfill:milestones [--apply]. */
+/** Writes capability claims for topics that have none; backfill:milestones [--apply] */
 import { PrismaClient } from "@kg/db";
 import { generateMilestones } from "@kg/graph";
 import { llmFromEnv } from "@kg/llm";
@@ -15,7 +15,7 @@ async function main(): Promise<void> {
     },
     orderBy: { name: "asc" },
   });
-  // Under three concepts there is no capability to claim.
+  // Under three concepts there is no capability to claim
   const need = topics.filter((t) => t._count.milestones === 0 && t.concepts.length >= 3);
 
   if (need.length === 0) {

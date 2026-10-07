@@ -8,7 +8,7 @@ import xml from "highlight.js/lib/languages/xml";
 import sql from "highlight.js/lib/languages/sql";
 import bash from "highlight.js/lib/languages/bash";
 
-// Registered individually to keep the full highlight.js bundle out.
+// Registered individually to keep the full highlight.js bundle out
 for (const [name, lang] of [
   ["javascript", javascript], ["typescript", typescript], ["python", python],
   ["json", json], ["css", css], ["xml", xml], ["sql", sql], ["bash", bash],
@@ -32,7 +32,6 @@ export function resolveLanguage(raw?: string | null): string | null {
   return hljs.getLanguage(mapped) ? mapped : null;
 }
 
-/** Null when the language is unknown or highlighting fails; callers render plain text. */
 export function highlight(code: string, language?: string | null): string | null {
   const lang = resolveLanguage(language);
   if (!lang) return null;

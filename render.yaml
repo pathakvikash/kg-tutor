@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: kg-tutor-api
+    runtime: node
+    plan: free
+    # tsx and prisma are devDependencies, so install them despite NODE_ENV=production
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm --filter @kg/db db:generate
+    # preDeployCommand needs a paid plan, so migrate on start instead
+    startCommand: pnpm db:deploy && pnpm --filter @kg/api start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: EMBEDDING_API_KEY
+        sync: false
+      - key: TRUST_PROXY
+        sync: false

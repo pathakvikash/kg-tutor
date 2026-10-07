@@ -44,7 +44,6 @@ describe("failure-mode validation", () => {
         names,
       ),
     ).toBe("hard");
-    // A soft edge never needed one.
     expect(admissibleStrength("soft", null, names)).toBe("soft");
   });
 });

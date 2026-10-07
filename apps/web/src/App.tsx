@@ -8,7 +8,7 @@ import { ReviewPage } from "./pages/ReviewPage";
 import { MetricsPage } from "./pages/MetricsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ReviewSessionPage } from "./pages/ReviewSessionPage";
-import { api } from "./api";
+import { api, apiUrl } from "./api";
 import { useLearner } from "./learnerStore";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
@@ -24,7 +24,7 @@ function DueBadge() {
         .catch(() => undefined);
     };
     check();
-    // Slow on purpose: decay is measured in days, not seconds.
+    // Decay is measured in days, so a minute between checks is plenty
     const timer = setInterval(check, 60_000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [learnerId]);
@@ -35,11 +35,11 @@ function DueBadge() {
 type Health = { llm: string | null; degraded: boolean };
 
 function ProviderBadge() {
-  // A 500 can still parse as JSON, so check both res.ok and the shape.
+  // A 500 can still parse as JSON, so check both res.ok and the shape
   const [state, setState] = useState<"loading" | "unreachable" | Health>("loading");
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/health")
+    fetch(apiUrl("/api/health"))
       .then(async (r) => {
         if (!r.ok) throw new Error(String(r.status));
         const body = (await r.json()) as Partial<Health>;
@@ -86,10 +86,8 @@ function RouteChrome({ mainRef }: { mainRef: React.RefObject<HTMLElement | null>
   const first = useRef(true);
   useEffect(() => {
     document.title = `${TITLES[pathname] ?? "kg-tutor"} · kg-tutor`;
-    // Not on first paint: stealing focus on load is its own annoyance.
     if (first.current) { first.current = false; return; }
     mainRef.current?.focus();
-    // The active link may be scrolled out of the horizontally-scrolling nav.
     document.querySelector(".nav a.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [pathname, mainRef]);
   return null;
@@ -112,7 +110,6 @@ export function App() {
               Review<DueBadge />
             </NavLink>
             <NavLink to="/learner">Learner</NavLink>
-            {/* Renamed: this one curates the graph, it is not the learner's review. */}
             <NavLink to="/review">Curate</NavLink>
             <NavLink to="/metrics">Metrics</NavLink>
             <NavLink to="/settings">Settings</NavLink>
@@ -120,7 +117,6 @@ export function App() {
           <span className="spacer" />
           <ProviderBadge />
         </header>
-        {/* tabIndex -1 so route changes can move focus here without making it a tab stop */}
         <main id="main" ref={mainRef} tabIndex={-1} className="app-main">
         <ErrorBoundary where="route">
         <Routes>

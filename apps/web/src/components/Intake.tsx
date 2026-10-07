@@ -4,7 +4,7 @@ import { Busy } from "./Busy";
 import { Markdown } from "./Markdown";
 import { DEPTH_LABEL } from "../vocabulary";
 
-// No cancel endpoint exists; this only stops reattaching to an abandoned build.
+// No cancel endpoint exists; this only stops reattaching to an abandoned build
 const DISMISSED_BUILDS = "kg.dismissedBuilds";
 
 function dismissedBuilds(): string[] {
@@ -27,16 +27,13 @@ function dismissBuild(id: string): void {
   } catch { /* nothing to remember it in */ }
 }
 
-/** The initial assessment. Probes are capped: the goal is a defensible first step. (07) */
 export function Intake({
   learnerId, topics, onComplete, onCancel, initialGoal = null,
 }: {
   learnerId: string;
   topics: any[];
   onComplete: () => void;
-  /** The way out. Every stage of this used to be a one-way door. */
   onCancel?: () => void;
-  /** Pre-filled when the learner asked for this in chat rather than via the button. */
   initialGoal?: string | null;
 }) {
   const [stage, setStage] = useState<"ask" | "building" | "goal" | "probing" | "done">("ask");
@@ -46,25 +43,23 @@ export function Intake({
   const [buildQueue, setBuildQueue] = useState<string[]>([]);
   const [resumedFrom, setResumed] = useState<{ topic: string | null; depth: string } | null>(null);
   const [topicId, setTopicId] = useState("");
-  // Held in state, not read from the prop, which is stale once a build finishes.
+  // Held in state, not read from the prop, which is stale once a build finishes
   const [topicList, setTopicList] = useState<any[]>(topics);
   const [depth, setDepth] = useState("use");
   const [goalText, setGoalText] = useState("");
   const [alreadyKnow, setAlreadyKnow] = useState("");
   const [session, setSession] = useState<any>(null);
-  /** Set once when the assessment starts, so it survives every answer after it. */
   const [roadmap, setRoadmap] = useState<{ steps: number; milestones: number } | null>(null);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** Consecutive poll failures. One is a blip; five in a row is a lost job. */
+  /** Consecutive poll failures. One is a blip; five in a row is a lost job */
   const [pollFails, setPollFails] = useState(0);
   const [lostContact, setLostContact] = useState(false);
 
   useEffect(() => { setTopicList((prev) => (prev.length ? prev : topics)); }, [topics]);
   useEffect(() => { if (!topicId && topicList[0]) setTopicId(topicList[0].id); }, [topicList, topicId]);
 
-  /** Fresh list, held in state, so the selected id is always one of the options. */
   const refreshTopics = async (preferName?: string): Promise<string | null> => {
     try {
       const fresh = await api.topics();
@@ -76,7 +71,6 @@ export function Intake({
     } catch { return null; }
   };
 
-  // Resume an interrupted assessment instead of restarting from question one.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -91,7 +85,6 @@ export function Intake({
         }
       } catch { /* fall through to the expansion check */ }
 
-      // A build outlives a reload, so reattach to it instead of orphaning the job.
       try {
         const jobs = await api.expansions();
         if (cancelled) return;
@@ -106,7 +99,6 @@ export function Intake({
     return () => { cancelled = true; };
   }, [learnerId]);
 
-  // Free text in, a plan out: resolve, build what is missing, then probe.
   const resolve = async () => {
     setBusy("working out what that means"); setError(null);
     try {
@@ -116,7 +108,6 @@ export function Intake({
       setGoalText(goalInput);
 
       if (r.kind === "outcome") {
-        // An outcome is not teachable; the subjects inside it are.
         const built = await api.createOutcome({
           canonicalName: r.canonicalName, description: r.description, components: r.components,
         });
@@ -146,23 +137,20 @@ export function Intake({
     finally { setBusy(null); }
   };
 
-  /* Derived here because StrictMode double-invokes state updaters. */
+  /* Derived here because StrictMode double-invokes state updaters */
   useEffect(() => { if (pollFails >= 5) setLostContact(true); }, [pollFails]);
 
   const startBuilding = () => {
     setPollFails(0); setLostContact(false); setError(null); setStage("building");
   };
 
-  // Build topics one at a time; each expansion is minutes of model calls.
   useEffect(() => {
-    // A failed job stops the clock; it has nothing left to report.
     if (stage !== "building" || !job || lostContact || job.status === "failed") return;
     const timer = setInterval(async () => {
       try {
         const j = await api.expansion(job.id);
         setPollFails(0);
         setJob(j);
-        // A failed build stays on this stage, so the goal text survives.
         if (j.status === "failed") { setError(j.error ?? "the build failed"); return; }
         if (j.status !== "done") return;
 
@@ -176,7 +164,7 @@ export function Intake({
         if (id) setTopicId(id);
         setStage("goal");
       } catch (e) {
-        // A 404 means the job is gone; anything else only counts after a run of them.
+        // A 404 means the job is gone; anything else only counts after a run of them
         const fatal = e instanceof HttpError && e.isMissing;
         setPollFails((n) => n + 1);
         if (fatal) setLostContact(true);
@@ -187,7 +175,6 @@ export function Intake({
 
   const retryBuild = async () => {
     if (!job) return;
-    // Cleared on start, not only on success.
     setBusy("restarting the build"); setError(null);
     try {
       const j = await api.retryExpansion(job.id);
@@ -197,9 +184,7 @@ export function Intake({
     finally { setBusy(null); }
   };
 
-  /** Back to the goal box with the text still in it. */
   const startOver = () => {
-    // The build cannot be cancelled, so at least stop it reattaching.
     if (job?.id) dismissBuild(job.id);
     setStage("ask"); setJob(null); setBuildQueue([]); setResolved(null);
     setError(null); setPollFails(0); setLostContact(false);
@@ -223,16 +208,13 @@ export function Intake({
     try {
       const r = await api.answerIntake(session.intakeId, text);
       setSession(r);
-      // Cleared only once recorded, so a failed request keeps the learner's text.
       setAnswer("");
-      // onComplete() belongs to "Start learning": the parent unmounts this on it.
       if (r.status === "complete") setStage("done");
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(null); }
   };
 
   const submit = () => void answerWith(answer, "checking your answer");
-  /** "I don't know" is a legitimate answer and should cost one question, not a bluff. */
   const skip = () => void answerWith("I don't know", "recording that");
 
   if (stage === "ask") {
@@ -281,7 +263,7 @@ export function Intake({
   if (stage === "building") {
     const report = job?.report ?? {};
     const events: { kind: string; name: string; detail: string }[] = report.events ?? [];
-    // Newest first, keyed by content: a reversed index changes key on every poll.
+    // Newest first, keyed by content: a reversed index changes key on every poll
     const recent = [...events].reverse().slice(0, 40);
     const failed = job?.status === "failed";
 
@@ -295,7 +277,6 @@ export function Intake({
         </p>
 
         {pollFails > 1 && !lostContact && (
-          // Said before it becomes a verdict, so a slow build is not read as a lost one.
           <p className="muted build-hint" role="status">
             Not hearing back from the build — still asking.
           </p>
@@ -308,7 +289,6 @@ export function Intake({
               It stopped answering. The work may still be running server-side, or the job
               may be gone — either way nothing more will appear here on its own.
             </p>
-            {/* The retry can 404 too, so its own failure needs somewhere to show. */}
             {error && (
               <p className="retry-failed">
                 <strong>That retry did not take:</strong> {error}
@@ -425,7 +405,7 @@ export function Intake({
           </select>
         </label>
 
-        {/* A fieldset, not a label: <button> is labelable and would be activated. */}
+        {/* A fieldset, not a label: <button> is labelable and would be activated */}
         <fieldset className="intake-field depth-set">
           <legend>How deeply?</legend>
           <div className="depth-choice">
@@ -437,7 +417,6 @@ export function Intake({
                 className={depth === v ? "depth on" : "depth"}
                 onClick={() => setDepth(v)}
               >
-                {/* Selected has to be readable with no colour at all. */}
                 <span className="depth-mark" aria-hidden="true">{depth === v ? "●" : "○"}</span>
                 <strong>{label}</strong>
                 <span>{hint}</span>
@@ -513,14 +492,12 @@ export function Intake({
           </div>
         )}
         {session.lastAnswer && (
-          /* Framed as a finding, not a mark: a wrong answer is the signal here. */
           <div className={session.lastAnswer.correct ? "verdict ok" : "verdict gap"}>
             <strong>
               {session.lastAnswer.correct
                 ? `${session.lastAnswer.conceptName} — solid.`
                 : `${session.lastAnswer.conceptName} — not yet.`}
             </strong>{" "}
-            {/* The grader writes markdown, so this must not render as plain text. */}
             <span className="verdict-why"><Markdown text={session.lastAnswer.reasoning} /></span>
           </div>
         )}
@@ -569,7 +546,6 @@ export function Intake({
             Answer
           </button>
           {busy && <Busy label={busy} />}
-          {/* Held away from the primary button: one stray click here spent a probe. */}
           <span className="spacer" />
           <button className="linkish quiet" onClick={skip} aria-disabled={!!busy || undefined}>
             I don't know this one

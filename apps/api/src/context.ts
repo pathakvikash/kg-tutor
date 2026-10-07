@@ -2,6 +2,8 @@ import { db } from "@kg/db";
 import { DeterministicEmbedding, LLMAdjudicator, embeddingFromEnv } from "@kg/graph";
 import { AnthropicLLM, ClaudeCodeLLM, OpenAICompatibleLLM, llmFromEnv, type LLMProvider } from "@kg/llm";
 
+import { isProduction } from "./admin.js";
+
 export const prisma = db();
 export const embedding = embeddingFromEnv();
 
@@ -15,7 +17,6 @@ export interface ModelSettings {
 
 const SETTING_KEY = "model";
 
-/** A stored setting overrides env, so switching model needs no restart. */
 export async function loadModelSettings(): Promise<ModelSettings> {
   const row = await prisma.appSetting.findUnique({ where: { key: SETTING_KEY } });
   if (row) return row.value as unknown as ModelSettings;
@@ -37,7 +38,6 @@ export async function saveModelSettings(next: ModelSettings): Promise<ModelSetti
     create: { key: SETTING_KEY, value: next as never },
     update: { value: next as never },
   });
-  // Force a rebuild on the next call rather than restarting the process.
   llm = undefined;
   return next;
 }
@@ -52,7 +52,7 @@ function buildFromSettings(s: ModelSettings): LLMProvider | null {
   const models = { small: s.small, strong: s.strong };
   switch (s.provider) {
     case "claude-code":
-      return new ClaudeCodeLLM({ models });
+      return isProduction() ? null : new ClaudeCodeLLM({ models });
     case "anthropic": {
       const key = process.env.ANTHROPIC_API_KEY;
       return key ? new AnthropicLLM({ apiKey: key, models }) : null;
@@ -66,12 +66,12 @@ function buildFromSettings(s: ModelSettings): LLMProvider | null {
   }
 }
 
-/** Null when no provider is configured — routes that need a model return 503, not a mock. */
+/** Null when no provider is configured; routes that need a model return 503, not a mock */
 export function getLlm(): LLMProvider | null {
   if (llm === undefined) {
     llm = settingsCache ? buildFromSettings(settingsCache) : llmFromEnv();
     if (llm) {
-      // Writes are fire-and-forget: a metrics failure must not fail a lesson.
+      // Fire-and-forget: a metrics failure must not fail a lesson
       llm.onUsage = (usage, req) => {
         void prisma.usageRecord
           .create({
@@ -91,7 +91,6 @@ export function getLlm(): LLMProvider | null {
   return llm;
 }
 
-/** Derived from the system prompt, so callers cannot forget to label their spend. */
 function purposeOf(system: string): string {
   if (system.includes("decide whether a proposed learning concept")) return "adjudicate";
   if (system.includes("break a learning topic")) return "expand_topic";
@@ -100,7 +99,7 @@ function purposeOf(system: string): string {
   if (system.includes("classify a learner")) return "route_chat";
   if (system.includes("write assessment items")) return "generate_items";
   if (system.includes("excellent tutor")) return "baseline_turn";
-  // An unmatched prompt is filed as "other", so keep this list in step with the prompts.
+  // An unmatched prompt is filed as "other", so keep this list in step with the prompts
   if (system.includes("You explain one concept")) return "explain";
   if (system.includes("Answer the learner's question")) return "answer_chat";
   if (system.includes("capabilities a learner gains")) return "milestones";
@@ -124,7 +123,6 @@ export function providerStatus() {
     embedding: embedding.name,
     stubEmbedding,
     degraded: !provider || stubEmbedding,
-    /** Named so the UI can say what is actually weakened, not just "degraded". */
     caveats: [
       ...(provider ? [] : ["no model configured — expansion, grading and chat return 503"]),
       ...(stubEmbedding

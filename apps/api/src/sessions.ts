@@ -1,7 +1,6 @@
 import { assignVariant } from "@kg/teach";
 import { prisma } from "./context.js";
 
-/** Lesson and review are separate activities, so an open session is scoped by kind. */
 export type SessionKind = "lesson" | "review";
 
 export async function openSession(

@@ -15,7 +15,6 @@ export function higher(a: MasteryLevel, b: MasteryLevel): MasteryLevel {
   return rank(a) >= rank(b) ? a : b;
 }
 
-/** The highest level a single piece of evidence can demonstrate. (10) */
 const DEMONSTRATES: Partial<Record<EvidenceKind, MasteryLevel>> = {
   restated: "familiar",
   applied: "functional",
@@ -25,18 +24,16 @@ const DEMONSTRATES: Partial<Record<EvidenceKind, MasteryLevel>> = {
   self_reported_skip: "familiar",
 };
 
-/** Mastery only ever moves up here — demotion needs a confirmed re-probe. (06, 10) */
+/** Mastery only moves up here; demotion needs a confirmed re-probe */
 export function promote(current: MasteryLevel, kind: EvidenceKind): MasteryLevel {
   const demonstrated = DEMONSTRATES[kind];
   return demonstrated ? higher(current, demonstrated) : current;
 }
 
-/** A single failure never demotes. It lowers confidence and queues a re-probe. (10) */
 export function contradicts(kind: EvidenceKind): boolean {
   return kind === "failed_check" || kind === "reprobe_fail" || kind === "misconception_shown";
 }
 
-/** Confidence decays with time since evidence; mastery does not. (06) */
 export function decayedConfidence(
   base: number,
   lastEvidenceAt: Date | null,
@@ -49,7 +46,6 @@ export function decayedConfidence(
   return base * Math.pow(0.5, days / t.confidenceHalfLifeDays);
 }
 
-/** High mastery with low confidence means re-probe, not re-teach. (06) */
 export function needsReprobe(
   mastery: MasteryLevel,
   confidence: number,
@@ -58,7 +54,7 @@ export function needsReprobe(
   return rank(mastery) >= rank("functional") && confidence < t.reprobeConfidenceFloor;
 }
 
-/** Inferred mastery may skip teaching; it may not skip probing on the path. (06) */
+/** Inferred mastery may skip teaching but not probing on the path */
 export function canSkipTeaching(mastery: MasteryLevel, required: MasteryLevel): boolean {
   return atLeast(mastery, required);
 }

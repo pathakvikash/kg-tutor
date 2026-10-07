@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-// These suites truncate every table, so the guard below must reject any other database.
+// Suites truncate every table, so the guard below must reject any other database
 const envPath = resolve(import.meta.dirname, "../.env.test");
 for (const line of readFileSync(envPath, "utf8").split("\n")) {
   const m = /^\s*([A-Z_]+)\s*=\s*"?([^"\n]*)"?\s*$/.exec(line);

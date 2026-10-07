@@ -8,7 +8,7 @@ interface CatalogEntry {
   label: string;
   models: string[];
   note?: string;
-  /** Optional so an older API build still parses; when present the server default wins. */
+  /** Optional so an older API build still parses; when present the server default wins */
   defaultSmall?: string;
   defaultStrong?: string;
 }
@@ -31,7 +31,6 @@ interface Settings {
 }
 
 type Feedback = {
-  /** "partial" is the saved-but-inert half-state, which is neither of the other two. */
   kind: "ok" | "partial" | "error";
   title: string;
   body?: string;
@@ -41,14 +40,12 @@ type Feedback = {
 
 const NONE = "none";
 
-/** Fallback defaults; the route's defaultSmall/defaultStrong win when it sends them. */
 const DEFAULTS: Record<string, { small: string; strong: string }> = {
   "claude-code": { small: "haiku", strong: "sonnet" },
   anthropic: { small: "claude-haiku-4-5-20251001", strong: "claude-sonnet-5" },
   openai: { small: "gpt-4o-mini", strong: "gpt-4o" },
 };
 
-/** Fallback only: the route's own 422 remedy wins when it sends one. */
 const REMEDY: Record<string, string> = {
   anthropic:
     "Set ANTHROPIC_API_KEY in the API's environment and restart it — e.g. ANTHROPIC_API_KEY=… pnpm dev. " +
@@ -60,7 +57,6 @@ const REMEDY: Record<string, string> = {
     "Install the Claude Code CLI on the machine running the API and check it is signed in, then restart the API.",
 };
 
-/** Zod's flatten() arrives as an object, and an object rendered as prose is a blob. */
 function fieldErrors(message: string): string | null {
   try {
     const parsed = JSON.parse(message) as {
@@ -81,14 +77,12 @@ function describe(e: unknown): { title: string; remedy: string | null } {
   if (e instanceof HttpError) {
     return { title: fieldErrors(e.message) ?? e.message, remedy: e.remedy };
   }
-  // A fetch that never lands throws a bare TypeError, which says nothing actionable.
   return {
     title: e instanceof Error ? e.message : String(e),
     remedy: "Check that the API is running on :4000 — pnpm dev starts it.",
   };
 }
 
-/** The live name string is the only evidence of what the process actually constructed. */
 function parseLive(llm: string | null): Tiers | null {
   if (!llm) return null;
   const [provider = "", models = ""] = llm.split(":");
@@ -96,7 +90,6 @@ function parseLive(llm: string | null): Tiers | null {
   return { provider, small, strong };
 }
 
-/** Drops the "no model configured" caveat, which the notices above already state. */
 function otherCaveats(caveats?: string[]): string[] {
   return (caveats ?? []).filter((c) => !c.startsWith("no model configured"));
 }
@@ -124,19 +117,15 @@ function StateRow({
   );
 }
 
-/** Ordered status first: the page is reached from a badge saying no model is set. */
 export function SettingsPage() {
   const [data, setData] = useState<Settings | null>(null);
-  /** Distinct from `data === null`: "we have not asked yet" is not "the read failed". */
   const [loadError, setLoadError] = useState<{ title: string; remedy: string | null } | null>(null);
   const [provider, setProvider] = useState(NONE);
   const [small, setSmall] = useState("");
   const [strong, setStrong] = useState("");
-  /** Per tier: the select has been swapped for a free-text id. */
   const [freeform, setFreeform] = useState({ small: false, strong: false });
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  /** Per-provider tier edits, so returning to a provider restores that edit. */
   const drafts = useRef<Record<string, { small: string; strong: string }>>({});
   const [learnerId] = useLearner();
   const [learners, setLearners] = useState<any[] | "loading" | "failed">("loading");
@@ -166,7 +155,6 @@ export function SettingsPage() {
   }, [busy, load]);
 
   useEffect(() => {
-    // Without a failure path a dead API leaves this page loading for ever.
     void (async () => {
       try {
         await load();
@@ -192,7 +180,6 @@ export function SettingsPage() {
   };
 
   const tiersFor = (next: string): { small: string; strong: string } => {
-    // A remembered edit wins over disk, so an env-pinned id survives a browse.
     const remembered = drafts.current[next];
     if (remembered) return remembered;
     if (data && next === data.current.provider) {
@@ -202,7 +189,6 @@ export function SettingsPage() {
     const cat = data?.catalog[next];
     const models = cat?.models ?? [];
     return {
-      // Positional only as a last resort, for a provider this build has never heard of.
       small: cat?.defaultSmall ?? DEFAULTS[next]?.small ?? models[0] ?? "",
       strong: cat?.defaultStrong ?? DEFAULTS[next]?.strong ?? models[models.length - 1] ?? "",
     };
@@ -235,7 +221,7 @@ export function SettingsPage() {
       };
     }
     if (!fresh.status.llm) {
-      // A 2xx is not evidence of a working model, so the copy must not promise one.
+      // A 2xx is not evidence of a working model, so the copy must not promise one
       return {
         kind: "partial",
         title: "Saved, but not usable yet.",
@@ -252,7 +238,7 @@ export function SettingsPage() {
   };
 
   const save = async () => {
-    // aria-disabled rather than disabled: disabling the pressed control drops focus to body.
+    // aria-disabled rather than disabled: disabling the pressed control drops focus to body
     if (busy || !dirty) return;
     setBusy(true);
     setFeedback(null);
@@ -270,7 +256,7 @@ export function SettingsPage() {
       );
     } catch (e) {
       if (e instanceof HttpError && e.status === 422) {
-        // The route persists first, so a 422 means the provider on disk already changed.
+        // The route persists first, so a 422 means the provider on disk already changed
         const fresh = await load().catch(() => null);
         setFeedback({
           kind: "partial",
@@ -345,7 +331,7 @@ export function SettingsPage() {
     const models = entry?.models ?? [];
     const savedHere = data.current.provider === provider ? data.current[tier] : "";
     const options = models.map((m) => ({ id: m, label: m }));
-    // A select with no matching option renders blank, so pinned and custom ids are added.
+    // A select with no matching option renders blank, so pinned and custom ids are added
     if (savedHere && !models.includes(savedHere)) {
       options.push({ id: savedHere, label: `${savedHere} — from the environment` });
     }
@@ -493,7 +479,6 @@ export function SettingsPage() {
           >
             <div className="set-field">
               <label htmlFor="set-provider">Provider</label>
-              {/* Outside the label so it is not part of the accessible name. */}
               {entry?.note && (
                 <p className="set-hint" id="set-provider-hint">
                   {entry.note}
@@ -541,7 +526,7 @@ export function SettingsPage() {
               </>
             )}
 
-            {/* A live region inserted together with its text is not reliably announced. */}
+            {/* A live region inserted together with its text is not reliably announced */}
             <div className="set-feedback">
               <div role="status" aria-live="polite" aria-atomic="true">
                 {feedback && feedback.kind !== "error" && (

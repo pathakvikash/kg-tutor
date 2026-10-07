@@ -20,25 +20,21 @@ const COLOR: Record<Mastery, string> = {
   solid: "var(--m-solid)",
 };
 
-// Below this the 11px label draws under 5px and stops being readable.
+// Below this the 11px label draws under 5px and stops being readable
 const LABEL_ZOOM = 0.42;
 
 export function ConceptNode({ data, selected }: NodeProps) {
   const d = data as ConceptNodeData;
-  // Labels live in graph space, so their screen size follows the viewport zoom.
   const zoom = useStore(
     (s) => s.transform[2],
-    // Quantised to 5% steps, so a wheel tick does not re-render every node.
     (a, b) => Math.round(a * 20) === Math.round(b * 20),
   );
-  // A null state means no learner selected, not assessed as unknown.
   const unstated = d.mastery === null;
   const fill = d.mastery ? COLOR[d.mastery] : "transparent";
 
   if (d.mode === "explore") {
     const r = orbDotSize(d.degree);
     const showLabel = zoom >= LABEL_ZOOM;
-    // Capped so a counter-scaled label stays inside the reserved collide width.
     const scale = Math.min(1 / zoom, 1 / LABEL_ZOOM);
     return (
       <div
@@ -51,7 +47,6 @@ export function ConceptNode({ data, selected }: NodeProps) {
         style={{ width: ORB_W }}
         title={d.name}
       >
-        {/* Not connectable: there is no endpoint for a user-drawn edge. */}
         <Handle type="target" position={Position.Top} isConnectable={false} />
         <span
           className={`orb-dot${unstated ? " orb-dot--unstated" : ""}`}
@@ -77,7 +72,6 @@ export function ConceptNode({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Top} isConnectable={false} />
       <div className="n-name">{d.name}</div>
       <div className="n-meta">
-        {/* The mark carries a shape too, so colour is not the only channel. */}
         <span className="mastery-mark" data-level={d.mastery ?? "unstated"} />
         <span>{d.mastery ?? "not assessed"}</span>
         {d.inferred && <span title="credited by inference, never demonstrated">inf</span>}

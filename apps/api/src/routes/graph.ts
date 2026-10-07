@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../context.js";
 
 export async function graphRoutes(app: FastifyInstance): Promise<void> {
-  /** The whole graph, shaped for a layered DAG view. */
   app.get("/api/graph", async (req) => {
     const q = req.query as { topicId?: string; learnerId?: string };
 
@@ -71,7 +70,7 @@ export async function graphRoutes(app: FastifyInstance): Promise<void> {
     return c;
   });
 
-  /** A cheap stamp the UI polls, so a full graph fetch only happens on real change. */
+  /** A cheap stamp the UI polls, so a full graph fetch only happens on real change */
   app.get("/api/graph/version", async () => {
     const [rows] = await prisma.$queryRawUnsafe<
       { concepts: bigint; edges: bigint; latest: Date | null }[]

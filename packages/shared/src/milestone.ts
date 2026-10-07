@@ -7,16 +7,13 @@ export interface MilestoneRequirement {
 }
 
 export interface TrimResult {
-  /** Concepts the learner still has to reach. */
   remaining: MilestoneRequirement[];
   satisfied: MilestoneRequirement[];
-  /** True when most of it was already satisfied, so it folds into the next one. (18) */
   foldForward: boolean;
-  /** A milestone claiming no concepts is broken, not satisfied. */
+  /** A milestone claiming no concepts is broken, not satisfied */
   malformed: boolean;
 }
 
-/** Trims against one learner's state; the capability claim stays unchanged. (18) */
 export function trimMilestone(
   requirements: MilestoneRequirement[],
   current: (conceptId: string) => MasteryLevel,

@@ -1,5 +1,3 @@
-// Canonical data model; every table traces to a numbered decision in ../../../context/decisions.md.
-
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
@@ -11,9 +9,6 @@ datasource db {
   extensions = [vector]
 }
 
-// Enums
-
-/// Topic-side relations: `contains` organizes, `applied_in` is what a topic leads to. (02, 08)
 enum TopicRelation {
   contains
   applied_in
@@ -27,13 +22,13 @@ enum EdgeType {
   extends
 }
 
-/// hard = target is not understandable without it; requires a failureMode. (03)
+/// hard = target is not understandable without it; requires a failureMode
 enum EdgeStrength {
   hard
   soft
 }
 
-/// Ordinal, never a float — LLM grading cannot justify finer precision. (06)
+/// Ordinal, never a float; LLM grading cannot justify finer precision
 enum MasteryLevel {
   unknown
   familiar
@@ -48,14 +43,12 @@ enum EvidenceSource {
   inferred
 }
 
-/// How deep the learner needs the target; selects which soft edges apply. (03, 08)
 enum GoalDepth {
   use
   debug
   build
 }
 
-/// Five-way verdict — binary same/different forces overlap into a wrong bucket. (05)
 enum ResolverVerdict {
   same
   narrower
@@ -64,7 +57,6 @@ enum ResolverVerdict {
   distinct
 }
 
-/// Recorded rather than inferred from timestamps, so graph reuse rate stays measurable. (14)
 enum ProposalOutcome {
   created
   bound
@@ -76,23 +68,17 @@ enum ReviewStatus {
   rejected
 }
 
-/// Canonical content is reviewed; candidate is generated and unproven. (12, 15)
 enum ContentStatus {
   candidate
   canonical
   retired
 }
 
-// The shared graph  (02, 03, 05, 13)
-
-/// Container and goal target. Never taught, never mastered. (02)
 model Topic {
   id          String   @id @default(uuid())
   name        String
-  /// Distinguishes a subject ("JavaScript") from an outcome ("Backend Developer"). (08)
   kind        String   @default("subject")
   description String   @db.Text
-  /// False when the domain is not genuinely dependency-structured; planner degenerates. (22, policy H)
   isDagLike   Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -104,17 +90,14 @@ model Topic {
   @@unique([name])
 }
 
-/// The only teachable, masterable, evidence-bearing unit. (02)
 model Concept {
   id            String   @id @default(uuid())
   canonicalName String
 
-  /// IMMUTABLE after creation — identity depends on it. Fix by deprecating, never editing. (05)
+  /// Immutable after creation; identity depends on it, so deprecate instead of editing
   sense         String   @db.Text
-  /// Embedding of (canonicalName + sense). Never drifts, because sense never changes. (05, 13)
   senseVector   Unsupported("vector(1536)")?
 
-  /// Mutable teaching notes. Identity does NOT depend on this. (05)
   description   String   @db.Text @default("")
 
   deprecatedAt  DateTime?
@@ -141,7 +124,6 @@ model Concept {
   @@index([deprecatedAt])
 }
 
-/// Topic->Concept containment; `Edge` joins Concepts only, so it cannot live there. (02)
 model TopicConcept {
   id        String   @id @default(uuid())
   topicId   String
@@ -149,9 +131,7 @@ model TopicConcept {
   conceptId String
   concept   Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
   relation  TopicRelation @default(contains)
-  /// True when expanding this topic produced the concept, not a prerequisite pull-in.
   direct    Boolean  @default(true)
-  /// How central this concept is to the topic — the goal-relevance tie-breaker. (09)
   relevance Float    @default(0.5)
   createdAt DateTime @default(now())
 
@@ -159,7 +139,6 @@ model TopicConcept {
   @@index([conceptId])
 }
 
-/// A `same` verdict aliases instead of merging — no destructive op, no id migration. (05)
 model ConceptAlias {
   id        String   @id @default(uuid())
   conceptId String
@@ -180,13 +159,11 @@ model Edge {
   type      EdgeType
   strength  EdgeStrength @default(soft)
 
-  /// Required on hard edges: the misunderstanding that occurs without the prerequisite. (03, 07, 10, 15)
+  /// Required on hard edges: the misunderstanding that occurs without the prerequisite
   failureMode String?    @db.Text
 
   confidence  Float      @default(0.5)
-  /// Provisional edges came from evidence promotion and stay monitored. (11)
   provisional Boolean    @default(false)
-  /// Evidence packet that promoted this edge, for audit and reversal. (11)
   promotedById String?
   promotedBy  PromotionProposal? @relation(fields: [promotedById], references: [id])
 
@@ -200,18 +177,15 @@ model Edge {
   @@index([srcId, type, strength])
 }
 
-/// Every node creation is a proposal through the resolver — never a blind insert. (05)
 model ConceptProposal {
   id            String           @id @default(uuid())
   proposedName  String
   proposedSense String           @db.Text
   context       String?          @db.Text
-  /// Concepts this was discovered next to; a proposal has no edges to overlap against yet. (05)
   expectedNeighborIds String[]   @default([])
   verdict       ResolverVerdict?
   outcome       ProposalOutcome?
   resolvedToId  String?
-  /// Candidates considered, similarity scores, adjudicator reasoning.
   candidates    Json?
   resolvedAt    DateTime?
   createdAt     DateTime         @default(now())
@@ -219,7 +193,6 @@ model ConceptProposal {
   @@index([resolvedAt])
 }
 
-/// Merges are recorded and reversible — never a delete. (05)
 model MergeRecord {
   id            String   @id @default(uuid())
   winnerId      String
@@ -233,28 +206,22 @@ model MergeRecord {
   @@index([loserId])
 }
 
-// Assessment and content  (07, 12)
-
 model AssessmentItem {
   id         String        @id @default(uuid())
   conceptId  String
   concept    Concept       @relation(fields: [conceptId], references: [id], onDelete: Cascade)
   version    Int           @default(1)
   prompt     String        @db.Text
-  /// Code the question is about, kept out of `prompt` so its newlines survive markdown.
+  /// Code the question is about, kept out of `prompt` so its newlines survive markdown
   code       String?       @db.Text
   codeLanguage String?
-  /// Rubric is expressed as failure modes to detect, not open-ended answer quality. (07)
   rubric     Json
-  /// Level this item discriminates at — gates which promotion it can justify. (10)
   targetsLevel MasteryLevel @default(functional)
-  /// Requires transfer to a context the explanation did not use — blocks parroting. (16)
   requiresTransfer Boolean  @default(false)
   status     ContentStatus @default(candidate)
 
   timesUsed       Int   @default(0)
   correctCount    Int   @default(0)
-  /// Does getting this right predict downstream success? Low → retire. (07)
   discrimination  Float @default(0)
 
   createdAt  DateTime @default(now())
@@ -265,7 +232,6 @@ model AssessmentItem {
   @@index([conceptId, status])
 }
 
-/// Substance is stored and reviewable; delivery is generated per learner. (12)
 model ExplanationContent {
   id        String        @id @default(uuid())
   conceptId String
@@ -273,13 +239,10 @@ model ExplanationContent {
   version   Int           @default(1)
   status    ContentStatus @default(candidate)
 
-  /// The claims, mental model, key distinctions. The LLM may adapt delivery, not these.
   claims    String   @db.Text
   examples  Json     @default("[]")
-  /// Analogies tagged by the background they assume — selection input, not invention. (12)
   analogies Json     @default("[]")
 
-  /// Cache/selection key: (background, goal, level) bucket rather than per learner. (17)
   bucket    String?
 
   timesShown     Int   @default(0)
@@ -293,17 +256,12 @@ model ExplanationContent {
   @@index([conceptId, status, bucket])
 }
 
-// The learner overlay  (06)
-
 model Learner {
   id        String   @id @default(uuid())
   email     String   @unique
   name      String?
-  /// Background bucket drives analogy selection and explanation caching. (12, 17)
   background String? @db.Text
-  /// The language this learner writes code in; items are selected against it. (07)
   workingLanguage String?
-  /// Raw evidence is private by default; only aggregates may reach the graph. (policy D)
   orgId     String?
   createdAt DateTime @default(now())
 
@@ -324,16 +282,13 @@ model LearnerConceptState {
   conceptId String
   concept   Concept      @relation(fields: [conceptId], references: [id], onDelete: Cascade)
 
-  /// Highest level demonstrated. Never demoted on a single failure. (06, 10)
+  /// Highest level demonstrated; never demoted on a single failure
   mastery   MasteryLevel @default(unknown)
-  /// Decays with time since evidence — mastery itself does not. (06)
   confidence Float       @default(0)
   source    EvidenceSource @default(inferred)
 
   lastEvidenceAt DateTime?
-  /// Set when a failure contradicts the estimate; demotion needs a confirmed re-probe. (10)
   reprobeQueuedAt DateTime?
-  /// Bounded-detour escape hatch — revisit next session rather than descending. (10)
   blockedUntil    DateTime?
 
   updatedAt DateTime @updatedAt
@@ -343,14 +298,12 @@ model LearnerConceptState {
   @@index([conceptId])
 }
 
-/// "Believes something false" needs correcting, not re-teaching. (06)
 model Misconception {
   id        String   @id @default(uuid())
   learnerId String
   learner   Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
   conceptId String
   concept   Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
-  /// Free text; when it matches a stored failureMode, that edge gains support. (11)
   belief    String   @db.Text
   matchedFailureMode String?
   observedCount Int   @default(1)
@@ -362,8 +315,6 @@ model Misconception {
   @@index([conceptId, resolvedAt])
 }
 
-// Evidence  (10, 11, 19)
-
 enum EvidenceKind {
   restated
   applied
@@ -372,14 +323,12 @@ enum EvidenceKind {
   misconception_shown
   careless_error
   self_reported_skip
-  /// Learner named their own prerequisite gap — premium missing-edge signal. (19)
   spontaneous_prerequisite_request
   downstream_success
   reprobe_pass
   reprobe_fail
 }
 
-/// Append-only. Read per-learner for the model, pooled per-concept for promotion. (06, 11)
 model EvidenceEvent {
   id        String       @id @default(uuid())
   learnerId String
@@ -395,7 +344,6 @@ model EvidenceEvent {
   contentId String?
   content   ExplanationContent? @relation(fields: [contentId], references: [id])
 
-  /// For spontaneous_prerequisite_request: the concept the learner asked about.
   referencedConceptId String?
   response  String?      @db.Text
   detail    Json?
@@ -407,10 +355,8 @@ model EvidenceEvent {
   @@index([sessionId])
 }
 
-/// Structural graph changes are proposals with a control arm — never auto-applied. (11)
 model PromotionProposal {
   id        String   @id @default(uuid())
-  /// new_hard_edge | remove_edge | flip_strength | split_concept | retire_failure_mode
   kind      String
   srcId     String?
   dstId     String?
@@ -418,7 +364,6 @@ model PromotionProposal {
 
   distinctLearners Int   @default(0)
   effectSize       Float @default(0)
-  /// Control arm: failure rate at target among learners who did know the prerequisite. (11)
   controlFailureRate Float?
   treatmentFailureRate Float?
   distinctGoals    Int   @default(0)
@@ -435,8 +380,6 @@ model PromotionProposal {
   @@index([status, effectSize])
 }
 
-// Goals, milestones, plans  (08, 09, 18)
-
 model Goal {
   id        String    @id @default(uuid())
   learnerId String
@@ -445,7 +388,6 @@ model Goal {
   topic     Topic     @relation(fields: [topicId], references: [id])
   depth     GoalDepth @default(use)
   constraints Json?
-  /// Versioned independently of the learner model — pivoting keeps all mastery. (08)
   version   Int       @default(1)
   active    Boolean   @default(false)
   createdAt DateTime  @default(now())
@@ -455,12 +397,10 @@ model Goal {
   @@index([learnerId, active])
 }
 
-/// Reusable template on a Topic — never generated per learner. (18)
 model MilestoneTemplate {
   id        String   @id @default(uuid())
   topicId   String
   topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  /// A capability claim: "you can model and query a relational database".
   claim     String
   ordering  Int      @default(0)
   status    ContentStatus @default(candidate)
@@ -483,7 +423,6 @@ model MilestoneConcept {
   @@unique([templateId, conceptId])
 }
 
-/// Persisted and versioned so plan growth can be explained by diff. (09)
 model Plan {
   id        String   @id @default(uuid())
   learnerId String
@@ -491,7 +430,6 @@ model Plan {
   goalId    String
   goal      Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
   version   Int      @default(1)
-  /// Why this version differs from the last — shown to the learner. (08, 09)
   revisionReason String? @db.Text
   supersededAt DateTime?
   createdAt DateTime @default(now())
@@ -510,7 +448,6 @@ model PlanStep {
   concept   Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
   position  Int
   requiredLevel MasteryLevel @default(functional)
-  /// Only the first ~3 steps are firm; the rest are visible but revisable. (09)
   committed Boolean  @default(false)
   unlockCount Int    @default(0)
   completedAt DateTime?
@@ -519,7 +456,6 @@ model PlanStep {
   @@index([conceptId])
 }
 
-/// A template trimmed against one learner's state. (18)
 model MilestoneInstance {
   id         String   @id @default(uuid())
   planId     String
@@ -527,22 +463,17 @@ model MilestoneInstance {
   templateId String
   template   MilestoneTemplate @relation(fields: [templateId], references: [id])
   position   Int
-  /// True when >2/3 was already satisfied and it was folded into the next one. (18)
   foldedForward Boolean @default(false)
   completedAt DateTime?
 
   @@unique([planId, position])
 }
 
-// Sessions and observability  (10, 20, 14)
-
 model Session {
   id        String   @id @default(uuid())
   learnerId String
   learner   Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
-  /// Which arm this learner is in — graph-planned vs baseline tutor. (14)
   variant   String   @default("graph")
-  /// lesson | review; separate activities, so one session never serves both.
   kind      String   @default("lesson")
   startedAt DateTime @default(now())
   endedAt   DateTime?
@@ -555,12 +486,10 @@ model Session {
   @@index([learnerId, kind, endedAt])
 }
 
-/// One row per model call, so cost per verified outcome stays measurable. (17)
 model UsageRecord {
   id            String   @id @default(uuid())
   sessionId     String?
   learnerId     String?
-  /// adjudicate | expand | grade | route_chat | explain | assess
   purpose       String
   tier          String
   model         String
@@ -574,17 +503,13 @@ model UsageRecord {
   @@index([sessionId])
 }
 
-/// The initial assessment in progress. (07)
 model IntakeSession {
   id         String   @id @default(uuid())
   learnerId  String
   topicId    String
-  /// use | debug | build, gathered conversationally rather than from a dropdown.
   depth      String   @default("use")
   goalText   String?  @db.Text
-  /// Binary-search windows plus answers so far.
   state      Json
-  /// asking | complete | abandoned
   status     String   @default("asking")
   currentConceptId String?
   currentItemId    String?
@@ -594,24 +519,20 @@ model IntakeSession {
   @@index([learnerId, status])
 }
 
-/// Runtime settings, so switching model does not mean editing env and restarting.
 model AppSetting {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
 }
 
-/// Chat and lesson turns; the transcript that derived evidence refers back to.
 model LessonTurn {
   id        String   @id @default(uuid())
   sessionId String
   session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   learnerId String
   conceptId String?
-  /// system | tutor | learner | question | note
   role      String
   text      String   @db.Text
-  /// Item id for a question turn; grading/routing detail for a note turn.
   meta      Json?
   createdAt DateTime @default(now())
 
@@ -619,15 +540,12 @@ model LessonTurn {
   @@index([learnerId, createdAt])
 }
 
-/// Job record the UI polls; expansion runs too long to sit inside a request.
 model ExpansionJob {
   id          String    @id @default(uuid())
   topicName   String
   description String?
-  /// queued | running | done | failed
   status      String    @default("queued")
   phase       String    @default("starting")
-  /// 0..1, so the UI can show real progress rather than an indeterminate spinner.
   progress    Float     @default(0)
   report      Json?
   error       String?   @db.Text
@@ -638,7 +556,6 @@ model ExpansionJob {
   @@index([status, createdAt])
 }
 
-/// Every instructional choice is logged so "why this?" never needs a retrospective guess.
 model PlannerDecision {
   id        String   @id @default(uuid())
   sessionId String

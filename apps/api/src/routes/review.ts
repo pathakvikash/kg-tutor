@@ -8,8 +8,6 @@ import {
 import { prisma } from "../context.js";
 
 export async function reviewRoutes(app: FastifyInstance): Promise<void> {
-  /** Ordered by how many learners cross each edge; most of the graph is never traversed. (15) */
-
   app.get("/api/review/queue", async () => reviewQueueByTraversal(prisma, 100));
   app.get("/api/review/proposals", async () => {
     const proposals = await prisma.promotionProposal.findMany({
@@ -34,7 +32,6 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
     }));
   });
 
-  /** Rescans evidence for edges learners behave as though should exist. */
   app.post("/api/review/scan", async () => {
     const candidates = await findMissingEdgeCandidates(prisma);
     const results = [];
@@ -45,7 +42,6 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
         targetId: c.targetId,
         spontaneousRequests: c.spontaneousRequests,
         proposed: r.created,
-        // A near miss is surfaced rather than silently dropped.
         rejectedFor: r.claim.rejectedFor,
         effectSize: r.claim.effectSize,
       });
@@ -60,7 +56,7 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
     try {
       return await applyProposal(prisma, id, body.data.reviewedBy, body.data.failureMode);
     } catch (err) {
-      // A rejected failure mode is a validation result, not a server fault.
+      // A rejected failure mode is a validation result, not a server fault
       return reply.code(422).send({ error: err instanceof Error ? err.message : String(err) });
     }
   });
@@ -78,7 +74,6 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
     return reverseProposal(prisma, id, body?.reason ?? "reversed from review UI");
   });
 
-  /** Parts of the graph that read as invention rather than observation. (11) */
   app.get("/api/review/negative", async (req) => {
     const q = req.query as { minAttempts?: string };
     const minAttempts = q.minAttempts ? Number(q.minAttempts) : 30;

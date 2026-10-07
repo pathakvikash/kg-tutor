@@ -1,6 +1,6 @@
 import type { Mastery } from "./api";
 
-// Shared names for mastery, depth and due kinds; pages must not redefine them.
+// Shared names for mastery, depth and due kinds; pages must not redefine them
 
 export const MASTERY_ORDER: Mastery[] = ["unknown", "familiar", "functional", "solid"];
 
@@ -12,7 +12,6 @@ export function atLeast(actual: Mastery, required: Mastery): boolean {
   return MASTERY_RANK[actual] >= MASTERY_RANK[required];
 }
 
-/** What each level means to a learner, not to the schema. */
 export const MASTERY_MEANING: Record<Mastery, string> = {
   unknown: "not established yet",
   familiar: "can say what it is",
@@ -26,7 +25,6 @@ export const DEPTH_LABEL: Record<string, { label: string; hint: string }> = {
   build: { label: "Build with it", hint: "Know it well enough to design with" },
 };
 
-/** Why a concept is in the review queue. Singular and plural both needed. */
 export const DUE_KIND: Record<string, { one: string; many: string; rank: string }> = {
   misconception: {
     one: "wrong belief on record",

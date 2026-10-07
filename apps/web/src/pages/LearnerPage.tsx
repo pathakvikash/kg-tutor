@@ -6,7 +6,6 @@ import { Busy } from "../components/Busy";
 import { Roadmap } from "../components/Roadmap";
 import { DEPTH_LABEL, MASTERY_MEANING, MASTERY_ORDER } from "../vocabulary";
 
-/** A read that failed, in the two flavours a page has to tell apart. */
 type Failure = { message: string; remedy: string | null; missing: boolean };
 
 function asFailure(e: unknown): Failure {
@@ -16,7 +15,6 @@ function asFailure(e: unknown): Failure {
 
 type Read<T> = { ok: true; value: T } | { ok: false; failure: Failure };
 
-/** Settles instead of rejecting, so one failed read cannot hide the other section. */
 function read<T>(p: Promise<T>): Promise<Read<T>> {
   return p.then(
     (value) => ({ ok: true as const, value }),
@@ -39,10 +37,8 @@ function ReadFailure({ title, failure, onRetry }: {
   );
 }
 
-/** "We have not asked yet", which is not the same claim as "there is nothing here". */
 function Lines({ count = 3 }: { count?: number }) {
   const widths = ["skeleton--w80", "skeleton--w60", "skeleton--w40"];
-  // aria-busy only; one page-level live region does the announcing.
   return (
     <div aria-busy="true">
       <div aria-hidden="true">
@@ -54,7 +50,6 @@ function Lines({ count = 3 }: { count?: number }) {
   );
 }
 
-/** "14 Mar" — a date a learner can act on, from a timestamp they cannot read. */
 function shortDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
@@ -62,23 +57,21 @@ function shortDate(iso: string): string {
     : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-/** Gated throughout: the write is shared across learners and irreversible. */
+/** Gated throughout: the write is shared across learners and irreversible */
 function NewTopic({ onDone }: { onDone: () => void }) {
   const [name, setName] = useState("");
   const [job, setJob] = useState<any>(null);
   const [error, setError] = useState<Failure | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [starting, setStarting] = useState(false);
-  /** Set after several failed polls in a row, so a dead job stops reading as "queued · 0%". */
   const [lost, setLost] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const buildRef = useRef<HTMLButtonElement | null>(null);
   const confirmRef = useRef<HTMLDivElement | null>(null);
 
-  // Focus the dialog, not the confirm button, so a held Enter cannot fall through.
+  // Focus the dialog, not the confirm button, so a held Enter cannot fall through
   useEffect(() => { if (confirming) confirmRef.current?.focus(); }, [confirming]);
 
-  // A build outlives this page, so check for one already running.
   useEffect(() => {
     let cancelled = false;
     void api.expansions()
@@ -93,7 +86,6 @@ function NewTopic({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     if (!job || job.status === "done" || job.status === "failed" || lost) return;
-    // A successful poll re-runs this effect, so only consecutive misses accumulate.
     let misses = 0;
     const timer = setInterval(() => {
       void api.expansion(job.id)
@@ -145,7 +137,7 @@ function NewTopic({ onDone }: { onDone: () => void }) {
           aria-describedby="new-topic-hint"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          // Enter moves to the button rather than committing a shared, irreversible write.
+          // Enter moves to the button rather than committing a shared, irreversible write
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buildRef.current?.focus(); } }}
           placeholder="e.g. React, SQL, recursion"
         />
@@ -260,7 +252,6 @@ function NewTopic({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** The page draws the mastery scale in three places and had no key for it anywhere. */
 function MasteryLegend() {
   return (
     <ul className="legend learner-legend">
@@ -274,7 +265,6 @@ function MasteryLegend() {
   );
 }
 
-/** Read first, edited second: nothing here may destroy the answer it came to show. */
 export function LearnerPage() {
   const [learners, setLearners] = useState<any[]>([]);
   const [topics, setTopics] = useState<any[]>([]);
@@ -290,7 +280,7 @@ export function LearnerPage() {
   const [confirming, setConfirming] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
-  /** Which load is current. A slow first response must not land under a second learner. */
+  /** Which load is current. A slow first response must not land under a second learner */
   const generation = useRef(0);
   const resultRef = useRef<HTMLDivElement | null>(null);
   const primaryRef = useRef<HTMLButtonElement | null>(null);
@@ -306,7 +296,6 @@ export function LearnerPage() {
     if (!learnerId) { setLoading(false); return; }
     const mine = ++generation.current;
     setLoading(true);
-    // The plan 404s when there is no goal, which says nothing about the concept record.
     const [s, p] = await Promise.all([
       read(api.learnerState(learnerId)),
       read(api.plan(learnerId)),
@@ -322,10 +311,8 @@ export function LearnerPage() {
   useEffect(() => { void load(id); }, [id, load]);
 
   const activeGoal = state?.goals?.find((g: any) => g.active) ?? null;
-  /** A failed read is not "no goal", so no goal write is offered. */
   const goalUnknown = stateFail !== null;
 
-  // The selects describe the goal that exists, and reset per learner.
   useEffect(() => {
     if (loading) return;
     if (activeGoal) { setTopicId(activeGoal.topicId); setDepth(activeGoal.depth); }
@@ -336,13 +323,10 @@ export function LearnerPage() {
     if (!activeGoal && !topicId && topics[0]) setTopicId(topics[0].id);
   }, [activeGoal, topicId, topics]);
 
-  // A result belongs to the inputs that produced it.
   useEffect(() => { setNote(null); setFailure(null); setConfirming(false); }, [id, topicId, depth]);
 
-  // Both plan actions destroy the focused control, so focus follows the outcome.
   useEffect(() => { if (note || failure) resultRef.current?.focus(); }, [note, failure]);
 
-  // The confirm is a dialog, so focus moves to the container rather than a button.
   useEffect(() => { if (confirming) confirmRef.current?.focus(); }, [confirming]);
 
   const dirty = !activeGoal || topicId !== activeGoal.topicId || depth !== activeGoal.depth;
@@ -368,7 +352,6 @@ export function LearnerPage() {
     setBusy("replan"); setNote(null); setFailure(null);
     try {
       const r = await api.rebuildPlan(id);
-      // Growth is stated plainly rather than silently moving progress backwards. (08)
       setNote(`Plan v${r.version} — ${r.revisionReason ?? "no change"}`);
       await load(id);
     } catch (e) {
@@ -400,7 +383,7 @@ export function LearnerPage() {
         </label>
       </div>
 
-      {/* Mounted unconditionally: a region that appears already holding its text may never be spoken. */}
+      {/* Mounted unconditionally: a region that appears already holding its text may never be spoken */}
       <span className="sr-only" role="status">
         {loading ? "Loading this learner’s model." : ""}
       </span>
@@ -440,7 +423,6 @@ export function LearnerPage() {
           </label>
         </div>
 
-        {/* Depth decides the shape of the whole plan, so each option says what it costs. */}
         <div className="learner-field">
           <span className="learner-label" id="depth-label">How deeply?</span>
           <div className="depth-choice" role="group" aria-labelledby="depth-label">
@@ -462,7 +444,6 @@ export function LearnerPage() {
           <button
             ref={primaryRef}
             className="primary"
-            // Also inert while the goal is unknown: the unconfirmed branch below would destroy it.
             disabled={!dirty || !id || !topicId || goalUnknown}
             aria-disabled={busy !== null}
             onClick={() => {
@@ -535,7 +516,6 @@ export function LearnerPage() {
         )}
       </section>
 
-      {/* Focused, not just announced: the control that produced it is gone or now inert. */}
       {(note || failure) && (
         <div className="learner-result" ref={resultRef} tabIndex={-1}>
           {note && (
@@ -575,10 +555,8 @@ export function LearnerPage() {
           {plan.revisionReason && (
             <p className="muted learner-hint">Last change: {plan.revisionReason}</p>
           )}
-          {/* No onPick: /learn takes no concept in the URL, so there is nowhere to start. */}
           <Roadmap key={`${id}:${plan.version}`} learnerId={id} />
 
-          {/* The roadmap does not draw committed or unlockCount, so they live here. */}
           <details className="learner-detail">
             <summary>Plan detail — order, firm steps, and what each concept unlocks</summary>
             <p className="muted learner-hint">

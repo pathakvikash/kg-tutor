@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { LLMAuthError, LLMError } from "@kg/llm";
 
-/** A provider that refuses is not a 500; the remedy is the actionable part. */
 export function installErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof LLMAuthError) {

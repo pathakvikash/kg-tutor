@@ -9,7 +9,6 @@ export type ProbeKind = "readiness" | "review";
 export interface Probe {
   conceptId: string;
   kind: ProbeKind;
-  /** Readiness probes are part of the plan; review probes are the flex. (20) */
   optional: boolean;
   reason: string;
   priority: number;
@@ -18,14 +17,13 @@ export interface Probe {
 export interface ProbePlanInput {
   prisma: PrismaClient;
   learnerId: string;
-  /** The concept about to be taught. Its hard prerequisites drive readiness probes. */
   nextConceptId: string;
   reviewProbesUsedThisSession: number;
   now?: Date;
   thresholds?: Thresholds;
 }
 
-/** Readiness probes are unbudgeted; review probes come out of the session budget. (20) */
+/** Readiness probes are unbudgeted; review probes come out of the session budget */
 export async function selectProbes(input: ProbePlanInput): Promise<Probe[]> {
   const t = input.thresholds ?? DEFAULT_THRESHOLDS;
   const now = input.now ?? new Date();
@@ -95,7 +93,6 @@ export async function selectProbes(input: ProbePlanInput): Promise<Probe[]> {
   );
 }
 
-/** Readiness probes always survive a short session; review probes are dropped first. (20) */
 export function trimToTimeBudget(probes: Probe[], slots: number): Probe[] {
   const required = probes.filter((p) => !p.optional);
   if (required.length >= slots) return required;

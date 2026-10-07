@@ -1,12 +1,10 @@
 import { z } from "zod";
 
-/** `small` for rubric-bound verifiable work, `strong` for expansion and novel diagnosis. (17) */
+/** `small` for rubric-bound verifiable work, `strong` for expansion and novel diagnosis */
 export type ModelTier = "small" | "strong";
 
-/** Thinking time, separate from `tier`, which is capability; defaults by tier when unset. */
 export type Effort = "none" | "low" | "medium" | "high";
 
-/** `none` is only for fixed-bucket classification, so `small` keeps a real budget. */
 export function defaultEffort(tier: ModelTier): Effort {
   return tier === "small" ? "low" : "medium";
 }
@@ -15,14 +13,11 @@ export interface CompletionRequest {
   system: string;
   user: string;
   tier: ModelTier;
-  /** Sampling temperature. Self-consistency expansion needs this above zero. */
   temperature?: number;
   maxTokens?: number;
-  /** Overrides {@link defaultEffort} for a call that genuinely needs to reason. */
   effort?: Effort;
 }
 
-/** What a call actually cost, when the provider can tell us. (17) */
 export interface UsageReport {
   model: string;
   tier: ModelTier;
@@ -37,13 +32,10 @@ export type UsageSink = (usage: UsageReport, req: CompletionRequest) => void;
 export interface LLMProvider {
   readonly name: string;
   complete(req: CompletionRequest): Promise<string>;
-  /** Optional, and only useful for prose: a schema-validated call has to wait anyway. */
   stream?(req: CompletionRequest): AsyncIterable<string>;
-  /** Set by the host so cost-per-outcome is measured rather than assumed. */
   onUsage?: UsageSink | undefined;
 }
 
-/** Streams when the provider can, falls back to one chunk when it cannot. */
 export async function* streamOrComplete(
   provider: LLMProvider,
   req: CompletionRequest,
@@ -55,7 +47,7 @@ export async function* streamOrComplete(
   yield await provider.complete(req);
 }
 
-/** Eager pump: async generators are lazy, so a stream started in parallel would not overlap. */
+/** Eager pump: async generators are lazy, so a stream started in parallel would not overlap */
 export function startStream(
   provider: LLMProvider,
   req: CompletionRequest,
@@ -98,7 +90,6 @@ export function startStream(
 
   return {
     chunks: drain(),
-    // Lets an abandoned speculative answer stop consuming rather than run to completion.
     cancel: () => { cancelled = true; wake(); },
   };
 }
@@ -110,11 +101,10 @@ export class LLMError extends Error {
   }
 }
 
-/** Provider is reachable but refusing: retrying is pointless and a human has to act. */
+/** Provider is reachable but refusing: retrying is pointless and a human has to act */
 export class LLMAuthError extends LLMError {
   constructor(
     message: string,
-    /** What the person running this should actually do about it. */
     readonly remedy: string,
   ) {
     super(message);
@@ -122,7 +112,7 @@ export class LLMAuthError extends LLMError {
   }
 }
 
-/** A raw control char inside a JSON string is never valid, so repairing cannot corrupt one. */
+/** A raw control char inside a JSON string is never valid, so repairing cannot corrupt one */
 function escapeControlCharsInStrings(body: string): string {
   const out: string[] = [];
   let inString = false;
@@ -145,7 +135,6 @@ function escapeControlCharsInStrings(body: string): string {
   return out.join("");
 }
 
-/** The first balanced {...} or [...] in the text, or null. */
 function balancedSpan(body: string): string | null {
   for (const [open, close] of [["{", "}"], ["[", "]"]] as const) {
     const start = body.indexOf(open);
@@ -172,7 +161,6 @@ function balancedSpan(body: string): string | null {
   return null;
 }
 
-/** The parse error plus the ~120 characters surrounding the offending position. */
 function describeJsonFailure(candidate: string, err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
   const at = /at position (\d+)/.exec(message)?.[1];
@@ -186,23 +174,19 @@ function describeJsonFailure(candidate: string, err: unknown): string {
   );
 }
 
-/** Models wrap JSON in prose and fences, so pull the first balanced object or array out. */
 export function extractJson(text: string): unknown {
   const trimmed = text.trim();
 
-  // Ordered most likely first; a non-JSON fence must not be taken as the whole document.
+  // Ordered most likely first; a non-JSON fence must not be taken as the whole document
   const candidates: string[] = [];
   const push = (v: string | null | undefined) => {
     const t = v?.trim();
     if (t && !candidates.includes(t)) candidates.push(t);
   };
 
-  // A fence that says json is the strongest signal there is.
   push(/```json\s*([\s\S]*?)```/.exec(trimmed)?.[1]);
-  // Then the response as it stands, and the first balanced object or array in it.
   push(trimmed);
   push(balancedSpan(trimmed));
-  // Only then other fenced blocks, in case the model mistagged the JSON or left the tag off.
   for (const m of trimmed.matchAll(/```(?:[a-zA-Z0-9_-]*)\s*([\s\S]*?)```/g)) {
     push(m[1]);
     push(balancedSpan(m[1] ?? ""));
@@ -211,7 +195,6 @@ export function extractJson(text: string): unknown {
   let lastError: unknown;
   let lastTried = trimmed;
   for (const candidate of candidates) {
-    // Strict first; the repair only ever alters text that could not have been valid.
     for (const attempt of [candidate, escapeControlCharsInStrings(candidate)]) {
       try {
         return JSON.parse(attempt);
@@ -229,7 +212,6 @@ export function extractJson(text: string): unknown {
 
 
 
-/** Accepts `{key: [...]}` or a bare `[...]`, since models drop the wrapper routinely. */
 export function arrayOrWrapped<T>(key: string, item: z.ZodType<T>) {
   return z.preprocess(
     (raw) => (Array.isArray(raw) ? { [key]: raw } : raw),
@@ -237,11 +219,10 @@ export function arrayOrWrapped<T>(key: string, item: z.ZodType<T>) {
   ) as unknown as z.ZodType<Record<string, T[]>>;
 }
 
-/** One retry on a schema mismatch with the error fed back; beyond that the caller decides. */
-/** Local repairs tried before another model call; each is a mis-shaping seen in practice. */
+/** Local repairs tried before another model call; each is a mis-shaping seen in practice */
 function repairs(value: unknown): unknown[] {
   const out = [value];
-  // `[{...}]` where an object was asked for. Unwrapped only when it is unambiguous.
+  // `[{...}]` where an object was asked for. Unwrapped only when it is unambiguous
   if (Array.isArray(value) && value.length === 1) out.push(value[0]);
   return out;
 }

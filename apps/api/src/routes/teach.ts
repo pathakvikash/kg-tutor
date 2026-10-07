@@ -4,6 +4,7 @@ import { expandPrerequisitesOf, expandTopicShallow, type ExpandReport } from "@k
 import { executeJs, routeChatQuestion, runAttempt, selectItem, generateItems } from "@kg/teach";
 import { prisma, getLlm, resolverDeps } from "../context.js";
 import { openSession, saveTurn } from "../sessions.js";
+import { requireAdmin } from "../admin.js";
 
 const NO_MODEL = {
   error: "no model configured",
@@ -32,7 +33,6 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  /** One more level of prerequisites under a single concept, using the full expansion pass. */
   app.post("/api/concepts/:id/deepen", async (req, reply) => {
     const { id } = req.params as { id: string };
     const llm = getLlm();
@@ -53,7 +53,6 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
     const before = await prisma.edge.count({
       where: { dstId: id, type: "prerequisite_of", retiredAt: null },
     });
-    // Judged against everything already in the topic, so an existing prerequisite is reused.
     const siblings = await prisma.topicConcept.findMany({
       where: { topicId: home.id },
       select: { conceptId: true },
@@ -127,7 +126,6 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
         requiresTransfer: z.boolean().default(false),
         itemId: z.string().optional(),
         sessionId: z.string().optional(),
-        /** Only used when sessionId is absent; see openSession. */
         kind: z.enum(["lesson", "review"]).default("lesson"),
         reexplanationsUsed: z.number().int().default(0),
         detoursUsedInChain: z.number().int().default(0),
@@ -141,7 +139,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
 
     const sessionId = body.data.sessionId ?? (await openSession(id, body.data.kind));
 
-    // The stored item wins over the client copy, which never carries the snippet or rubric.
+    // The stored item wins over the client copy, which never carries the snippet or rubric
     const item = body.data.itemId
       ? await prisma.assessmentItem.findUnique({ where: { id: body.data.itemId } })
       : null;
@@ -165,7 +163,6 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    // The answer and the verdict are turns like any other, so a reload still shows them.
     await saveTurn(sessionId, id, body.data.conceptId, "learner", body.data.response, {
       itemId: body.data.itemId ?? null,
     });
@@ -207,8 +204,9 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  /** Runs learner code. Not a security sandbox — see the note in @kg/teach/execute. */
+  /** Runs learner code; not a security sandbox, see @kg/teach/execute */
   app.post("/api/execute", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const body = z
       .object({ code: z.string(), harness: z.string().optional(), timeoutMs: z.number().optional() })
       .safeParse(req.body);

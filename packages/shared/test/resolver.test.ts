@@ -50,7 +50,6 @@ describe("resolver verdicts", () => {
 describe("auto-merge is biased against", () => {
   it("needs high similarity AND corroborating neighborhood overlap", () => {
     expect(shouldAutoMerge(candidate({ vectorScore: 0.97, neighborhoodOverlap: 0.6 }), "same")).toBe(true);
-    // High similarity alone is how `promises` and `async/await` get wrongly merged.
     expect(shouldAutoMerge(candidate({ vectorScore: 0.97, neighborhoodOverlap: 0.1 }), "same")).toBe(false);
   });
 

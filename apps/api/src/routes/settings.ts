@@ -1,17 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { loadModelSettings, saveModelSettings, refreshLlm, providerStatus } from "../context.js";
+import { isProduction, requireAdmin } from "../admin.js";
 
-/** Model options that actually exist, so the UI is not a free-text guess. */
 const CATALOG = {
   "claude-code": {
     label: "Claude Code CLI (no API key)",
     models: ["haiku", "sonnet", "opus"],
-    // Tier defaults used when switching provider, so the UI never has to guess.
     defaultSmall: "haiku",
     defaultStrong: "sonnet",
     note: "Uses the local CLI. A few seconds per call, and each call pays for the CLI's own system prompt, so cost figures run high and are not comparable to the API.",
-    /** Named so a missing key can be reported as a next step rather than a fault. */
     keyEnv: null,
   },
   anthropic: {
@@ -34,7 +32,7 @@ const CATALOG = {
 
 const PROVIDERS = ["claude-code", "anthropic", "openai", "none"] as const;
 
-/** Adding a provider to CATALOG without listing it in PROVIDERS is a compile error. */
+/** Adding a provider to CATALOG without listing it in PROVIDERS is a compile error */
 type CatalogIsCovered =
   keyof typeof CATALOG extends (typeof PROVIDERS)[number] ? true : "CATALOG has a provider PROVIDERS does not list";
 const _providersCoverCatalog: CatalogIsCovered = true;
@@ -48,6 +46,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   }));
 
   app.put("/api/settings/model", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
     const body = z
       .object({
         provider: z.enum(PROVIDERS),
@@ -56,12 +55,14 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       })
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    if (isProduction() && body.data.provider === "claude-code") {
+      return reply.code(400).send({ error: "the Claude Code provider is disabled in production" });
+    }
 
     await saveModelSettings(body.data);
     await refreshLlm();
     const status = providerStatus();
     if (body.data.provider !== "none" && !status.llm) {
-      // Saved, but the key is missing, so the response carries a remedy the client renders.
       const entry = CATALOG[body.data.provider as keyof typeof CATALOG];
       const keyEnv = entry?.keyEnv ?? null;
       return reply.code(422).send({

@@ -5,17 +5,13 @@ import { chatIntent, type ChatIntent } from "@kg/shared";
 export interface ChatRouteInput {
   question: string;
   currentConceptName: string;
-  /** Names of the current concept's prerequisites, so a gap can be pinned to one. */
   prerequisiteNames: { conceptId: string; name: string }[];
 }
 
 export interface ChatRoute {
   intent: ChatIntent;
-  /** The question deserves a diagram or a simulation, not only a paragraph. */
   wantsVisual: boolean;
-  /** For `prerequisite_gap`: which prerequisite, when it matched a known one. */
   prerequisiteConceptId: string | null;
-  /** The concept the learner named, even when it is not a known prerequisite. */
   namedConcept: string | null;
   reasoning: string;
 }
@@ -24,12 +20,9 @@ const schema = z.object({
   intent: chatIntent,
   prerequisiteIndex: z.number().int().nullable(),
   namedConcept: z.string().nullable(),
-  /** The question is about structure, mechanism or life cycle, so prose is the wrong answer. */
   wantsVisual: z.boolean().default(false),
   reasoning: z.string(),
 });
-
-// Keep the output short: this call gates the whole chat response.
 
 export const CHAT_ROUTE_SYSTEM_PROMPT = `You classify a learner's question asked during a lesson. You do not answer it.
 
@@ -63,7 +56,6 @@ above — just the deciding factor, e.g. "asks for a study plan, not about the l
 
 Respond with JSON: {"intent","prerequisiteIndex","namedConcept","wantsVisual","reasoning"}`;
 
-/** Chat never teaches; it only routes into paths that already exist. (19) */
 export async function routeChatQuestion(
   llm: LLMProvider,
   input: ChatRouteInput,
@@ -81,7 +73,7 @@ export async function routeChatQuestion(
       ].join("\n"),
       tier: "small",
       temperature: 0,
-      // Five named intents, and it gates the whole response, so no thinking budget.
+      // Five named intents, and it gates the whole response, so no thinking budget
       effort: "none",
     },
     schema,
@@ -105,12 +97,10 @@ export async function routeChatQuestion(
   };
 }
 
-/** Only these may change what the system believes about the current concept. (19) */
 export function touchesLearnerModel(intent: ChatIntent): boolean {
   return intent === "prerequisite_gap" || intent === "clarifies_current";
 }
 
-/** Intents with a real non-prose answer, such as a roadmap request that should build a plan. */
 export function isActionable(intent: ChatIntent): boolean {
   return intent === "new_goal";
 }

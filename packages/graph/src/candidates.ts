@@ -5,7 +5,6 @@ import { toVectorLiteral } from "./embedding.js";
 export interface CandidateQuery {
   name: string;
   senseVector: number[];
-  /** Concepts the proposal was discovered next to. (05) */
   expectedNeighborIds: string[];
   limit?: number;
 }
@@ -20,7 +19,7 @@ interface Row {
   arms: string[];
 }
 
-/** Three arms in one round trip; ANN and lexical stay separate so their indexes are used. */
+/** Three arms in one round trip; ANN and lexical stay separate so their indexes are used */
 const SQL = `
 WITH p AS (
   SELECT $1::vector AS v, $2::text AS name, $3::text[] AS expected
@@ -121,7 +120,6 @@ export async function findCandidates(
   }));
 }
 
-/** Which arms surfaced each candidate — useful when auditing why something was missed. */
 export async function findCandidatesWithArms(
   prisma: PrismaClient,
   q: CandidateQuery,

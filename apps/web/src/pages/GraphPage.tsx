@@ -5,7 +5,7 @@ import {
   Background, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider,
   useReactFlow, type Edge, type Node,
 } from "@xyflow/react";
-import { api, HttpError, type GraphEdge, type GraphPayload, type Mastery } from "../api";
+import { api, apiUrl, HttpError, type GraphEdge, type GraphPayload, type Mastery } from "../api";
 import { layoutGraph, NODE_H, NODE_W } from "../layout";
 import { neighborhood, runForceLayout, ORB_H, ORB_W } from "../force";
 import { ConceptNode, type ConceptNodeData } from "../components/ConceptNode";
@@ -15,10 +15,8 @@ import { atLeast, MASTERY_MEANING, MASTERY_ORDER } from "../vocabulary";
 
 const nodeTypes = { concept: ConceptNode };
 
-/** maxZoom above 1 so "fit" can enlarge a small graph on a wide screen. */
 const FIT = { padding: 0.14, maxZoom: 1.6, duration: 200 };
 
-/** Below this the legend and the counts become a disclosure instead of four more rows. */
 const LEGEND_BREAKPOINT = 900;
 
 type Mode = "explore" | "teach";
@@ -28,7 +26,6 @@ interface Selection {
   id: string;
 }
 
-/** A laid-out graph, tagged with the mode it was laid out for. */
 interface LaidOut {
   mode: Mode;
   nodes: Node[];
@@ -50,13 +47,11 @@ function useNarrow(px: number): boolean {
   return narrow;
 }
 
-/** Asks for one more level of prerequisites under a single concept. */
 function DeepenButton({
   conceptId, conceptName, onDone,
 }: { conceptId: string; conceptName: string; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ text: string; ok: boolean } | null>(null);
-  // The graph may only redraw once the summary is dismissed.
   const relayoutPending = useRef(false);
 
   const run = async () => {
@@ -128,7 +123,6 @@ function Legend({
 }) {
   return (
     <div className="legend">
-      {/* Each mark here is a miniature of the real encoding. */}
       {mode === "explore" && (
         <span className="lg">
           <span className="lg-orbs" aria-hidden="true">
@@ -190,7 +184,6 @@ function Inspector({
   onHop: (id: string) => void;
   onFocus: (id: string | null) => void;
   focusId: string | null;
-  /** Empty when no learner is chosen: assessing needs someone to assess. */
   learnerId: string;
   onStateChanged: () => void;
   headingRef: React.RefObject<HTMLHeadingElement | null>;
@@ -314,7 +307,7 @@ function Inspector({
           conceptId={node.id}
           conceptName={node.name}
           mastery={(node.state?.mastery ?? "unknown") as Mastery}
-          // Hard prerequisites only: a soft edge adds depth, it does not gate.
+          // Hard prerequisites only: a soft edge adds depth, it does not gate
           unmetPrerequisites={incoming
             .filter((e) => e.strength === "hard")
             .map((e) => graph.nodes.find((n) => n.id === e.source))
@@ -342,7 +335,6 @@ function Inspector({
             {e.failureMode && <div className="fm">Without it: {e.failureMode}</div>}
           </div>
         ))}
-        {/* Topic expansion only goes one level deep; this adds one more here. */}
         <DeepenButton conceptId={node.id} conceptName={node.name} onDone={onStateChanged} />
       </section>
 
@@ -371,7 +363,7 @@ function Inspector({
   );
 }
 
-/** Split because useReactFlow needs a provider above the component calling fitView. */
+/** Split because useReactFlow needs a provider above the component calling fitView */
 export function GraphPage() {
   return (
     <ReactFlowProvider>
@@ -381,7 +373,7 @@ export function GraphPage() {
 }
 
 function Graph() {
-  /** The whole view lives in the URL so refresh, back and sharing work. */
+  /** The whole view lives in the URL so refresh, back and sharing work */
   const [params, setParams] = useSearchParams();
   const [graph, setGraph] = useState<GraphPayload | null>(null);
   const [layout, setLayout] = useState<LaidOut | null>(null);
@@ -390,7 +382,6 @@ function Graph() {
   const topicId = params.get("topic") ?? "";
   const [stickyLearner, setStickyLearner] = useStickyLearner();
   const [learners, setLearners] = useState<any[]>([]);
-  // A learner in the URL wins over the sticky one, and "nobody" is valid here.
   const stickyKnown = learners.length === 0 || learners.some((l) => l.id === stickyLearner);
   const learnerId = params.get("learner") ?? (stickyKnown ? stickyLearner : "");
   const selection: Selection | null = params.get("node")
@@ -400,17 +391,13 @@ function Graph() {
       : null;
   const focusId = params.get("focus");
   const hops = Number(params.get("hops") ?? 1) || 1;
-  // Off is the deliberate choice, so it is the one that has to be written down.
   const live = params.get("live") !== "off";
   const [trail, setTrail] = useState<string[]>([]);
-  /** Only a first load can legitimately replace the whole page with an error. */
   const [firstLoadError, setFirstLoadError] = useState<Error | null>(null);
-  /** A failed refresh keeps the graph you were reading, and says so. */
   const [refreshError, setRefreshError] =
     useState<{ message: string; remedy: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const stamp = useRef<string>("");
-  /** When a poll last found a real change. Names the feature better than any label. */
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
   const [focusDropped, setFocusDropped] = useState(false);
 
@@ -420,12 +407,11 @@ function Graph() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const graphRef = useRef<GraphPayload | null>(null);
   graphRef.current = graph;
-  /** Arrow traversal keeps focus on the canvas; a click or Enter hands it to the panel. */
+  /** Arrow traversal keeps focus on the canvas; a click or Enter hands it to the panel */
   const keepCanvasFocus = useRef(false);
   const mounted = useRef(false);
   const narrow = useNarrow(LEGEND_BREAKPOINT);
 
-  /** Only a node hop pushes history; a filter change replaces it. */
   const patch = useCallback(
     (next: Record<string, string | null>, opts: { push?: boolean } = {}) => {
       setParams(
@@ -464,7 +450,6 @@ function Graph() {
 
   useEffect(() => { void api.learners().then(setLearners).catch(() => undefined); }, []);
 
-  /** A failed refresh must leave the graph and the selection in place. */
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -487,12 +472,11 @@ function Graph() {
 
   useEffect(() => { void load(); }, [load]);
 
-  // Poll a cheap stamp rather than refetching the whole graph.
   useEffect(() => {
     if (!live) return;
     const timer = setInterval(async () => {
       try {
-        const v = await fetch("/api/graph/version").then((r) => r.json());
+        const v = await fetch(apiUrl("/api/graph/version")).then((r) => r.json());
         if (stamp.current && v.stamp !== stamp.current) {
           void load();
           setRefreshedAt(Date.now());
@@ -506,14 +490,12 @@ function Graph() {
   const focusNode = focusId ? graph?.nodes.find((n) => n.id === focusId) ?? null : null;
 
   const visible = useMemo(() => {
-    // A focus id this graph does not contain must not dim every node.
     if (!graph || !focusId || !focusNode) return null;
     return neighborhood(focusId, graph.edges, hops);
   }, [graph, focusId, focusNode, hops]);
 
   useEffect(() => {
     if (!graph || !focusId) return;
-    // A focus that resolves retires the notice about the one that did not.
     if (focusNode) { setFocusDropped(false); return; }
     setFocusDropped(true);
     setFocusId(null);
@@ -521,14 +503,12 @@ function Graph() {
 
   const selectedNodeId = selection?.kind === "node" ? selection.id : null;
 
-  // Layout is expensive, so it reruns only on a graph or mode change.
   useEffect(() => {
     if (!graph) return;
     let cancelled = false;
     setLayingOut(true);
 
     void (async () => {
-      // Size the simulation from the real canvas, not a fixed guess.
       const box = canvasRef.current?.getBoundingClientRect();
       const size = {
         width: Math.max(640, Math.round(box?.width ?? 1000)),
@@ -551,7 +531,6 @@ function Graph() {
         if (e.type === "prerequisite_of") unlocks.set(e.source, (unlocks.get(e.source) ?? 0) + 1);
       }
 
-      // d3-force reports centres; elk and react-flow use top-left corners.
       const geometry =
         mode === "explore"
           ? { initialWidth: ORB_W, initialHeight: ORB_H, origin: [0.5, 0.5] as [number, number] }
@@ -570,7 +549,7 @@ function Graph() {
             unlocks: opens,
             degree: degree.get(n.id) ?? 0,
             mode,
-            // Set here too: the async elk layout lands after the dimming effect runs.
+            // Set here too: the async elk layout lands after the dimming effect runs
             dimmed: visible ? !visible.has(n.id) : false,
             isFocus: n.id === focusId,
           };
@@ -581,10 +560,8 @@ function Graph() {
             data,
             ...geometry,
             selected: n.id === selectedNodeId,
-            // A ghost must not be a tab stop or a click target.
             focusable: !data.dimmed,
             selectable: !data.dimmed,
-            // react-flow's own node label only describes dragging.
             ariaLabel:
               `${n.name}. ${n.state ? n.state.mastery : "not assessed"}. ` +
               `${need} prerequisite${need === 1 ? "" : "s"}, unlocks ${opens}.`,
@@ -601,7 +578,6 @@ function Graph() {
       });
       setLayingOut(false);
 
-      // The two modes use different coordinate spaces, so refit after each layout.
       requestAnimationFrame(() => {
         if (!cancelled && graph.nodes.length > 0) void fitView(FIT);
       });
@@ -609,9 +585,8 @@ function Graph() {
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, mode, fitView]); // Adding visible/focusId/selectedNodeId here relayouts on every hop.
+  }, [graph, mode, fitView]); // Adding visible/focusId/selectedNodeId here relayouts on every hop
 
-  // Dimming and selection stay out of layout so hopping never relayouts.
   useEffect(() => {
     setLayout((prev) =>
       prev === null
@@ -639,18 +614,15 @@ function Graph() {
     );
   }, [visible, focusId, selectedNodeId]);
 
-  /** The selected id, readable from a callback that must not re-create on every hop. */
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selectedNodeId;
 
   const hopTo = useCallback(
     (id: string, opts: { keepFocus?: boolean } = {}) => {
-      // Re-selecting the current node must not push an identical history entry.
       if (selectedRef.current === id) return;
       if (opts.keepFocus) keepCanvasFocus.current = true;
       setSelection({ kind: "node", id }, { push: true });
       setTrail((t) => {
-        // The trail is a stack, not a log: revisiting a node truncates back to it.
         const at = t.lastIndexOf(id);
         return at >= 0 ? t.slice(0, at + 1) : [...t, id];
       });
@@ -658,7 +630,6 @@ function Graph() {
     [setSelection],
   );
 
-  /** Handled on the canvas because focus sits on react-flow's own node wrapper. */
   const onCanvasKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const g = graph;
     if (!g) return;
@@ -669,9 +640,8 @@ function Graph() {
     if (!from) return;
 
     if (commit) {
-      // Space on a focused node would otherwise scroll the page under the canvas.
+      // Space on a focused node would otherwise scroll the page under the canvas
       event.preventDefault();
-      // The focus effect only fires on a selection change.
       if (from === selectedRef.current) headingRef.current?.focus();
       else hopTo(from);
       return;
@@ -685,7 +655,6 @@ function Graph() {
     if (event.key === "ArrowUp") next = up[0];
     else if (event.key === "ArrowDown") next = down[0];
     else {
-      // Left/right move between concepts sharing a prerequisite, else document order.
       const parent = up[0];
       const peers = (
         parent
@@ -702,7 +671,6 @@ function Graph() {
 
     event.preventDefault();
     hopTo(next, { keepFocus: true });
-    // Focus follows the traversal, or the next press has nothing to move from.
     const target = next;
     requestAnimationFrame(() => {
       const candidates = canvasRef.current?.querySelectorAll<HTMLElement>(".react-flow__node");
@@ -712,7 +680,7 @@ function Graph() {
     });
   };
 
-  /** React reuses the inspector element, so reset scroll and focus per selection. */
+  /** React reuses the inspector element, so reset scroll and focus per selection */
   useEffect(() => {
     inspectorRef.current?.scrollTo({ top: 0 });
     if (!mounted.current) { mounted.current = true; return; }
@@ -736,13 +704,12 @@ function Graph() {
   return (
     <div className="page flush graph-page">
       <h2 className="sr-only">Concept graph</h2>
-      {/* A grid, not a wrapping row: a flex spacer collapses inside a wrap container. */}
+      {/* A grid, not a wrapping row: a flex spacer collapses inside a wrap container */}
       <div className="toolbar graph-toolbar">
         <div className="gt-filters">
           <label className="field">
             view
             <select value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
-              {/* Keep these short; the inspector's Modes section explains each one. */}
               <option value="explore">Explore</option>
               <option value="teach">Teach</option>
             </select>
@@ -846,7 +813,6 @@ function Graph() {
         <div className="graph-wrap">
           <div className="canvas" ref={canvasRef} onKeyDown={onCanvasKeyDown}>
             {!graph ? (
-              // Loading and empty must not look the same.
               <div className="canvas-loading" aria-busy="true">
                 <div className="skeleton canvas-skeleton" />
                 <Busy label="loading the graph" block />
@@ -875,7 +841,6 @@ function Graph() {
             ) : (
               <>
                 {focusNode && (
-                  // The focus bar renders for any selection, not just the focused node.
                   <div className="focus-bar panel panel--tight">
                     <span className="eyebrow">focused on</span>
                     <strong className="focus-name">{focusNode.name}</strong>
@@ -905,10 +870,9 @@ function Graph() {
                   onNodeClick={(_, n) => hopTo(n.id)}
                   onEdgeClick={(_, e) => setSelection({ kind: "edge", id: e.id })}
                   onPaneClick={() => { setSelection(null); setTrail([]); }}
-                  // The graph is model-authored, so nothing on the canvas is editable.
                   nodesDraggable={false}
                   nodesConnectable={false}
-                  // Edges would be unlabelled tab stops; the inspector exposes them as text.
+                  // Edges would be unlabelled tab stops; the inspector exposes them as text
                   edgesFocusable={false}
                   deleteKeyCode={null}
                   fitView
@@ -930,7 +894,6 @@ function Graph() {
               </>
             )}
           </div>
-          {/* Always rendered so the canvas does not resize when the first response lands. */}
           <aside className="inspector" ref={inspectorRef} aria-label="concept detail">
             {graph ? (
               <Inspector
@@ -963,7 +926,6 @@ function clockTime(at: number): string {
   return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-/** Mastery on the minimap, from the same tokens the orbs use. */
 function miniMapColor(node: Node): string {
   const d = node.data as ConceptNodeData;
   return d.mastery ? `var(--m-${d.mastery})` : "transparent";
@@ -975,14 +937,12 @@ function toFlowEdge(e: GraphEdge, dim: boolean, sourceName: string, targetName: 
     source: e.source,
     target: e.target,
     interactionWidth: 18,
-    // Names, not ids: the generated description was a pair of uuids.
     ariaLabel: `${sourceName} is a ${e.strength} prerequisite of ${targetName}`,
     focusable: false,
     markerEnd: {
       type: MarkerType.ArrowClosed,
       width: 16,
       height: 16,
-      // Higher contrast than the line; the arrowhead carries direction.
       color: e.provisional ? "var(--accent)" : "var(--ink-soft)",
     },
     style: {

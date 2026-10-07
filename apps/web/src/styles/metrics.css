@@ -1,9 +1,6 @@
-/* Page-scoped styles for metrics; shared tokens and primitives live in styles.css. */
-
-/* Metric cards keep their own names so Home's card tuning cannot reach them. */
 .metrics .stats {
   display: grid;
-  /* auto-fit, not auto-fill: empty tracks would strand the cards at the left. */
+  /* auto-fit, not auto-fill: empty tracks would strand the cards at the left */
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: var(--s-3);
   margin: 0;
@@ -38,7 +35,6 @@
   font-size: var(--t-small);
   line-height: 1.45;
 }
-/* Empty values drop the display treatment so they do not read as a measurement. */
 .metrics .stat[data-empty] .v {
   font-family: var(--font-sans);
   font-size: var(--t-lead);
@@ -49,7 +45,6 @@
   margin: var(--s-1) 0 var(--s-2);
 }
 
-/* Page head */
 .metrics .metrics-head {
   margin-bottom: var(--s-5);
 }
@@ -61,7 +56,7 @@
   margin: 0 0 var(--s-3);
 }
 
-/* Section rhythm, scoped here: .section-title is shared with four other pages. */
+/* Section rhythm, scoped here: .section-title is shared with four other pages */
 .metrics .section-title {
   margin: var(--s-6) 0 var(--s-3);
   padding-bottom: var(--s-2);
@@ -75,12 +70,10 @@
 .metrics .note {
   margin: var(--s-3) 0 0;
 }
-/* These paragraphs need a measure of their own; the page has none. */
 .metrics .prose {
   max-width: 68ch;
 }
 
-/* Numbers */
 .metrics td.num,
 .metrics th.num {
   text-align: right;
@@ -88,19 +81,17 @@
 }
 .metrics td .sub {
   display: block;
-  margin-top: 2px; /* under --s-1 on purpose: this rides beneath its own line */
+  margin-top: 2px;
   font-family: var(--font-sans);
   font-size: var(--t-micro);
   color: var(--ink-soft);
 }
-/* The sample size, not the ratio derived from it, is what makes an arm readable. */
 .metrics .n-cell {
   font-size: var(--t-lead);
   font-weight: 600;
   color: var(--ink);
 }
 
-/* Tables: five columns need more than the shared 520px floor before collapsing. */
 .metrics .t-purpose,
 .metrics .t-arms {
   min-width: 640px;
@@ -125,7 +116,6 @@
   color: var(--ink-soft);
 }
 
-/* Notices and empty states */
 .metrics .notice p {
   margin: 0 0 var(--s-2);
 }

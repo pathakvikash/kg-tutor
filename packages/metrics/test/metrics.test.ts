@@ -89,7 +89,6 @@ describe("crossSessionPersistence", () => {
     });
     const r = await crossSessionPersistence(prisma, 7);
     expect(r).toMatchObject({ concepts: 1, held: 1 });
-    // Same evidence inside the window should not count at all.
     expect((await crossSessionPersistence(prisma, 60)).concepts).toBe(0);
   });
 

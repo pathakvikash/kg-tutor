@@ -4,20 +4,18 @@ import { atLeast, type GoalDepth, type MasteryLevel } from "@kg/shared";
 export interface TargetConcept {
   conceptId: string;
   requiredLevel: MasteryLevel;
-  /** How central to the goal topic — the relevance tie-breaker. (09) */
   relevance: number;
-  /** False when it entered only as a prerequisite of something the goal wanted. */
+  /** False when it entered only as a prerequisite of something wanted */
   goalFacing: boolean;
 }
 
-/** Depth sets the bar, which is why it lives on the goal rather than on every edge. (03, 08) */
+/** Depth sets the bar, so it lives on the goal rather than on every edge */
 const REQUIRED: Record<GoalDepth, { goalFacing: MasteryLevel; support: MasteryLevel }> = {
   use: { goalFacing: "functional", support: "familiar" },
   debug: { goalFacing: "solid", support: "functional" },
   build: { goalFacing: "solid", support: "functional" },
 };
 
-/** `build` and `debug` honour soft prerequisites; `use` does not. (03) */
 export function honoursSoftEdges(depth: GoalDepth): boolean {
   return depth !== "use";
 }
@@ -26,16 +24,14 @@ export interface ResolveGoalInput {
   prisma: PrismaClient;
   topicId: string;
   depth: GoalDepth;
-  /** Current mastery, used as the recursion floor. (04) */
   mastery: Map<string, MasteryLevel>;
 }
 
-/** Resolved at plan time, never stored: one topic at two depths is two target sets. (04, 08) */
+/** Never stored, since one topic at two depths is two target sets */
 export async function resolveGoal(input: ResolveGoalInput): Promise<TargetConcept[]> {
   const { prisma, topicId, depth, mastery } = input;
   const bar = REQUIRED[depth];
 
-  // Exclude deprecated concepts here too, matching the resolver and the graph view.
   const links = await prisma.topicConcept.findMany({
     where: { topicId, relation: "contains", concept: { deprecatedAt: null } },
   });
@@ -66,7 +62,7 @@ export async function resolveGoal(input: ResolveGoalInput): Promise<TargetConcep
       },
     });
     for (const e of edges) {
-      // Stop the branch here: they already know it, so nothing behind it matters. (04)
+      // Known already, so nothing behind it matters
       if (atLeast(mastery.get(e.srcId) ?? "unknown", bar.support)) continue;
       if (visited.has(e.srcId)) continue;
       visited.add(e.srcId);
@@ -82,7 +78,6 @@ export async function resolveGoal(input: ResolveGoalInput): Promise<TargetConcep
     }
   }
 
-  // Drop anything already at the required level — nothing left to teach there.
   return [...target.values()].filter(
     (t) => !atLeast(mastery.get(t.conceptId) ?? "unknown", t.requiredLevel),
   );

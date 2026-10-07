@@ -3,6 +3,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
+import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import { graphRoutes } from "./routes/graph.js";
 import { learnerRoutes } from "./routes/learner.js";
 import { reviewRoutes } from "./routes/review.js";
@@ -20,10 +22,54 @@ import { installErrorHandler } from "./errors.js";
 const here = dirname(fileURLToPath(import.meta.url));
 const webDist = resolve(here, "../../web/dist");
 const PORT = Number(process.env.PORT ?? 4000);
+const HOST = process.env.HOST ?? "0.0.0.0";
+const RATE_MAX = Number(process.env.RATE_LIMIT_MAX ?? 60);
+const RATE_LLM_MAX = Number(process.env.RATE_LIMIT_LLM_MAX ?? 10);
+const CORS_ORIGINS = (process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
+// Routes that spend model tokens; method + path as registered
+const LLM_ROUTES = new Set([
+  "POST /api/lesson/explain",
+  "POST /api/lesson/check",
+  "POST /api/lesson/ask",
+  "POST /api/lesson/ask/stream",
+  "POST /api/lesson/widget",
+  "POST /api/topics/expand",
+  "POST /api/concepts/:id/deepen",
+  "POST /api/concepts/:id/items/generate",
+  "POST /api/learners/:id/attempt",
+  "POST /api/learners/:id/chat",
+  "POST /api/intake/:id/answer",
+  "POST /api/roadmap/resolve",
+  "POST /api/expansions",
+  "POST /api/expansions/:id/retry",
+]);
 
-// Several endpoints take no body; the default JSON parser 400s on an empty one.
+// Hops of proxy in front of the API; 0 locally so x-forwarded-for cannot be spoofed
+const trustProxy = Number(process.env.TRUST_PROXY ?? 0);
+
+const app = Fastify({
+  logger: { level: process.env.LOG_LEVEL ?? "info" },
+  trustProxy: trustProxy > 0 ? trustProxy : false,
+});
+
+await app.register(cors, {
+  origin: CORS_ORIGINS.length > 0 ? CORS_ORIGINS : false,
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+});
+// Registered before the plugin, whose own onRoute hook reads this config
+app.addHook("onRoute", (route) => {
+  const methods = Array.isArray(route.method) ? route.method : [route.method];
+  if (methods.some((m) => LLM_ROUTES.has(`${m} ${route.url}`))) {
+    route.config = { ...route.config, rateLimit: { max: RATE_LLM_MAX, timeWindow: "1 minute" } };
+  }
+});
+await app.register(rateLimit, { max: RATE_MAX, timeWindow: "1 minute" });
+
+// The default JSON parser 400s on an empty body, and several endpoints take none
 app.addContentTypeParser(
   "application/json",
   { parseAs: "string" },
@@ -55,7 +101,6 @@ await app.register(widgetRoutes);
 
 if (existsSync(join(webDist, "index.html"))) {
   await app.register(fastifyStatic, { root: webDist });
-  // SPA fallback: anything not an API route serves the app shell.
   app.setNotFoundHandler((req, reply) => {
     if (req.url.startsWith("/api/")) return reply.code(404).send({ error: "not found" });
     return reply.sendFile("index.html");
@@ -69,7 +114,6 @@ if (existsSync(join(webDist, "index.html"))) {
 
 await refreshLlm();
 
-// Jobs are in-process promises; a restart strands them mid-flight.
 const stranded = await failStrandedJobs();
 if (stranded > 0) {
   app.log.warn({ stranded }, "marked expansion jobs stranded by a restart as failed");
@@ -82,4 +126,4 @@ app.log.info(
     : "live providers configured",
 );
 
-await app.listen({ port: PORT, host: "127.0.0.1" });
+await app.listen({ port: PORT, host: HOST });

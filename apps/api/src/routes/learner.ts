@@ -45,14 +45,13 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
     return { ...l, variant: assignVariant(l.id) };
   });
 
-  /** Editing who the learner is. Only the fields that steer teaching. */
   app.patch("/api/learners/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = z
       .object({
         name: z.string().nullable().optional(),
         background: z.string().nullable().optional(),
-        /** Empty string clears it, which is different from leaving it unset. */
+        /** Empty string clears it, which is different from leaving it unset */
         workingLanguage: z.string().nullable().optional(),
       })
       .safeParse(req.body);
@@ -125,7 +124,6 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
-    // One active plan at a time — the teaching engine needs a single path. (08)
     await prisma.goal.updateMany({ where: { learnerId: id, active: true }, data: { active: false } });
     const goal = await prisma.goal.create({
       data: { learnerId: id, topicId: body.data.topicId, depth: body.data.depth, active: true },
@@ -134,18 +132,16 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
     return { goal, plan };
   });
 
-  /** What this learner owes attention to, plan or no plan; also where misconceptions surface. */
   app.get("/api/learners/:id/due", async (req) => {
     const { id } = req.params as { id: string };
     const limit = Number((req.query as { limit?: string }).limit ?? 20);
-    // Count the whole queue before slicing, so total reports the backlog and not the cap.
+    // Count the whole queue before slicing, so total reports the backlog and not the cap
     const all = await dueForReview(prisma, id);
     const items = all.slice(0, Math.min(Math.max(limit, 1), 50));
     return {
       total: all.length,
       returned: items.length,
       truncated: all.length > items.length,
-      // Counted over the whole queue, to match `total`.
       byKind: {
         misconception: all.filter((i) => i.kind === "misconception").length,
         inferred: all.filter((i) => i.kind === "inferred").length,
@@ -162,7 +158,6 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
     return buildPlan({ prisma, learnerId: id, goalId: goal.id });
   });
 
-  /** The learner's path: plan steps, milestones and the probes due before the next step. */
   app.get("/api/learners/:id/plan", async (req, reply) => {
     const { id } = req.params as { id: string };
     await reconcilePlan(prisma, id);
@@ -178,7 +173,7 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
     if (!plan) return reply.code(404).send({ error: "no active plan" });
 
     const mastery = await loadMastery(prisma, id);
-    // The next step is the first one not yet mastered, not the first one left unmarked.
+    // The next step is the first one not yet mastered, not the first one left unmarked
     const nextStep = plan.steps.find(
       (s) => !atLeast(mastery.get(s.conceptId) ?? "unknown", s.requiredLevel),
     );

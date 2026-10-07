@@ -11,19 +11,16 @@ export interface OrderInput {
   target: TargetConcept[];
   hardPrereqs: PrereqEdge[];
   mastery: Map<string, MasteryLevel>;
-  /** Concepts already placed earlier in this plan count as satisfied downstream. */
   placed?: Set<string>;
 }
 
 export interface OrderedStep {
   conceptId: string;
   requiredLevel: MasteryLevel;
-  /** Target-set concepts this one unblocks — the primary objective. (09) */
   unlockCount: number;
   reasonCodes: string[];
 }
 
-/** Hard prerequisites met, either by existing mastery or by an earlier plan step. */
 function isEligible(
   conceptId: string,
   prereqsOf: Map<string, string[]>,
@@ -33,7 +30,7 @@ function isEligible(
 ): boolean {
   for (const p of prereqsOf.get(conceptId) ?? []) {
     if (satisfied.has(p)) continue;
-    // A prerequisite outside the target set was already filtered out as known.
+    // Outside the target set means it was filtered out as already known
     if (!inTarget.has(p)) continue;
     if (atLeast(mastery.get(p) ?? "unknown", "functional")) continue;
     return false;
@@ -41,7 +38,7 @@ function isEligible(
   return true;
 }
 
-/** Counts unlocks transitively within the target set; direct successors undercount badly. */
+/** Transitive within the target set, since direct successors undercount badly */
 function transitiveUnlocks(
   conceptId: string,
   dependents: Map<string, string[]>,
@@ -58,7 +55,6 @@ function transitiveUnlocks(
   return seen.size;
 }
 
-/** Ordered by unlock count, except the first step, which prefers a goal-relevant win. (09) */
 export function orderTargetSet(input: OrderInput): OrderedStep[] {
   const inTarget = new Set(input.target.map((t) => t.conceptId));
   const byId = new Map(input.target.map((t) => [t.conceptId, t]));
@@ -81,7 +77,7 @@ export function orderTargetSet(input: OrderInput): OrderedStep[] {
       isEligible(id, prereqsOf, input.mastery, satisfied, inTarget),
     );
 
-    // A cycle makes nothing eligible; degrade to a usable order rather than loop forever.
+    // A cycle leaves nothing eligible, so fall back to any order rather than loop forever
     const pool = eligible.length > 0 ? eligible : [...remaining];
     const stalled = eligible.length === 0;
 
@@ -94,7 +90,7 @@ export function orderTargetSet(input: OrderInput): OrderedStep[] {
 
     let pick: (typeof scored)[number];
     if (out.length === 0) {
-      // First-step exception: a visible win beats an optimal one.
+      // First step prefers a visible win over the optimal pick
       const win = scored
         .filter((s) => s.t.goalFacing && s.t.relevance > 0)
         .sort((a, b) => b.t.relevance - a.t.relevance || b.unlockCount - a.unlockCount)[0];

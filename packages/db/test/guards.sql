@@ -1,8 +1,4 @@
--- Repeatable proof that the invariant guards actually reject their violations.
--- Run:  docker exec -i kg-tutor-pg psql -U postgres -d kg_tutor -f - < packages/db/test/guards.sql
---
--- Expect: cases 1, 3, 4 and 6 ERROR; cases 2, 5 and 7 succeed. A silent pass on
--- 1, 3, 4 or 6 means an invariant has been lost.
+-- Run: docker exec -i kg-tutor-pg psql -U postgres -d kg_tutor -f - < packages/db/test/guards.sql
 
 BEGIN;
 

@@ -2,8 +2,6 @@ import { z } from "zod";
 import type { PrismaClient } from "@kg/db";
 import { completeJson, type LLMProvider } from "@kg/llm";
 
-/** A milestone is what the learner can do once they hold a group of concepts, not a heading. */
-
 const milestoneSchema = z.object({
   milestones: z
     .array(
@@ -42,11 +40,9 @@ Respond with JSON: {"milestones":[{"claim","concepts":["exact name", ...]}]}`;
 
 export interface MilestoneReport {
   written: { claim: string; concepts: string[] }[];
-  /** Rejected, with why — the filter's output, not hidden. */
   rejected: { claim: string; reason: string }[];
 }
 
-/** Idempotent: a topic that already has templates is left alone. */
 export async function generateMilestones(
   prisma: PrismaClient,
   llm: LLMProvider,
@@ -62,7 +58,7 @@ export async function generateMilestones(
     where: { topicId, relation: "contains", concept: { deprecatedAt: null } },
     include: { concept: true },
   });
-  // Two concepts cannot support a capability claim worth naming.
+  // Too few concepts to support a claim worth naming
   if (links.length < 3) return report;
 
   const byName = new Map(links.map((l) => [l.concept.canonicalName.toLowerCase(), l.concept]));
@@ -93,7 +89,7 @@ export async function generateMilestones(
       .filter((c): c is NonNullable<typeof c> => Boolean(c));
     const unique = [...new Map(matched.map((c) => [c.id, c])).values()];
 
-    // A claim resting on one concept is that concept, and one resting on none is invented.
+    // On one concept the claim is just that concept; on none it is invented
     if (unique.length < 2) {
       report.rejected.push({
         claim: m.claim,
@@ -101,7 +97,6 @@ export async function generateMilestones(
       });
       continue;
     }
-    // "you can use hash tables" over the concept "Hash Table" restates rather than claims.
     if (unique.length === 2 && restatesAConcept(m.claim, unique.map((c) => c.canonicalName))) {
       report.rejected.push({ claim: m.claim, reason: "restates a concept name" });
       continue;
@@ -122,13 +117,12 @@ export async function generateMilestones(
   return report;
 }
 
-/** True when the claim is little more than one of its concept names. */
 function restatesAConcept(claim: string, names: string[]): boolean {
   const bare = claim.toLowerCase().replace(/^you can\s+/, "").replace(/[^a-z0-9 ]/g, " ");
   const words = bare.split(/\s+/).filter(Boolean);
   return names.some((n) => {
     const stripped = bare.split(n.toLowerCase()).join(" ").split(/\s+/).filter(Boolean);
-    // Removing the concept name leaves almost nothing: the claim was the name plus a verb.
+    // Little left after removing the name means the claim was name plus verb
     return stripped.length <= 2 && words.length > stripped.length;
   });
 }

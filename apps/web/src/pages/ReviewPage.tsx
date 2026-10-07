@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Busy } from "../components/Busy";
-import { HttpError, api } from "../api";
+import { HttpError, api, apiUrl } from "../api";
 
-/** Curate: the review surface for the shared graph every future learner is taught from. */
-
-/* Async state: "not asked yet", "nothing there" and "it failed" are three different claims. */
 type Async<T> =
   | { phase: "loading" }
   | { phase: "ready"; data: T }
@@ -13,9 +10,9 @@ type Async<T> =
 
 const asError = (e: unknown): Error => (e instanceof Error ? e : new Error(String(e)));
 
-/** For the two calls api.ts has no wrapper for; same HttpError shape. */
+/** For the two calls api.ts has no wrapper for; same HttpError shape */
 async function reviewFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  const res = await fetch(apiUrl(url), init);
   if (!res.ok) {
     const text = await res.text();
     let remedy: string | null = null;
@@ -23,7 +20,6 @@ async function reviewFetch<T>(url: string, init?: RequestInit): Promise<T> {
     try {
       const body = JSON.parse(text) as { error?: unknown; remedy?: string; detail?: string };
       remedy = body.remedy ?? null;
-      // The same three body shapes api.ts's failure() reads, in the same order.
       message =
         typeof body.error === "string"
           ? body.error
@@ -46,7 +42,7 @@ const reverseProposal = (id: string, reason: string) =>
     body: JSON.stringify({ reason }),
   });
 
-/* Accept writes a hard edge unconditionally, so only new_hard_edge is acceptable. */
+/* Accept writes a hard edge unconditionally, so only new_hard_edge is acceptable */
 const KIND: Record<string, { label: string; blurb: string; acceptable: boolean }> = {
   new_hard_edge: {
     label: "new hard edge",
@@ -78,10 +74,9 @@ const KIND: Record<string, { label: string; blurb: string; acceptable: boolean }
 const kindOf = (kind: string) =>
   KIND[kind] ?? { label: kind.replace(/_/g, " "), blurb: "Unknown kind — read only here.", acceptable: false };
 
-/* Promotion thresholds from DEFAULT_THRESHOLDS, printed rather than implied. */
 const BAR = { effect: 0.2, learners: 12, goals: 2 };
 
-/* Mirrors checkFailureMode in @kg/shared; advisory only, the server still decides. */
+/* Mirrors checkFailureMode in @kg/shared; advisory only, the server still decides */
 const VAGUE = [
   /\b(?:won'?t|will not|can'?t|cannot|couldn'?t|doesn'?t|does not|unable to)\s+(?:really\s+|fully\s+|properly\s+|truly\s+)?(?:understand|grasp|get|follow|learn|make sense of)\b/i,
   /\bwill(?: be)?\s+(?:get\s+)?confus(?:ed|ing)\b/i,
@@ -134,14 +129,12 @@ function faultHelp(fault: FmFault, words: number, src: string | null, dst: strin
   }
 }
 
-/* Small shared bits */
 const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** For announcements, where a raw id would be read out as a name. */
 const plainName = (n: string | null) => (!n || UUID.test(n) ? "an unnamed concept" : n);
 
-/** The route falls back to a raw id when a concept row is gone; a uuid is not a name. */
+/** The route falls back to a raw id when a concept row is gone; a uuid is not a name */
 function ConceptName({ name }: { name: string | null }) {
   if (!name) return <span className="cur-nil">none</span>;
   if (UUID.test(name)) return <span className="cur-nil">deleted concept {name.slice(0, 8)}</span>;
@@ -174,7 +167,6 @@ function Failed({ what, error, onRetry }: { what: string; error: Error; onRetry:
 function Placeholder({ rows = 3, what }: { rows?: number; what?: string }) {
   const widths = ["skeleton--w80", "skeleton--w60", "skeleton--w40"];
   return (
-    // The skeleton is decoration; the fact that a request is in flight is not.
     <div className="cur-sk" aria-busy="true">
       <p className="sr-only">{what ? `Loading ${what.toLowerCase()}…` : "Loading…"}</p>
       <div aria-hidden="true">
@@ -186,7 +178,6 @@ function Placeholder({ rows = 3, what }: { rows?: number; what?: string }) {
   );
 }
 
-/** Loading / failed / ready, in one place so no section can forget one of the three. */
 function Loaded<T>({
   res, what, onRetry, rows, children,
 }: {
@@ -201,7 +192,6 @@ function Loaded<T>({
   return <>{children(res.data)}</>;
 }
 
-/** The number is the datum; the bar only says how far past the bar it is. */
 function Meter({
   label, value, target, format,
 }: {
@@ -211,7 +201,6 @@ function Meter({
   format: (n: number) => string;
 }) {
   const met = value >= target;
-  // Scale is twice the threshold, so the tick sits at the midpoint at every meter.
   const fill = Math.max(0, Math.min(1, value / (target * 2)));
   return (
     <div className="cur-meter">
@@ -226,7 +215,6 @@ function Meter({
   );
 }
 
-/** The comparison the acceptance criterion is actually about. */
 function RateShift({
   without, withIt, effect,
 }: {
@@ -254,7 +242,7 @@ function RateShift({
   );
 }
 
-/* No retire-edge endpoint yet, so a reviewed row is only hidden in this browser. */
+/* No retire-edge endpoint yet, so a reviewed row is only hidden in this browser */
 const DISMISS_KEY = "kg-tutor.curate.dismissed";
 
 function readDismissed(): Record<string, string> {
@@ -270,12 +258,10 @@ export function ReviewPage() {
   const [negative, setNegative] = useState<Async<any>>({ phase: "loading" });
 
   const [failureModes, setFailureModes] = useState<Record<string, string>>({});
-  /* Keyed by proposal id so a rejection is reported in the row that produced it. */
   const [rowError, setRowError] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<Record<string, "reject" | "reverse" | null>>({});
   const [reverseReason, setReverseReason] = useState<Record<string, string>>({});
 
-  /** A label, not a boolean: every operation says what it is doing while it does it. */
   const [busy, setBusy] = useState<{ op: string; label: string } | null>(null);
   const [scanNote, setScanNote] = useState<
     { tone: "ok" | "error"; text: string; nearMisses: any[] } | null
@@ -308,18 +294,15 @@ export function ReviewPage() {
     catch (e) { setNegative({ phase: "failed", error: asError(e) }); }
   }, []);
 
-  // Three independent requests: one failing must not blank the other two.
   useEffect(() => { void loadProposals(); void loadQueue(); }, [loadProposals, loadQueue]);
   useEffect(() => { void loadNegative(minAttempts); }, [loadNegative, minAttempts]);
 
-  // A decision removes its own row, so focus lands on the outcome it produced.
   useEffect(() => { if (outcome) outcomeRef.current?.focus(); }, [outcome]);
 
   const locked = busy !== null;
   const announce = (text: string) => setOutcome({ text, token: Date.now() });
 
   const refreshAll = () => {
-    // Refuses while an operation runs; these loads would race its own reload.
     if (locked) return;
     void loadProposals(); void loadQueue(); void loadNegative(minAttempts);
   };
@@ -330,7 +313,7 @@ export function ReviewPage() {
     setScanNote(null);
     try {
       const r = await api.scan();
-      /* Split on rejectedFor: proposed is also false for an open proposal that was re-checked. */
+      /* Split on rejectedFor: proposed is also false for an open proposal that was re-checked */
       const misses = r.results.filter((x: any) => (x.rejectedFor ?? []).length > 0);
       const passed = r.results.filter((x: any) => (x.rejectedFor ?? []).length === 0);
       const fresh = passed.filter((x: any) => x.proposed).length;
@@ -358,7 +341,6 @@ export function ReviewPage() {
     const text = failureModes[p.id] ?? "";
     const { fault, words } = checkFailureMode(text, p.src, p.dst);
     if (fault) {
-      // The row is where the problem is, so the message and the focus both go there.
       setRowError({ ...rowError, [p.id]: faultHelp(fault, words, p.src, p.dst) });
       fmRefs.current[p.id]?.focus();
       return;
@@ -464,7 +446,6 @@ export function ReviewPage() {
           Scan evidence for missing edges
         </button>
         <button onClick={refreshAll} aria-disabled={locked}>Refresh all three lists</button>
-        {/* Row operations report inside their own row; only these two report here. */}
         {busy?.op === "scan" && <Busy label={busy.label} />}
       </div>
       <p className="cur-note">
@@ -523,7 +504,7 @@ export function ReviewPage() {
               {open.map((p) => {
                 const kind = kindOf(p.kind);
                 const hasEnds = Boolean(p.src && p.dst);
-                /* applyProposal refuses a proposal whose ends are gone; Accept must not show. */
+                /* applyProposal refuses a proposal whose ends are gone; Accept must not show */
                 const endsLive = hasEnds && !UUID.test(p.src) && !UUID.test(p.dst);
                 const canAccept = kind.acceptable && endsLive;
                 const text = failureModes[p.id] ?? "";
@@ -555,7 +536,6 @@ export function ReviewPage() {
                         <Meter label="goals" value={p.distinctGoals} target={BAR.goals}
                           format={(n) => String(n)} />
                       </div>
-                      {/* The claim carries one datum the meters do not: unprompted requests. */}
                       <p className="cur-claim">{p.claim}</p>
                     </div>
 
@@ -778,7 +758,6 @@ export function ReviewPage() {
         {(n) => {
           const unobserved = (n.unobserved ?? []).filter((u: any) => !dismissed[u.edgeId]);
           const bypassed = (n.bypassed ?? []).filter((b: any) => !dismissed[b.edgeId]);
-          /* The count and the list have to be the same set, hence the two groups below. */
           const hiddenHere = [...(n.unobserved ?? []), ...(n.bypassed ?? [])]
             .filter((r: any) => dismissed[r.edgeId])
             .map((r: any) => [r.edgeId, dismissed[r.edgeId]] as [string, string]);
@@ -916,7 +895,6 @@ export function ReviewPage() {
   );
 }
 
-/** The server's own rejection reason, restated in the reviewer's words. */
 function serverFailureMessage(err: Error): string {
   const m = err.message;
   const reason = /failure mode rejected \((\w+)\)/.exec(m)?.[1];
@@ -957,7 +935,6 @@ function DismissButton({
   );
 }
 
-/** The number on the button is the number of rows behind it, in both groups. */
 function DismissedList({
   here, elsewhere, open, onToggle, onUndismiss,
 }: {

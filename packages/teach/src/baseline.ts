@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@kg/db";
 import type { LLMProvider } from "@kg/llm";
 
-/** The control arm: keep it a fair baseline, on the strong tier with the same history. (14) */
+/** The control arm: keep it a fair baseline, on the strong tier with the same history */
 export const BASELINE_SYSTEM_PROMPT = `You are an excellent tutor. Teach the learner what they ask about.
 
 Explain clearly, use concrete examples, check their understanding with questions, and
@@ -28,7 +28,7 @@ export async function baselineTurn(input: BaselineTurnInput): Promise<string> {
     temperature: 0.7,
   });
 
-  // Usage only, so the arms stay cost-comparable: no evidence, no mastery, no plan.
+  // Usage only, so the arms stay cost-comparable: no evidence, no mastery, no plan
   await input.prisma.usageRecord.create({
     data: {
       sessionId: input.sessionId,
@@ -41,7 +41,6 @@ export async function baselineTurn(input: BaselineTurnInput): Promise<string> {
   return reply;
 }
 
-/** Assigns a learner to an arm, stably, so they stay in one for the whole study. (14) */
 export function assignVariant(learnerId: string, split = 0.5): "graph" | "baseline" {
   let h = 2166136261;
   for (let i = 0; i < learnerId.length; i++) {

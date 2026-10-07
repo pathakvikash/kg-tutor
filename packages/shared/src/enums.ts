@@ -12,7 +12,7 @@ export type EdgeType = z.infer<typeof edgeType>;
 export const edgeStrength = z.enum(["hard", "soft"]);
 export type EdgeStrength = z.infer<typeof edgeStrength>;
 
-/** Ordinal, never a float — LLM grading cannot justify finer precision. (06) */
+/** Ordinal, never a float; LLM grading cannot justify finer precision */
 export const masteryLevel = z.enum(["unknown", "familiar", "functional", "solid"]);
 export type MasteryLevel = z.infer<typeof masteryLevel>;
 
@@ -27,7 +27,7 @@ export type EvidenceSource = z.infer<typeof evidenceSource>;
 export const goalDepth = z.enum(["use", "debug", "build"]);
 export type GoalDepth = z.infer<typeof goalDepth>;
 
-/** Binary same/different forces partial overlap into a wrong bucket. (05) */
+/** Binary same/different forces partial overlap into a wrong bucket */
 export const resolverVerdict = z.enum([
   "same",
   "narrower",
@@ -52,7 +52,6 @@ export const evidenceKind = z.enum([
 ]);
 export type EvidenceKind = z.infer<typeof evidenceKind>;
 
-/** How a failed check is classified before choosing a response. (10) */
 export const failureDiagnosis = z.enum([
   "misconception",
   "missing_prerequisite",
@@ -61,13 +60,11 @@ export const failureDiagnosis = z.enum([
 ]);
 export type FailureDiagnosis = z.infer<typeof failureDiagnosis>;
 
-/** Chat routes; it never opens a parallel teaching path. (19) */
 export const chatIntent = z.enum([
   "clarifies_current",
   "prerequisite_gap",
   "tangential",
   "meta",
-  /** Asking to learn something new; answer it with a built plan rather than prose. */
   "new_goal",
 ]);
 export type ChatIntent = z.infer<typeof chatIntent>;

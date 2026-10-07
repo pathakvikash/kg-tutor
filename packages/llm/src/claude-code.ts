@@ -5,13 +5,10 @@ import {
 } from "./provider.js";
 
 export interface ClaudeCodeOptions {
-  /** Path to the CLI. Defaults to whatever `claude` resolves to on PATH. */
   bin?: string;
   models?: Record<ModelTier, string>;
   timeoutMs?: number;
-  /** Concurrent subprocesses. Each is a full CLI boot, so this is not free. */
   maxConcurrent?: number;
-  /** Retries per call. Transient CLI failures are common over a long fan-out. */
   maxRetries?: number;
 }
 
@@ -25,12 +22,12 @@ interface CliResult {
   modelUsage?: Record<string, unknown>;
 }
 
-/** Always pass `--effort`, or the CLI inherits the machine's session default. */
+/** Always pass `--effort`, or the CLI inherits the machine's session default */
 function effortFlags(req: CompletionRequest): string[] {
   return ["--effort", req.effort ?? defaultEffort(req.tier)];
 }
 
-/** Caps thinking below the floor `--effort low` gives; zero is only safe for classification. */
+/** Caps thinking below the floor `--effort low` gives; zero is only safe for classification */
 const THINKING_BUDGET: Record<Effort, string | null> = {
   none: "0",
   low: "1024",
@@ -45,17 +42,17 @@ function envFor(req: CompletionRequest): NodeJS.ProcessEnv {
     : { ...process.env, MAX_THINKING_TOKENS: budget };
 }
 
-/** Allowlist nothing: a tool blocklist cannot cover MCP servers or future built-ins. */
+/** Allowlist nothing: a tool blocklist cannot cover MCP servers or future built-ins */
 const TEXT_ONLY = [
   "--tools", "",
   "--strict-mcp-config",
   "--setting-sources", "",
-  // Fallback in case a future CLI changes what `--tools ""` means.
+  // Fallback in case a future CLI changes what `--tools ""` means
   "--disallowed-tools",
   "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite,NotebookEdit",
 ];
 
-/** Dev-only backend for running without an API key; its cost and latency are not API-comparable. */
+/** Dev-only backend for running without an API key; its cost and latency are not API-comparable */
 export class ClaudeCodeLLM implements LLMProvider {
   readonly name: string;
   onUsage?: UsageSink | undefined;
@@ -85,7 +82,7 @@ export class ClaudeCodeLLM implements LLMProvider {
         return await this.run(req);
       } catch (err) {
         lastError = err;
-        // A missing binary and an expired login never recover, so fail fast.
+        // A missing binary and an expired login never recover, so fail fast
         if (err instanceof LLMAuthError) throw err;
         if (err instanceof LLMError && err.message.includes("could not run")) throw err;
       } finally {
@@ -98,7 +95,6 @@ export class ClaudeCodeLLM implements LLMProvider {
     throw lastError;
   }
 
-  /** Yields `text_delta` only; `thinking_delta` is dropped rather than shown as the answer. */
   async *stream(req: CompletionRequest): AsyncIterable<string> {
     await this.acquire();
     const started = Date.now();
@@ -124,7 +120,7 @@ export class ClaudeCodeLLM implements LLMProvider {
     let stderr = "";
     child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
 
-    // NDJSON: hold back a partial trailing line until its newline arrives.
+    // NDJSON: hold back a partial trailing line until its newline arrives
     let buffer = "";
     let sawText = false;
     try {
@@ -203,14 +199,12 @@ export class ClaudeCodeLLM implements LLMProvider {
       const args = [
         "-p",
         req.user,
-        // Replaces Claude Code's own prompt rather than appending to it.
         "--system-prompt",
         req.system,
         "--model",
         model,
         "--output-format",
         "json",
-        // One response. No tool loop, no follow-up turns.
         "--max-turns",
         "1",
         ...TEXT_ONLY,
@@ -250,7 +244,7 @@ export class ClaudeCodeLLM implements LLMProvider {
           reject(new LLMError(`claude CLI timed out after ${this.timeoutMs}ms`));
           return;
         }
-        // A failing CLI still prints a JSON body with a usable message in `result`.
+        // A failing CLI still prints a JSON body with a usable message in `result`
         let parsed: CliResult | null = null;
         try {
           parsed = JSON.parse(stdout) as CliResult;
@@ -271,7 +265,7 @@ export class ClaudeCodeLLM implements LLMProvider {
           return;
         }
 
-        // Only match on failure; a successful answer about OAuth is not an auth error.
+        // Only match on failure; a successful answer about OAuth is not an auth error
         if (failed) {
           if (/authenticat|oauth|session expired|log ?in/i.test(message)) {
             reject(
@@ -302,7 +296,7 @@ export class ClaudeCodeLLM implements LLMProvider {
           {
             model,
             tier: req.tier,
-            // Cache-creation tokens are Claude Code's own prompt, counted because they are paid.
+            // Cache-creation tokens are Claude Code's own prompt, counted because they are paid
             promptTokens: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
             outputTokens: usage.output_tokens ?? 0,
             costUsd: parsed!.total_cost_usd ?? 0,

@@ -2,13 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { api, HttpError, type Mastery } from "../api";
 import { atLeast, DEPTH_LABEL, MASTERY_MEANING } from "../vocabulary";
 
-/** Hand-built rather than a model-authored widget: the plan's shape is fixed. */
 export function Roadmap({
   learnerId, compact = false, onPick,
 }: {
   learnerId: string;
   compact?: boolean;
-  /** Clicking a concept starts teaching it. Without this the roadmap is a poster. */
   onPick?: (conceptId: string, name: string) => void;
 }) {
   const [data, setData] = useState<any>(null);
@@ -22,7 +20,6 @@ export function Roadmap({
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => {
         if (cancelled) return;
-        // A missing roadmap is an empty state; anything else is a fault.
         setError({
           message: e instanceof Error ? e.message : String(e),
           remedy: e instanceof HttpError ? e.remedy : null,
@@ -80,7 +77,6 @@ export function Roadmap({
     const met = atLeast(mastery, (s.requiredLevel ?? "functional") as Mastery);
     const body = (
       <>
-        {/* The mark carries a shape too, so colour is not the only channel. */}
         <span className="mastery-mark" data-level={mastery} title={MASTERY_MEANING[mastery]} />
         <span className="rm-name">{s.name}</span>
         <span className="rm-level">{met ? "done" : `${mastery} → ${s.requiredLevel}`}</span>

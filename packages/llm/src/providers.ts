@@ -6,7 +6,6 @@ export interface TierModels {
   strong: string;
 }
 
-/** Any OpenAI-compatible `/chat/completions` endpoint. */
 export class OpenAICompatibleLLM implements LLMProvider {
   readonly name: string;
 
@@ -84,7 +83,6 @@ export class AnthropicLLM implements LLMProvider {
   }
 }
 
-/** Records calls and replays canned responses. Tests exercise our code, not a model. */
 export class ScriptedLLM implements LLMProvider {
   readonly name = "scripted";
   public calls: CompletionRequest[] = [];
@@ -108,10 +106,9 @@ const ANTHROPIC_DEFAULTS: TierModels = {
 };
 const OPENAI_DEFAULTS: TierModels = { small: "gpt-4o-mini", strong: "gpt-4o" };
 
-/** Returns null with no key configured, never a mock that fabricates graph content. */
+/** Returns null with no key configured, never a mock that fabricates graph content */
 export function llmFromEnv(env: NodeJS.ProcessEnv = process.env): LLMProvider | null {
-  // Explicit opt-in only; see the caveats on ClaudeCodeLLM.
-  if (env.LLM_PROVIDER === "claude-code") {
+  if (env.LLM_PROVIDER === "claude-code" && env.NODE_ENV !== "production") {
     return new ClaudeCodeLLM({
       ...(env.LLM_MODEL_SMALL || env.LLM_MODEL_STRONG
         ? {

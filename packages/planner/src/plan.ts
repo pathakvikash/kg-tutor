@@ -9,7 +9,7 @@ import {
 import { resolveGoal, honoursSoftEdges } from "./target.js";
 import { orderTargetSet, type PrereqEdge } from "./order.js";
 
-/** How many steps at the head of a plan are treated as firm. (09) */
+/** Steps at the head of a plan that are treated as firm */
 export const COMMITTED_HORIZON = 3;
 
 export interface BuildPlanInput {
@@ -17,7 +17,6 @@ export interface BuildPlanInput {
   learnerId: string;
   goalId: string;
   thresholds?: Thresholds;
-  /** Explains what changed; produced by diffing against the superseded version. */
   revisionReason?: string;
 }
 
@@ -37,7 +36,6 @@ export async function loadMastery(
   return new Map(rows.map((r) => [r.conceptId, r.mastery]));
 }
 
-/** Persists the plan as a new version, so growth can be explained by diff. (08, 09) */
 export async function buildPlan(input: BuildPlanInput): Promise<PlanSummary> {
   const { prisma, learnerId, goalId } = input;
   const t = input.thresholds ?? DEFAULT_THRESHOLDS;
@@ -133,7 +131,6 @@ export async function buildPlan(input: BuildPlanInput): Promise<PlanSummary> {
   });
 }
 
-/** Trims templates against the learner, claim unchanged; a mostly-satisfied one folds forward. (18) */
 async function attachMilestones(
   tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0],
   planId: string,
@@ -158,7 +155,7 @@ async function attachMilestones(
       (id) => mastery.get(id) ?? "unknown",
       t,
     );
-    // Skip malformed templates; an empty milestone hands out a completion for nothing.
+    // An empty milestone would hand out a completion for nothing
     if (malformed) continue;
     await tx.milestoneInstance.create({
       data: { planId, templateId: template.id, position, foldedForward: foldForward },
@@ -169,7 +166,6 @@ async function attachMilestones(
   return out;
 }
 
-/** Learner-facing text, so it states growth plainly rather than hiding it. (08) */
 export function describeDiff(before: string[], after: string[]): string {
   const wasThere = new Set(before);
   const isThere = new Set(after);
@@ -188,7 +184,7 @@ export function describeDiff(before: string[], after: string[]): string {
   return parts.join("; ");
 }
 
-/** Spread this instead of rewriting it: `supersededAt: null` alone also matches abandoned goals. */
+/** Spread this, don't rewrite it: `supersededAt: null` alone also matches abandoned goals */
 export function activePlanWhere(learnerId: string) {
   return { learnerId, supersededAt: null, goal: { active: true } };
 }

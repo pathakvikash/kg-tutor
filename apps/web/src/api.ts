@@ -23,7 +23,6 @@ export interface GraphPayload {
   edges: GraphEdge[];
 }
 
-/** Carries the status, so a caller can tell "absent" from "broken". */
 export class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -33,11 +32,9 @@ export class HttpError extends Error {
     super(message);
     this.name = "HttpError";
   }
-  /** True when the resource is simply absent — usually an empty state, not a fault. */
   get isMissing(): boolean { return this.status === 404; }
 }
 
-/** Pulls {error, remedy} out of a JSON body, falling back to the raw text. */
 async function failure(res: Response): Promise<HttpError> {
   const text = await res.text();
   try {
@@ -54,20 +51,27 @@ async function failure(res: Response): Promise<HttpError> {
   }
 }
 
+/** Empty in dev, where Vite proxies /api; the Render URL in a Vercel build */
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+export const apiUrl = (path: string): string => `${API_BASE}${path}`;
+
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(url, signal ? { signal } : {});
+  const res = await fetch(apiUrl(url), signal ? { signal } : {});
   if (!res.ok) throw await failure(res);
   return res.json() as Promise<T>;
 }
-async function send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", url: string, body?: unknown): Promise<T> {
-  // Fastify rejects a JSON content-type sent with no body.
-  const res = await fetch(url, {
+async function send<T>(
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  url: string,
+  body?: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
+  // Fastify rejects a JSON content-type sent with no body
+  const res = await fetch(apiUrl(url), {
     method,
-    ...(body === undefined
-      ? {}
-      : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+    headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...extraHeaders },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  // Same typed failure as get(), so no caller has to care which helper it used.
   if (!res.ok) throw await failure(res);
   return res.status === 204 ? (undefined as T) : (res.json() as Promise<T>);
 }
@@ -76,7 +80,6 @@ const post = <T>(url: string, body?: unknown) => send<T>("POST", url, body);
 const del = <T>(url: string) => send<T>("DELETE", url);
 
 export interface AskStreamHandlers {
-  /** The answer is starting. Fires before routing lands, so deltas have somewhere to go. */
   onOpen?: (d: any) => void;
   onRouted?: (info: any) => void;
   onDelta?: (text: string) => void;
@@ -84,14 +87,14 @@ export interface AskStreamHandlers {
   onFailed?: (error: string) => void;
 }
 
-/** SSE read by hand: EventSource is GET-only and the question belongs in a body. */
+/** SSE read by hand: EventSource is GET-only and the question belongs in a body */
 export async function askStream(
   learnerId: string,
   conceptId: string,
   question: string,
   handlers: AskStreamHandlers,
 ): Promise<void> {
-  const res = await fetch("/api/lesson/ask/stream", {
+  const res = await fetch(apiUrl("/api/lesson/ask/stream"), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ learnerId, conceptId, question }),
@@ -115,7 +118,6 @@ export async function askStream(
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    // Events are separated by a blank line; a partial trailing event stays buffered.
     const parts = buffer.split("\n\n");
     buffer = parts.pop() ?? "";
     for (const part of parts) {
@@ -135,7 +137,6 @@ export async function askStream(
   }
 }
 
-/** Shared by the nav badge, the home card and the review session. */
 export const DUE_LIMIT = 25;
 
 export const api = {
@@ -151,12 +152,9 @@ export const api = {
   learners: () => get<any[]>("/api/learners"),
   learnerState: (id: string) => get<any>(`/api/learners/${id}/state`),
   plan: (id: string) => get<any>(`/api/learners/${id}/plan`),
-  /** The language every example and item should be written in. */
   updateLearner: (id: string, patch: Record<string, unknown>) =>
     send<any>("PATCH", `/api/learners/${id}`, patch),
-  /** What has decayed, was never demonstrated, or has an open misconception. */
   due: (id: string, limit = DUE_LIMIT) => get<any>(`/api/learners/${id}/due?limit=${limit}`),
-  /** One more level of prerequisites under a single concept. */
   deepen: (conceptId: string) => post<any>(`/api/concepts/${conceptId}/deepen`, {}),
   setGoal: (id: string, topicId: string, depth: string) =>
     post<any>(`/api/learners/${id}/goals`, { topicId, depth }),
@@ -168,7 +166,7 @@ export const api = {
   scan: () => post<any>("/api/review/scan"),
   explain: (learnerId: string, conceptId: string) =>
     post<any>("/api/lesson/explain", { learnerId, conceptId }),
-  /** `kind` picks which transcript this is written into; a review pass must say "review". */
+  /** `kind` picks which transcript this is written into; a review pass must say "review" */
   check: (learnerId: string, conceptId: string, level = "functional", kind: "lesson" | "review" = "lesson") =>
     post<any>("/api/lesson/check", { learnerId, conceptId, level, kind }),
   ask: (learnerId: string, conceptId: string, question: string) =>
@@ -183,9 +181,7 @@ export const api = {
     post<any>("/api/expansions", { topicName, description }),
   expansion: (id: string) => get<any>(`/api/expansions/${id}`),
   expansions: () => get<any[]>("/api/expansions"),
-  /** Cheap: does an assessment exist to resume? Does not derive the question. */
   openIntake: (learnerId: string) => get<any>(`/api/intake/open/${learnerId}`),
-  /** The full form, including the question to render. */
   resumeIntake: (learnerId: string) =>
     get<any>(`/api/intake/open/${learnerId}?withQuestion=1`),
   abandonIntake: (id: string) => post<any>(`/api/intake/${id}/abandon`),
@@ -196,7 +192,20 @@ export const api = {
   sessionTranscript: (id: string) => get<any>(`/api/sessions/${id}/transcript`),
   resumeSession: (id: string) => post<any>(`/api/sessions/${id}/resume`),
   modelSettings: () => get<any>("/api/settings/model"),
-  setModel: (payload: Record<string, unknown>) => send<any>("PUT", "/api/settings/model", payload),
+  setModel: async (payload: Record<string, unknown>) => {
+    const put = (token: string | null) =>
+      send<any>("PUT", "/api/settings/model", payload, token ? { authorization: `Bearer ${token}` } : {});
+    const saved = sessionStorage.getItem("kg-admin-token");
+    try {
+      return await put(saved);
+    } catch (e) {
+      if (!(e instanceof HttpError) || e.status !== 403) throw e;
+      const entered = window.prompt("Admin token");
+      if (!entered) throw e;
+      sessionStorage.setItem("kg-admin-token", entered);
+      return put(entered);
+    }
+  },
   deleteSession: (id: string) => del<any>(`/api/sessions/${id}`),
   deleteAllSessions: (learnerId: string) => del<any>(`/api/learners/${learnerId}/sessions`),
   widget: (learnerId: string, conceptId: string, focus?: string) =>

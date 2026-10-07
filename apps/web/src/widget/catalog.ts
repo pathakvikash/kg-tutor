@@ -2,7 +2,6 @@ import { defineCatalog } from "@json-render/core";
 import { schema } from "@json-render/react/schema";
 import { z } from "zod";
 
-// The vocabulary a tutor may target; not a generic UI kit, so keep it small.
 const step = z.object({
   label: z.string().describe("What happens at this step, in a few words"),
   detail: z.string().optional().describe("One or two sentences of explanation"),
@@ -10,7 +9,6 @@ const step = z.object({
   highlightLine: z.number().optional().describe("1-based line to highlight"),
 });
 
-/** One frame of a machine simulation: what every region holds at this instant. */
 const machineStep = z.object({
   label: z.string().describe("What happens on this tick, in a few words"),
   detail: z.string().optional().describe("One or two sentences on why"),
@@ -27,7 +25,7 @@ const option = z.object({
 });
 
 export const catalog = defineCatalog(schema, {
-  // No actions: a teaching widget explains and never mutates anything outside itself.
+  // No actions: a teaching widget explains and never mutates anything outside itself
   actions: {},
   components: {
     Stack: {

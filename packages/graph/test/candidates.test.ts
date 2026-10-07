@@ -33,13 +33,12 @@ describe("candidate generation", () => {
     const hits = await search("closure", "A function together with the scope it captured.");
     expect(hits[0]?.conceptId).toBe(id);
     expect(hits[0]?.arms).toContain("ann");
-    // The figure is a property of the deterministic stub; the rank is what matters.
+    // The figure is a property of the deterministic stub; the rank is what matters
     expect(hits[0]?.vectorScore).toBeGreaterThan(0.85);
   });
 
   it("finds a misspelled or abbreviated name through the lexical arm", async () => {
     const id = await seed("normalization", "Structuring tables to reduce redundancy.");
-    // Deliberately unrelated sense, so the vector arm cannot be what surfaces it.
     const hits = await search("normalisation", "Something else entirely, unrelated wording.");
     const hit = hits.find((h) => h.conceptId === id);
     expect(hit, "lexical arm should surface a near-miss spelling").toBeDefined();
@@ -48,7 +47,6 @@ describe("candidate generation", () => {
   });
 
   it("finds a synonym with no shared wording through the graph-local arm", async () => {
-    // The case cosine similarity cannot solve: same concept, no shared wording.
     const promises = await seed("promises", "A value that settles later.");
     const eventLoop = await seed(
       "the event loop",
@@ -59,7 +57,6 @@ describe("candidate generation", () => {
       failureMode: "The learner predicts a zero-delay timer fires before the current function returns.",
     });
 
-    // Proposed while expanding `promises`, so `promises` is the expected neighbour.
     const hits = await search(
       "JS concurrency model",
       "How deferred work is ordered at runtime.",
@@ -70,7 +67,6 @@ describe("candidate generation", () => {
     expect(hit, "graph-local arm should surface a neighbour of the expansion target").toBeDefined();
     expect(hit?.arms).toContain("graph");
     expect(hit?.neighborhoodOverlap).toBeGreaterThan(0);
-    // And it is genuinely invisible to the other two arms.
     expect(hit?.arms).not.toContain("lexical");
   });
 
@@ -87,11 +83,9 @@ describe("candidate generation", () => {
       });
     }
 
-    // `closures` neighbours both expected concepts → overlap 2/2.
     const both = await search("lexical closure", "Unrelated wording here.", [a, b]);
     expect(both.find((h) => h.conceptId === target)?.neighborhoodOverlap).toBeCloseTo(1, 5);
 
-    // Only one of three expected concepts is a neighbour → 1/3.
     const partial = await search("lexical closure", "Unrelated wording here.", [a, "nope", "also-nope"]);
     expect(partial.find((h) => h.conceptId === target)?.neighborhoodOverlap).toBeCloseTo(1 / 3, 5);
   });

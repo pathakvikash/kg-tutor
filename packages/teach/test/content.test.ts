@@ -32,7 +32,6 @@ describe("generateItems", () => {
     const items = await prisma.assessmentItem.findMany({ where: { conceptId: c } });
     expect(items.every((i) => i.status === "candidate")).toBe(true);
     expect(items.map((i) => i.targetsLevel).sort()).toEqual(["familiar", "functional", "solid"]);
-    // Without a transfer item a fluent paraphrase would promote to solid. (16)
     expect(items.some((i) => i.requiresTransfer)).toBe(true);
   });
 
@@ -118,7 +117,6 @@ describe("updateItemStats", () => {
         timesUsed: 40, correctCount: 20 },
     });
 
-    // Everyone who passed the item went on to succeed downstream; nobody who failed did.
     for (let i = 0; i < 10; i++) {
       const l = await learner();
       await prisma.evidenceEvent.create({
@@ -163,7 +161,7 @@ describe("promoteExplanations", () => {
 });
 
 describe("language-aware item selection", () => {
-  /** Explicit rather than a partial spread: exactOptionalPropertyTypes rejects the latter. */
+  /** Explicit rather than a partial spread, which exactOptionalPropertyTypes rejects */
   let seq = 0;
   const make = (
     conceptId: string,
@@ -215,7 +213,6 @@ describe("language-aware item selection", () => {
     const only = await make(c, "int x[10];", "c");
     const picked = await selectItem(prisma, c, "functional", [], { language: "JavaScript" });
     expect(picked?.id).toBe(only.id);
-    // ...and the caller is told, so it can generate a variant instead of asking it.
     expect(isWrongLanguage(picked!, "JavaScript")).toBe(true);
   });
 
@@ -227,7 +224,6 @@ describe("language-aware item selection", () => {
     expect(picked?.id).toBe(best.id);
   });
 
-  /** An item can carry its language inline in the prompt, leaving `codeLanguage` null. */
   it("treats an untagged item as unknown rather than neutral", () => {
     expect(isWrongLanguage({ codeLanguage: null }, "JavaScript")).toBe(true);
   });
@@ -238,7 +234,7 @@ describe("language-aware item selection", () => {
 
   it("prefers a matching item over an untagged one", async () => {
     const c = await concept("some concept");
-    await make(c, null, null, 0.9);                       // untagged, high discrimination
+    await make(c, null, null, 0.9);
     const want = await make(c, "const x = [];", "javascript", 0.1);
     const picked = await selectItem(prisma, c, "functional", [], { language: "JavaScript" });
     expect(picked?.id).toBe(want.id);
@@ -255,9 +251,7 @@ describe("language-aware item selection", () => {
   it("does not call a matching item wrong, in either casing", () => {
     expect(isWrongLanguage({ codeLanguage: "JavaScript" }, "javascript")).toBe(false);
     expect(isWrongLanguage({ codeLanguage: "python" }, "JavaScript")).toBe(true);
-    // An untagged item is unknown, and a "C in the prompt text" item is untagged.
     expect(isWrongLanguage({ codeLanguage: null }, "JavaScript")).toBe(true);
-    // No stated language means nothing to mismatch against.
     expect(isWrongLanguage({ codeLanguage: "c" }, null)).toBe(false);
   });
 });

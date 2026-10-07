@@ -3,24 +3,21 @@ import { api, HttpError } from "../api";
 import { Busy } from "../components/Busy";
 import { MASTERY_ORDER } from "../vocabulary";
 
-/** Mirrors the server's crossSessionPersistence minGapDays default, which the API omits. */
+/** Mirrors the server's crossSessionPersistence minGapDays default, which the API omits */
 const MIN_GAP_DAYS = 7;
 
-/** Below this many learners an arm is one person's session, not a measurement. */
 const ANECDOTE_MIN = 5;
 
-/** The words for "we have not measured this", used wherever a value can be absent. */
 const NOT_YET = "no data yet";
 
 interface Rate {
-  /** False when the denominator is empty: there is no rate, not a rate of zero. */
   measurable: boolean;
   value: number;
   n: number;
   d: number;
 }
 
-/** Clamps at 1: the waste numerator can exceed its denominator. */
+/** Clamps at 1: the waste numerator can exceed its denominator */
 function rate(n: number, d: number): Rate {
   if (!Number.isFinite(n) || !Number.isFinite(d) || d <= 0) {
     return { measurable: false, value: 0, n, d: 0 };
@@ -28,7 +25,6 @@ function rate(n: number, d: number): Rate {
   return { measurable: true, value: Math.min(n / d, 1), n, d };
 }
 
-/** Never prints 100% unless the numerator really covers the denominator. */
 function pct(value: number, n?: number, d?: number): string {
   const complete = n !== undefined && d !== undefined && n >= d;
   if (value >= 1) return complete ? "100%" : ">99%";
@@ -41,7 +37,6 @@ function pct(value: number, n?: number, d?: number): string {
 
 const rateText = (r: Rate) => (r.measurable ? pct(r.value, r.n, r.d) : NOT_YET);
 
-/** Precision scales with magnitude so sub-cent spend never prints as $0.000. */
 function usd(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return NOT_YET;
   if (n === 0) return "$0";
@@ -53,7 +48,6 @@ function usd(n: number | null | undefined): string {
 
 const hhmm = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-/** meanMasteryRank is a 0–3 index into the mastery scale; on its own it means nothing. */
 function levelFor(rank: number): string {
   const i = Math.max(0, Math.min(MASTERY_ORDER.length - 1, Math.round(rank)));
   return MASTERY_ORDER[i];
@@ -81,12 +75,10 @@ function StatSkeleton() {
   );
 }
 
-/** A table nobody has filled yet, said as what would fill it. */
 const Empty = ({ children }: { children: ReactNode }) => (
   <div className="empty metrics-empty">{children}</div>
 );
 
-/** Reasons are derived from the provider fields plus the API's own caveats. */
 function DegradedNotice({ p }: { p: any }) {
   const reasons: string[] = [];
   if (!p.llm) reasons.push("no model is configured");
@@ -99,7 +91,6 @@ function DegradedNotice({ p }: { p: any }) {
       <strong>Degraded run{p.llm ? ` · model: ${p.llm}` : ""}</strong>
       <p>
         {lead.charAt(0).toUpperCase() + lead.slice(1)}.{" "}
-        {/* Only a missing model invalidates these figures; a stubbed embedding does not. */}
         {p.llm
           ? "The counts and costs below are from real calls; what is weakened is described above."
           : "Nothing here reflects live model behaviour — the numbers describe seeded and test data only."}
@@ -126,7 +117,6 @@ function ErrorNotice({
       </p>
       <p className="mono metrics-detail">{error.message}</p>
       <div className="row">
-        {/* aria-disabled rather than disabled: disabling a focused button drops focus to body. */}
         <button onClick={onRetry} aria-disabled={busy}>Retry</button>
         {busy && <Busy label="retrying" />}
       </div>
@@ -159,7 +149,7 @@ export function MetricsPage() {
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
-    // Gates the state writes only; api.metrics() takes no AbortSignal.
+    // Gates the state writes only; api.metrics() takes no AbortSignal
     const ctl = new AbortController();
     setBusy(true);
     api.metrics()
@@ -183,7 +173,6 @@ export function MetricsPage() {
     setNonce((n) => n + 1);
   }, [busy]);
 
-  // Nothing has arrived yet, so placeholders rather than a dashboard of zeroes.
   if (!m) {
     return (
       <div className="page metrics">
@@ -231,7 +220,6 @@ export function MetricsPage() {
       <div className="page--table">
         <Header asOf={asOf} busy={busy} onRefresh={refresh} />
 
-        {/* A failed refresh keeps the numbers already on screen; the timestamp dates them. */}
         {error && <ErrorNotice error={error} onRetry={refresh} busy={busy} />}
 
         {m.providers.degraded && <DegradedNotice p={m.providers} />}
@@ -263,7 +251,6 @@ export function MetricsPage() {
         </p>
 
         <h2 className="section-title">Teaching</h2>
-        {/* Two measurements with two denominators, not one combined rate. */}
         <dl className="stats">
           <Stat
             k="taught what they knew"
@@ -345,7 +332,6 @@ export function MetricsPage() {
                 reports zero dollars per call.
               </div>
             )}
-            {/* Focusable so the overflow region is reachable by keyboard. */}
             <div className="table-wrap" tabIndex={0} role="region" aria-label="Cost by purpose">
               <table className="t-purpose">
                 <thead>
@@ -373,7 +359,6 @@ export function MetricsPage() {
                     );
                   })}
                 </tbody>
-                {/* Total here so it can be checked against the total-spend card. */}
                 <tfoot>
                   <tr>
                     <th scope="row">All purposes</th>
@@ -419,7 +404,6 @@ export function MetricsPage() {
                         <span className="mono">{a.variant}</span>
                         {a.variant === "baseline" && <span className="sub">control arm</span>}
                       </td>
-                      {/* Learner count is emphasised so thin arms are not read as measurements. */}
                       <td className="num mono n-cell">{a.learners}</td>
                       <td className="num mono">{a.conceptsMastered}</td>
                       <td className="num mono">
@@ -457,7 +441,7 @@ export function MetricsPage() {
               </thead>
               <tbody>
                 {reuseByTopic.map((t: any) => {
-                  // The API returns the rate, not the numerator; recovering it keeps pct honest.
+                  // The API returns the rate, not the numerator; recovering it keeps pct honest
                   const r = rate(Math.round(t.reuseRate * t.proposals), t.proposals);
                   return (
                     <tr key={t.topic}>

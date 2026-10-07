@@ -1,6 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
-/** Wraps each route, so one page's throw cannot white-screen the shell. */
 export class ErrorBoundary extends Component<
   { children: ReactNode; where: string },
   { error: Error | null }
@@ -12,7 +11,6 @@ export class ErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Kept: a white screen with a silent console is the worst of both.
     console.error(`[${this.props.where}] render failed`, error, info.componentStack);
   }
 

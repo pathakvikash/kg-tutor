@@ -7,7 +7,6 @@ const n = (name: string) => ({ name });
 describe("normalizeKey", () => {
   it("collapses case, spacing and punctuation so variants vote together", () => {
     expect(normalizeKey("The Event Loop")).toBe("event loop");
-    // A leading article must not split the vote for a concept everyone named.
     expect(normalizeKey("the event loop")).toBe(normalizeKey("event loop"));
     expect(normalizeKey("event-loop")).toBe(normalizeKey("event loop"));
     expect(normalizeKey("  async/await  ")).toBe("async await");
@@ -25,7 +24,6 @@ describe("consensus", () => {
       { key },
     );
     expect(survived.map((s) => s.value.name)).toEqual(["closures", "scope"]);
-    // The once-mentioned tail is exactly what this filter exists to remove.
     expect(dropped.map((d) => d.value.name).sort()).toEqual(["currying", "hoisting", "iife"]);
   });
 

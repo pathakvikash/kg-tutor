@@ -72,7 +72,6 @@ describe("propagateBackwards", () => {
     const state = await prisma.learnerConceptState.findFirstOrThrow({ where: { conceptId: fns } });
     expect(state.mastery).toBe("solid");
     expect(state.source).toBe("inferred");
-    // Inferred, so deliberately less trusted than the same level directly demonstrated.
     expect(state.confidence).toBeLessThan(0.6);
   });
 

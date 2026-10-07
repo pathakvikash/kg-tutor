@@ -3,7 +3,7 @@ import { z } from "zod";
 import { expandTopicShallow } from "@kg/graph";
 import { prisma, getLlm, resolverDeps } from "../context.js";
 
-/** Expansion takes minutes, so it runs as a polled job rather than one long request. */
+/** Expansion takes minutes, so it runs as a polled job rather than one long request */
 async function runJob(jobId: string): Promise<void> {
   const job = await prisma.expansionJob.findUniqueOrThrow({ where: { id: jobId } });
   const llm = getLlm();
@@ -34,7 +34,6 @@ async function runJob(jobId: string): Promise<void> {
       prisma,
       resolver,
       onProgress: (phase, progress, partial) => {
-        // The partial report is written on every tick so the UI can render the graph so far.
         void prisma.expansionJob
           .update({ where: { id: jobId }, data: { phase, progress, report: partial as never } })
           .catch(() => undefined);
@@ -59,7 +58,6 @@ async function runJob(jobId: string): Promise<void> {
   }
 }
 
-/** Marks jobs stranded by a restart as failed; expansion is idempotent, so retry is manual. */
 export async function failStrandedJobs(): Promise<number> {
   const { count } = await prisma.expansionJob.updateMany({
     where: { status: { in: ["queued", "running"] } },
@@ -90,7 +88,6 @@ export async function expandJobRoutes(app: FastifyInstance): Promise<void> {
     const job = await prisma.expansionJob.create({
       data: { topicName: body.data.topicName, description: body.data.description ?? null },
     });
-    // Deliberately not awaited: the response returns the job id immediately.
     void runJob(job.id);
     return job;
   });
@@ -98,7 +95,6 @@ export async function expandJobRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/expansions", async () =>
     prisma.expansionJob.findMany({ orderBy: { createdAt: "desc" }, take: 20 }));
 
-  /** Re-runs a failed or interrupted job. Safe: the resolver dedups everything. */
   app.post("/api/expansions/:id/retry", async (req, reply) => {
     const { id } = req.params as { id: string };
     const old = await prisma.expansionJob.findUnique({ where: { id } });

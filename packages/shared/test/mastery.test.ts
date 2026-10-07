@@ -57,7 +57,6 @@ describe("confidence decay", () => {
   it("re-probes high mastery once confidence has decayed, and not before", () => {
     expect(needsReprobe("solid", 0.1)).toBe(true);
     expect(needsReprobe("solid", 0.9)).toBe(false);
-    // Low mastery is a teaching problem, not a re-probe problem.
     expect(needsReprobe("familiar", 0.1)).toBe(false);
   });
 });

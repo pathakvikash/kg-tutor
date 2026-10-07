@@ -64,7 +64,6 @@ export interface ExpandOptions {
   resolver: ResolverDeps;
   prisma: PrismaClient;
   thresholds?: Thresholds;
-  /** Called as the job advances, carrying the partial report for live rendering. */
   onProgress?: (phase: string, progress: number, partial: ExpandReport) => void;
 }
 
@@ -73,22 +72,16 @@ export interface ExpandReport {
   conceptsCreated: number;
   conceptsBound: number;
   edgesWritten: number;
-  /** Hard proposals written as soft because the failure mode did not survive. (15) */
+  /** Hard proposals written as soft because the failure mode did not survive */
   edgesDemoted: number;
   edgesRejectedAsCycle: number;
-  /** Below the consensus threshold — the measurable output of the filter. (15) */
   conceptsDroppedByConsensus: string[];
   prerequisitesDroppedByConsensus: string[];
-  /** Concepts written, but whose prerequisite pass failed. Reported, not hidden. */
   conceptsWithFailedPrerequisites: string[];
-  /** Names that did not denote one concept, and what was proposed instead. (04) */
   namesRejected: { name: string; reason: string; splitInto: string[] }[];
-  /** Capability claims written for the topic, and any rejected. (09) */
   milestones: { claim: string; concepts: string[] }[];
   milestonesRejected: { claim: string; reason: string }[];
-  /** Survivors of the consensus filter, with how many samples named each. */
   conceptsFound: { name: string; votes: number }[];
-  /** An append-only activity log the UI renders live. */
   events: { kind: string; name: string; detail: string }[];
 }
 
@@ -98,7 +91,7 @@ async function sample<T>(
   req: { system: string; user: string },
   schema: z.ZodType<T>,
 ): Promise<T[]> {
-  // Temperature must stay above zero or all K samples come back identical.
+  // At temperature 0 all K samples come back identical
   return Promise.all(
     Array.from({ length: n }, () =>
       completeJson(llm, { ...req, tier: "strong", temperature: 0.7 }, schema),
@@ -106,7 +99,6 @@ async function sample<T>(
   );
 }
 
-/** Topic to concepts to one level of prerequisites, all through the resolver. (04) */
 export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandReport> {
   const t = opts.thresholds ?? DEFAULT_THRESHOLDS;
   const k = t.expansionSamples;
@@ -182,7 +174,6 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
     );
   }
 
-  // One level of prerequisites per concept.
   let done = 0;
   for (const c of concepts) {
     opts.onProgress?.(
@@ -207,11 +198,11 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
       },
       report,
     );
-    // Keep the tail bounded; the UI only shows the most recent activity anyway.
+    // UI only shows recent activity, so cap the log
     if (report.events.length > 200) report.events.splice(0, report.events.length - 200);
   }
 
-  // Last because a claim needs its concepts to exist; a failure here is reported, not fatal.
+  // Runs last since claims need their concepts; failure is reported, not fatal
   try {
     const milestones = await generateMilestones(opts.prisma, opts.llm, topic.id);
     report.milestones = milestones.written;
@@ -237,7 +228,6 @@ export async function expandTopicShallow(opts: ExpandOptions): Promise<ExpandRep
   return report;
 }
 
-/** Idempotent: re-expanding a topic must not fail on concepts it already contains. */
 async function link(
   prisma: PrismaClient,
   topicId: string,
@@ -249,12 +239,11 @@ async function link(
       topicId_conceptId_relation: { topicId, conceptId, relation: "contains" },
     },
     create: { topicId, conceptId, direct, relation: "contains" },
-    // A concept that arrives as a prerequisite must not downgrade an existing direct link.
+    // A prerequisite arrival must not downgrade an existing direct link
     update: direct ? { direct: true } : {},
   });
 }
 
-/** Prefer the variant justifying the strongest claim: hard with a real failure mode. */
 function bestVariant<T extends { strength: "hard" | "soft"; failureMode: string | null }>(
   item: ConsensusItem<T>,
 ): T {
@@ -267,7 +256,6 @@ function bestVariant<T extends { strength: "hard" | "soft"; failureMode: string 
   return longest ?? item.value;
 }
 
-/** Extracted so deepening one concept runs the identical path a full expansion does. */
 export async function expandPrerequisitesOf(
   target: { id: string; name: string; sense: string },
   ctx: {
@@ -276,7 +264,6 @@ export async function expandPrerequisitesOf(
     resolver: ResolverDeps;
     topicId: string;
     topicName: string;
-    /** Concepts the resolver should judge a candidate against. */
     neighbourIds: string[];
     samples?: number;
   },
@@ -299,7 +286,7 @@ export async function expandPrerequisitesOf(
       prereqSchema,
     );
   } catch (err) {
-    // The concept is already written, so a partial result is worth keeping.
+    // Concept is already written, so keep it and report the failure
     report.conceptsWithFailedPrerequisites.push(target.name);
     return;
   }
@@ -313,7 +300,7 @@ export async function expandPrerequisitesOf(
   for (const p of survived) {
     const best = bestVariant(p);
 
-    // A compound name written here is permanent, so split it when both halves are real.
+    // Compound names are permanent once written, so split when both halves are real
     const nameCheck = checkConceptName(best.name);
     if (!nameCheck.ok) {
       const halves = (nameCheck.parts ?? []).filter((h) => checkConceptName(h).ok);
@@ -350,10 +337,9 @@ export async function expandPrerequisitesOf(
     if (pre.outcome === "created") report.conceptsCreated++;
     else report.conceptsBound++;
 
-    // Pulled in as a prerequisite, so it belongs to the topic but not directly.
     await link(opts.prisma, topicId, pre.conceptId, false);
 
-    if (pre.conceptId === targetId) continue; // a concept is not its own prerequisite
+    if (pre.conceptId === targetId) continue;
 
     const edge = await proposeEdge(opts.prisma, {
       srcId: pre.conceptId,

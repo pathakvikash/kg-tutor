@@ -33,7 +33,6 @@ export interface StateChange {
   reprobeQueued: boolean;
 }
 
-/** How much a piece of evidence is worth trusting, by where it came from. (06) */
 const SOURCE_OF: Record<EvidenceKind, EvidenceSource> = {
   restated: "taught",
   applied: "taught",
@@ -55,7 +54,6 @@ const CONFIDENCE_OF: Record<EvidenceSource, number> = {
   assessed: 0.85,
 };
 
-/** Mastery only moves up here; demotion needs a confirmed second failure. (06, 10) */
 export async function recordEvidence(
   prisma: PrismaClient,
   input: RecordEvidenceInput,
@@ -101,7 +99,6 @@ export async function recordEvidence(
       const alreadyQueued = existing?.reprobeQueuedAt != null;
       const confirming = input.kind === "reprobe_fail" && alreadyQueued;
       if (confirming && rank(mastery) > 0) {
-        // Second consecutive failure on the same concept: now it is real.
         const ladder: MasteryLevel[] = ["unknown", "familiar", "functional", "solid"];
         mastery = ladder[rank(mastery) - 1]!;
         demoted = true;
@@ -110,7 +107,7 @@ export async function recordEvidence(
       reprobeQueued = true;
     } else {
       const proposed = promote(beforeMastery, input.kind);
-      // A self-report may set a level but must never look well-evidenced. (07)
+      // A self-report may set a level but must never look well-evidenced
       const evidenceConfidence = CONFIDENCE_OF[source];
       mastery = proposed;
       confidence =
@@ -148,7 +145,7 @@ export async function recordEvidence(
   });
 }
 
-/** Backwards only, at lower confidence, and never overwriting direct evidence. (06, 10) */
+/** Backwards only, at lower confidence, and never overwriting direct evidence */
 export async function propagateBackwards(
   prisma: PrismaClient,
   learnerId: string,
@@ -164,7 +161,6 @@ export async function propagateBackwards(
     const existing = await prisma.learnerConceptState.findUnique({
       where: { learnerId_conceptId: { learnerId, conceptId: e.srcId } },
     });
-    // Direct evidence always wins; inference must never overwrite it.
     if (existing && existing.source !== "inferred" && rank(existing.mastery) >= rank("functional")) {
       continue;
     }
@@ -180,7 +176,6 @@ export async function propagateBackwards(
   return touched;
 }
 
-/** High mastery with decayed confidence: re-probe cheaply rather than re-teach. (06) */
 export async function conceptsNeedingReprobe(
   prisma: PrismaClient,
   learnerId: string,

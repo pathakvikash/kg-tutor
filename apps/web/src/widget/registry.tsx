@@ -10,7 +10,6 @@ interface Step {
   frames?: Record<string, string[]>;
 }
 
-// A sentence version of the boxes, for a live region to announce.
 function regionSummary(name: string, items: string[]): string {
   if (items.length === 0) return `${name}: empty`;
   return `${name}: ${items.length} ${items.length === 1 ? "frame" : "frames"}, ${items.join(", ")}`;
@@ -37,7 +36,6 @@ export const { registry } = defineRegistry(catalog, {
       <div className="w-stack" style={{ gap: props.gap ?? 12 }}>{children}</div>
     ),
 
-    // A real heading, not a styled div, so heading navigation finds it.
     Heading: ({ props }: any) => <h4 className="w-heading">{props.value}</h4>,
 
     Text: ({ props }: any) => (
@@ -48,10 +46,9 @@ export const { registry } = defineRegistry(catalog, {
       <Code code={props.code} language={props.language} highlight={props.highlightLine} />
     ),
 
-    /** The learner drives the clock; stepping forces a prediction before each reveal. */
     Timeline: ({ props }: any) => {
       const key = props.stateKey ?? "step";
-      // Reading the store by key does not re-render; use the binding pair.
+      // Reading the store by key does not re-render; use the binding pair
       const [raw, setRaw] = useStateBinding<number>(`/${key}`);
       const steps: Step[] = props.steps ?? [];
       const i = Math.min(Math.max(Number(raw ?? 0), 0), Math.max(0, steps.length - 1));
@@ -62,7 +59,7 @@ export const { registry } = defineRegistry(catalog, {
       return (
         <div className="w-timeline">
           <div className="w-tl-head">
-            {/* aria-disabled, never disabled: disabling blurs focus to <body>. go() clamps. */}
+            {/* aria-disabled, never disabled: disabling blurs focus to <body>; go() clamps */}
             <button onClick={() => go(i - 1)} aria-disabled={i === 0 || undefined} aria-label="Previous step">←</button>
             <div className="w-tl-dots" role="group" aria-label="Steps">
               {steps.map((_, n) => (
@@ -78,7 +75,6 @@ export const { registry } = defineRegistry(catalog, {
             <button onClick={() => go(i + 1)} aria-disabled={i === steps.length - 1 || undefined} aria-label="Next step">→</button>
             <span className="w-tl-count">{i + 1} / {steps.length}</span>
           </div>
-          {/* Next replaces the content in place, so it needs a live region. */}
           <div aria-live="polite" aria-atomic="true">
             <span className="sr-only">Step {i + 1} of {steps.length}.</span>
             {step.label && <div className="w-tl-label">{step.label}</div>}
@@ -92,7 +88,6 @@ export const { registry } = defineRegistry(catalog, {
     Frames: ({ props }: any) => {
       const items: string[] = Array.isArray(props.items) ? props.items : [];
       const stack = props.orientation !== "queue";
-      // A stack grows upward on screen, so the newest frame renders at the top.
       const ordered = stack ? [...items].reverse() : items;
       return (
         <div className={`w-frames ${stack ? "as-stack" : "as-queue"}`}>
@@ -112,7 +107,6 @@ export const { registry } = defineRegistry(catalog, {
       );
     },
 
-    /** Several regions under one clock; every step declares the contents of all of them. */
     Simulation: ({ props }: any) => {
       const key = props.stateKey ?? "tick";
       const [raw, setRaw] = useStateBinding<number>(`/${key}`);
@@ -126,7 +120,6 @@ export const { registry } = defineRegistry(catalog, {
       if (steps.length === 0 || regions.length === 0) return null;
 
       const previous: Record<string, string[]> = steps[i - 1]?.regions ?? {};
-      // Only the highlighted line changes per tick, so announce just that line.
       const activeLine = step.highlightLine && props.code
         ? String(props.code).split("\n")[Number(step.highlightLine) - 1]?.trim()
         : undefined;
@@ -134,7 +127,6 @@ export const { registry } = defineRegistry(catalog, {
       return (
         <div className="w-sim">
           <div className="w-tl-head">
-            {/* aria-disabled, never disabled: disabling blurs focus to <body>. go() clamps. */}
             <button onClick={() => go(0)} aria-disabled={i === 0 || undefined} aria-label="Restart">⏮</button>
             <button onClick={() => go(i - 1)} aria-disabled={i === 0 || undefined} aria-label="Back">←</button>
             <div className="w-tl-dots" role="group" aria-label="Ticks">
@@ -156,7 +148,6 @@ export const { registry } = defineRegistry(catalog, {
             <Code code={props.code} language={props.language} highlight={step.highlightLine} />
           )}
 
-          {/* One live region for all of them; separate ones would interleave. */}
           <div aria-live="polite" aria-atomic="true">
             <span className="sr-only">
               Tick {i + 1} of {steps.length}.
@@ -170,7 +161,6 @@ export const { registry } = defineRegistry(catalog, {
                 const shown = isStack ? [...items].reverse() : items;
                 return (
                   <div className="w-region" key={name}>
-                    {/* The boxes repeat this visually, so they are aria-hidden. */}
                     <span className="sr-only">{regionSummary(name, shown)}</span>
                     <div className="w-region-title" aria-hidden="true">{name}</div>
                     {shown.length === 0 ? (
@@ -180,7 +170,6 @@ export const { registry } = defineRegistry(catalog, {
                         {shown.map((it, n) => (
                           <div
                             key={`${it}-${n}`}
-                            /* "fresh" marks frames new since the last tick. */
                             className={`w-frame${!before.includes(it) ? " fresh" : ""}${isStack && n === 0 ? " top" : ""}`}
                           >
                             {it}
@@ -204,7 +193,6 @@ export const { registry } = defineRegistry(catalog, {
       <div className="w-compare-wrap">
         <div className="w-compare">
           <div>
-            {/* h5: these sit under the widget's Heading, which is an h4. */}
             <h5 className="w-heading">{props.leftTitle}</h5>
             <Code code={props.leftCode} />
           </div>
@@ -217,7 +205,6 @@ export const { registry } = defineRegistry(catalog, {
       </div>
     ),
 
-    /** Feedback is per option, not a bare right or wrong. */
     Choice: ({ props }: any) => {
       const [picked, setPicked] = useState<number | null>(null);
       const optionsRef = useRef<HTMLDivElement>(null);
@@ -226,7 +213,7 @@ export const { registry } = defineRegistry(catalog, {
       const chosen = picked === null ? null : options[picked] ?? null;
       const retry = () => {
         setPicked(null);
-        // "try again" unmounts itself on click, which would drop focus to <body>.
+        // "try again" unmounts itself on click, which would drop focus to <body>
         requestAnimationFrame(() =>
           optionsRef.current?.querySelector<HTMLButtonElement>(".w-opt")?.focus(),
         );
@@ -241,7 +228,6 @@ export const { registry } = defineRegistry(catalog, {
                 <button
                   key={i}
                   className={state ? `w-opt ${state}` : "w-opt"}
-                  // aria-disabled, not disabled: disabling blurs focus off the chosen answer.
                   aria-disabled={answered || undefined}
                   onClick={() => { if (!answered) setPicked(i); }}
                 >
@@ -249,14 +235,12 @@ export const { registry } = defineRegistry(catalog, {
                     <span className="w-opt-mark" aria-hidden="true">{state === "right" ? "✓" : "✗"}</span>
                   )}
                   <span className="w-opt-label">{o.label}</span>
-                  {/* Colour alone does not survive greyscale, and the glyph is decorative. */}
                   {state === "right" && <span className="sr-only"> — correct</span>}
                   {state === "wrong" && <span className="sr-only"> — incorrect</span>}
                 </button>
               );
             })}
           </div>
-          {/* Present before the answer, so the verdict is actually announced. */}
           <div aria-live="polite">
             {answered && (
               <p className={chosen?.correct ? "w-feedback right" : "w-feedback wrong"}>

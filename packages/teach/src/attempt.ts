@@ -24,7 +24,6 @@ export interface AttemptContext {
   conceptId: string;
   sessionId?: string | undefined;
   itemId?: string | undefined;
-  /** Bounded per decision 10, carried across turns within one concept. */
   reexplanationsUsed: number;
   detoursUsedInChain: number;
   detourDepth: number;
@@ -36,11 +35,10 @@ export interface AttemptOutcome {
   evidenceKind: EvidenceKind;
   state: StateChange;
   propagatedTo: string[];
-  /** Recorded beliefs this answer cleared. Worth telling the learner about. */
   misconceptionsResolved: number;
 }
 
-/** Claim `transferred` only when the item required transfer and the answer was not a restatement. (10, 16) */
+/** Claim `transferred` only when the item required transfer and the answer was not a restatement */
 function evidenceFor(grade: GradeResult, requiresTransfer: boolean): EvidenceKind {
   if (!grade.correct) {
     if (grade.diagnosis === "careless") return "careless_error";
@@ -51,7 +49,6 @@ function evidenceFor(grade: GradeResult, requiresTransfer: boolean): EvidenceKin
   return requiresTransfer ? "transferred" : "applied";
 }
 
-/** The four failure causes need opposite responses; the bounds stop an infinite descent. (10) */
 export function decideAction(
   grade: GradeResult,
   ctx: AttemptContext,
@@ -70,7 +67,6 @@ export function decideAction(
 
   if (diagnosis === "missing_prerequisite") {
     if (!prerequisite) {
-      // Nothing concrete to descend into; treat it as an explanation problem instead.
       return ctx.reexplanationsUsed < t.maxReexplanations
         ? { kind: "reexplain", attemptsUsed: ctx.reexplanationsUsed + 1 }
         : { kind: "block", reason: "prerequisite gap with no identified prerequisite" };
@@ -88,7 +84,6 @@ export function decideAction(
     };
   }
 
-  // cannot_apply
   return ctx.reexplanationsUsed < t.maxReexplanations
     ? { kind: "reexplain", attemptsUsed: ctx.reexplanationsUsed + 1 }
     : { kind: "block", reason: "re-explanation budget spent" };
@@ -99,7 +94,6 @@ export interface RunAttemptInput {
   llm: LLMProvider;
   ctx: AttemptContext;
   prompt: string;
-  /** The snippet the prompt refers to, when the item has one. */
   code?: string | null;
   codeLanguage?: string | null;
   response: string;
@@ -107,7 +101,7 @@ export interface RunAttemptInput {
   thresholds?: Thresholds;
 }
 
-/** One graded turn; every path must emit exactly one evidence event or the model goes stale. (10) */
+/** One graded turn; every path must emit exactly one evidence event or the model goes stale */
 export async function runAttempt(input: RunAttemptInput): Promise<AttemptOutcome> {
   const t = input.thresholds ?? DEFAULT_THRESHOLDS;
   const { prisma, ctx } = input;
@@ -161,7 +155,7 @@ export async function runAttempt(input: RunAttemptInput): Promise<AttemptOutcome
   );
 
   if (grade.belief && evidenceKind === "misconception_shown") {
-    // Same belief twice is a stronger signal, and the review queue orders by the count.
+    // Same belief twice is a stronger signal, and the review queue orders by the count
     const open = await prisma.misconception.findFirst({
       where: { learnerId: ctx.learnerId, conceptId: ctx.conceptId, resolvedAt: null },
     });
@@ -186,13 +180,12 @@ export async function runAttempt(input: RunAttemptInput): Promise<AttemptOutcome
     }
   }
 
-  // Only a demonstration clears the belief; a restatement does not count. (10, 16)
+  // Only a demonstration clears the belief; a restatement does not count
   const misconceptionsResolved =
     grade.correct && !grade.restatementOnly
       ? await resolveMisconceptions(prisma, ctx.learnerId, ctx.conceptId)
       : 0;
 
-  // Clean acquisition is the strongest evidence about the prerequisites, and it is free. (10)
   const propagatedTo =
     grade.correct && !grade.restatementOnly
       ? await propagateBackwards(prisma, ctx.learnerId, ctx.conceptId)
@@ -211,7 +204,6 @@ export async function runAttempt(input: RunAttemptInput): Promise<AttemptOutcome
   return { grade, action, evidenceKind, state, propagatedTo, misconceptionsResolved };
 }
 
-/** Concepts blocked by a spent detour budget, to revisit in a later session. (10) */
 export async function blockConcept(
   prisma: PrismaClient,
   learnerId: string,

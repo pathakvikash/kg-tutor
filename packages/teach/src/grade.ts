@@ -3,36 +3,26 @@ import { completeJson, type LLMProvider } from "@kg/llm";
 import { failureDiagnosis, type FailureDiagnosis } from "@kg/shared";
 
 export interface GradeInput {
-  /** The item's prompt. NOT the explanation the learner just read. */
   prompt: string;
-  /** The snippet the question is about; pass it or the grader sees a prompt with no code. */
   code?: string | null;
   codeLanguage?: string | null;
   response: string;
-  /** Stored failure modes on this concept's hard prerequisite edges. (03, 07) */
   failureModes: { edgeId: string; prerequisiteName: string; failureMode: string }[];
-  /** Named so the grader can tell "restated the definition" from "applied it". */
   conceptName: string;
-  /** True when the item deliberately uses a context the explanation did not. (16) */
   requiresTransfer: boolean;
 }
 
 export interface GradeResult {
   correct: boolean;
-  /** Only meaningful when `correct` is false. */
   diagnosis: FailureDiagnosis;
-  /** Set when the response exhibited one of the stored failure modes. */
   matchedEdgeId: string | null;
-  /** The learner's actual wrong belief, when one was visible. */
   belief: string | null;
-  /** True when the answer only restates the concept rather than applying it. */
   restatementOnly: boolean;
   reasoning: string;
 }
 
 const schema = z.object({
   correct: z.boolean(),
-  /** Nullable, because the prompt asks for a diagnosis only when the answer is incorrect. */
   diagnosis: failureDiagnosis.nullable().default(null),
   matchedFailureModeIndex: z.number().int().nullable(),
   belief: z.string().nullable(),
@@ -40,7 +30,6 @@ const schema = z.object({
   reasoning: z.string(),
 });
 
-/** The grader stays blind to the preceding explanation; nothing here may carry it. (16) */
 export const GRADE_SYSTEM_PROMPT = `You grade a learner's answer against a rubric. You have NOT seen any explanation the learner was given, and you must not assume one.
 
 You are given the question, the learner's answer, and a numbered list of known failure
@@ -94,7 +83,7 @@ export async function gradeResponse(
     .filter(Boolean)
     .join("\n");
 
-  // Small tier: a larger model reinterprets a bad answer charitably. (17)
+  // Small tier: a larger model reads a bad answer charitably
   const raw = await completeJson(
     llm,
     { system: GRADE_SYSTEM_PROMPT, user, tier: "small", temperature: 0 },
@@ -109,7 +98,7 @@ export async function gradeResponse(
 
   return {
     correct: raw.correct,
-    // Placeholder: nothing downstream reads a diagnosis off a passing answer.
+    // Placeholder: nothing downstream reads a diagnosis off a passing answer
     diagnosis: raw.diagnosis ?? "careless",
     matchedEdgeId: matched?.edgeId ?? null,
     belief: raw.belief,

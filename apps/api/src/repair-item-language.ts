@@ -1,9 +1,8 @@
-/** Retires assessment items whose language contradicts their topic; pass --apply to commit. */
+/** Retires assessment items whose language contradicts their topic; pass --apply to commit */
 import { PrismaClient } from "@kg/db";
 
 const prisma = new PrismaClient();
 
-/** Topic name fragments that pin a topic to one language. */
 const TOPIC_LANGUAGE: [RegExp, string][] = [
   [/\bjavascript\b|\btypescript\b|\bnode(\.js)?\b|\breact\b/i, "javascript"],
   [/\bpython\b|\bdjango\b|\bpandas\b/i, "python"],
@@ -12,7 +11,7 @@ const TOPIC_LANGUAGE: [RegExp, string][] = [
   [/\bsql\b|\bpostgres\b/i, "sql"],
 ];
 
-/** Keep these narrow: a pattern that also matches another language retires a good item. */
+/** Keep these narrow: a pattern that also matches another language retires a good item */
 const PROSE_MARKERS: [RegExp, string][] = [
   [/\bin C\b|\bmalloc\b|\bcalloc\b|\brealloc\b|\bprintf\b|\bsizeof\b|\bstruct\s+\w+\s*\{|\bint\s+\w+\s*\[/, "c"],
   [/\bdef\s+\w+\s*\(|\bin Python\b|\bself\.|\b__init__\b|\bprint\(/, "python"],
@@ -21,7 +20,6 @@ const PROSE_MARKERS: [RegExp, string][] = [
   [/\bfunc\s+\w+\s*\(|\bin Go\b|\b:=\s/, "go"],
 ];
 
-/** The language an item is written in, from its tag or, failing that, its text. */
 function detectLanguage(item: { codeLanguage: string | null; prompt: string; code: string | null }): string | null {
   const tag = item.codeLanguage?.toLowerCase().trim();
   if (tag && tag !== "none") return tag;
@@ -31,7 +29,6 @@ function detectLanguage(item: { codeLanguage: string | null; prompt: string; cod
   return null;
 }
 
-/** Languages that are close enough not to count as a mismatch. */
 const COMPATIBLE: Record<string, string[]> = {
   javascript: ["javascript", "js", "typescript", "ts", "jsx", "tsx", "node"],
   python: ["python", "py"],
@@ -43,7 +40,6 @@ const COMPATIBLE: Record<string, string[]> = {
 async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
 
-  // Untagged items count too: the language is often inline in the prompt text.
   const items = await prisma.assessmentItem.findMany({
     where: { status: { not: "retired" } },
     include: { concept: { include: { topics: { include: { topic: true } } } } },
@@ -53,7 +49,7 @@ async function main(): Promise<void> {
 
   for (const item of items) {
     const topicNames = item.concept.topics.map((t) => t.topic.name);
-    // A mismatch only counts when every topic the concept sits under agrees on a language.
+    // A mismatch only counts when every topic the concept sits under agrees on a language
     const implied = new Set<string>();
     for (const name of topicNames) {
       for (const [pattern, lang] of TOPIC_LANGUAGE) if (pattern.test(name)) implied.add(lang);
@@ -62,7 +58,7 @@ async function main(): Promise<void> {
 
     const expected = [...implied][0]!;
     const actual = detectLanguage(item) ?? "";
-    if (actual === "") continue;                          // genuinely language-free
+    if (actual === "") continue;
     if (COMPATIBLE[expected]?.includes(actual)) continue;
     if (actual === "text" || actual === "pseudocode") continue;
 

@@ -5,13 +5,11 @@ export interface LabelledPair {
   proposed: { name: string; sense: string };
   existing: { name: string; sense: string };
   expected: ResolverVerdict;
-  /** Why this pair is here — what mistake it is designed to catch. */
   tests: string;
 }
 
-/** Chosen adversarially, not representatively: easy pairs are not what corrupts a graph. */
+/** Chosen adversarially, not representatively; easy pairs are not what corrupts a graph */
 export const PAIRS: LabelledPair[] = [
-  // true synonyms: different words, same concept
   {
     id: "synonym-event-loop",
     proposed: { name: "JavaScript concurrency model", sense: "Queue-and-turn scheduling of deferred work by the runtime." },
@@ -27,7 +25,6 @@ export const PAIRS: LabelledPair[] = [
     tests: "spelling variant of the same concept",
   },
 
-  // near-misses: very close, genuinely different
   {
     id: "near-promises-async",
     proposed: { name: "async/await", sense: "Syntax for writing promise-based code in a sequential style." },
@@ -50,7 +47,6 @@ export const PAIRS: LabelledPair[] = [
     tests: "routinely conflated by humans and models alike",
   },
 
-  // homonyms: same name, different field, and a false `same` is unrecoverable
   {
     id: "homonym-model-ml-mvc",
     proposed: { name: "Model", sense: "The data and business-logic layer in the MVC pattern." },
@@ -73,7 +69,6 @@ export const PAIRS: LabelledPair[] = [
     tests: "mathematics versus programming",
   },
 
-  // subsumption: the verdict a binary same/different cannot express
   {
     id: "subsume-flexbox",
     proposed: { name: "Flexbox", sense: "A one-dimensional CSS layout algorithm." },
@@ -96,7 +91,6 @@ export const PAIRS: LabelledPair[] = [
     tests: "a sub-topic that a model may call `same` because one name contains the other",
   },
 
-  // genuinely unrelated
   {
     id: "distinct-unrelated",
     proposed: { name: "photosynthesis", sense: "How plants convert light into chemical energy." },

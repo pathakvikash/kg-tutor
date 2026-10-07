@@ -6,7 +6,6 @@ import type { AdjudicationInput, Adjudicator } from "../src/adjudicate.js";
 export const prisma = new PrismaClient();
 
 export async function reset(): Promise<void> {
-  // Topics too, or a leftover one leaks into suites that count topics globally.
   await prisma.$executeRawUnsafe(
     `TRUNCATE "Edge", "ConceptAlias", "ConceptProposal", "Concept",
       "TopicConcept", "MilestoneConcept", "MilestoneTemplate", "Topic"
@@ -14,7 +13,7 @@ export async function reset(): Promise<void> {
   );
 }
 
-/** Scripted adjudicator — the resolver's plumbing is under test, not a model. */
+/** Scripted adjudicator, since the resolver's plumbing is under test, not a model */
 export class ScriptedAdjudicator implements Adjudicator {
   readonly name = "scripted";
   public calls: AdjudicationInput[] = [];

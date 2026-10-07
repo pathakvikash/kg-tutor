@@ -1,11 +1,7 @@
-/* Page-scoped styles for learn; shared tokens and primitives live in styles.css. */
-
 .lesson {
-  /* Wider than --measure: a transcript carries code blocks and widgets. */
   --chat-measure: 1040px;
 }
 
-/* Lesson head */
 .lesson-head {
   flex: none;
   display: flex;
@@ -31,7 +27,7 @@
 }
 .lesson-head-meta .sep { color: var(--rule-strong); }
 
-/* Page-scoped name on purpose; a bare .pill would leak to other pages. */
+/* Page-scoped name; a bare .pill would leak to other pages */
 .lesson-pill {
   font-family: var(--font-mono);
   font-size: var(--chip-size);
@@ -51,9 +47,8 @@
 }
 .lesson-pill--structure { border-color: var(--structure); color: var(--structure); }
 
-/* Conversation column */
 .chat {
-  /* Band drawn with padding, not a max-width, so the scroller stays full-width. */
+  /* Band drawn with padding, not a max-width, so the scroller stays full-width */
   width: 100%;
   padding-inline: max(var(--s-5), calc((100% - var(--chat-measure)) / 2));
   scroll-padding-top: var(--s-4);
@@ -76,7 +71,6 @@
 .chat-empty .panel { color: var(--ink-mid); }
 .empty-line { margin: 0; }
 
-/* Lesson landmark heading, at full chat measure rather than the turn cap. */
 .turn.system { max-width: var(--chat-measure); width: 100%; }
 .lesson-divider {
   display: flex;
@@ -96,7 +90,6 @@
   white-space: nowrap;
 }
 
-/* Turn roles; data-note splits reader-facing progress from diagnostics. */
 .turn.note[data-note="progress"] .bubble {
   font-family: var(--font-sans);
   font-size: var(--t-body);
@@ -138,7 +131,6 @@
 }
 .turn[data-kind="example"] { max-width: var(--chat-measure); }
 
-/* Plan complete */
 .done-card {
   max-width: var(--measure);
   align-self: flex-start;
@@ -154,7 +146,6 @@
 }
 .done-claims li[data-claimed] { color: var(--positive-text); }
 
-/* Composer */
 .composer { flex-direction: column; align-items: stretch; }
 .composer-inner {
   display: flex;
@@ -168,7 +159,6 @@
 .composer textarea {
   flex: 1 1 240px;
   min-width: 180px;
-  /* Height is grown in JS, so no resize handle. */
   resize: none;
   max-height: 150px;
   line-height: 1.5;
@@ -183,7 +173,6 @@
 }
 .check-actions .eyebrow { flex: 1 1 auto; }
 
-/* Inspector */
 .inspector-banner { margin-bottom: var(--s-4); }
 .inspector-head { align-items: baseline; gap: var(--s-2); }
 .inspector-head h4 { margin-bottom: 0; }
@@ -191,7 +180,6 @@
 .step-row[data-done] { opacity: 0.5; }
 .step-row-title { flex-wrap: nowrap; align-items: baseline; }
 .step-row-title strong { min-width: 0; }
-/* The current step must not be colour-only; the rail and chip carry it too. */
 .step-row--now {
   padding-left: var(--s-2);
   background: var(--accent-bg);
@@ -210,7 +198,6 @@
   cursor: pointer;
   padding: var(--s-1) 0;
 }
-/* Capped so an unbounded session list cannot push the plan out of the sidebar. */
 .history .session-list {
   max-height: 40vh;
   overflow-y: auto;
@@ -224,10 +211,9 @@
 .jump:hover { color: var(--accent-text); }
 .new-goal { width: 100%; }
 
-/* Intake */
 .intake-actions { margin-top: var(--s-3); }
 .build-hint { font-size: var(--t-small); }
-/* Already inside a red notice, so this stays unemphasised. */
+/* Already inside a red notice, so this stays unemphasised */
 .retry-failed { margin: 0 0 var(--s-2); font-size: var(--t-small); }
 .probe-hint { font-size: var(--t-small); margin-bottom: var(--s-3); }
 .probe-prompt { margin: var(--s-3) 0; }

@@ -27,7 +27,6 @@ describe("proposeConcept", () => {
     );
     expect(row?.has_vector).toBe(true);
 
-    // The alias is normalized, so a differently-cased proposal collides with it.
     const alias = await prisma.conceptAlias.findUnique({ where: { name: "closures" } });
     expect(alias?.conceptId).toBe(r.conceptId);
   });
@@ -48,7 +47,6 @@ describe("proposeConcept", () => {
     expect(r.outcome).toBe("bound");
     expect(r.conceptId).toBe(id);
     expect(await prisma.concept.count()).toBe(1);
-    // Both names now resolve to the one concept — nothing was merged or destroyed.
     expect(await prisma.conceptAlias.count({ where: { conceptId: id } })).toBe(2);
   });
 
@@ -81,7 +79,6 @@ describe("proposeConcept", () => {
       reasoning: "scripted",
     }));
 
-    // actionFor would happily alias to a bogus id; validateDecision is what stops it.
     const { validateDecision } = await import("../src/adjudicate.js");
     const { decision, downgraded } = validateDecision(
       await liar.adjudicate({
@@ -115,7 +112,6 @@ describe("proposeConcept", () => {
   });
 
   it("serializes concurrent proposals of the same name into one concept", async () => {
-    // Both callers decide "distinct"; the lock plus the recheck stops two Pythons.
     const results = await Promise.all([
       proposeConcept(deps(alwaysDistinct), { name: "Python", sense: "A general-purpose language." }),
       proposeConcept(deps(alwaysDistinct), { name: "Python", sense: "A general-purpose language." }),

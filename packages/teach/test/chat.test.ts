@@ -25,7 +25,6 @@ describe("routeChatQuestion", () => {
   });
 
   it("keeps the named concept even when it is not a known prerequisite", async () => {
-    // Still premium evidence — the learner named a gap the graph does not record. (19)
     const r = await route({
       intent: "prerequisite_gap", prerequisiteIndex: null,
       namedConcept: "microtask queue", reasoning: "",
@@ -75,7 +74,6 @@ describe("new_goal", () => {
       namedConcept: "JavaScript", reasoning: "asked for a roadmap",
     });
     expect(r.intent).toBe("new_goal");
-    // The subject, extracted as a topic name — this is what seeds the roadmap.
     expect(r.namedConcept).toBe("JavaScript");
     expect(r.prerequisiteConceptId).toBeNull();
   });

@@ -6,12 +6,11 @@ import { atLeast } from "@kg/shared";
 import { prisma, getLlm } from "../context.js";
 
 const resolveSchema = z.object({
-  /** subject = a body of knowledge; outcome = a capability or role. (08) */
+  /** subject = a body of knowledge; outcome = a capability or role */
   kind: z.enum(["subject", "outcome"]),
   canonicalName: z.string().min(1),
   description: z.string(),
   depth: z.enum(["use", "debug", "build"]),
-  /** For an outcome, the subjects it decomposes into. Empty for a subject. */
   components: z.array(z.string()).default([]),
 });
 
@@ -33,7 +32,6 @@ reach it. Real subjects that can be taught, not phases of a career.
 Respond with JSON: {"kind","canonicalName","description","depth","components"}`;
 
 export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
-  /** The front door: free text in, a structured goal out. (08) */
   app.post("/api/roadmap/resolve", async (req, reply) => {
     const body = z.object({ goal: z.string().min(2) }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
@@ -47,7 +45,6 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
       resolveSchema,
     );
 
-    // An existing topic is reused rather than duplicated, as with the concept resolver.
     const existing = await prisma.topic.findFirst({
       where: { name: { equals: parsed.canonicalName, mode: "insensitive" } },
       include: { _count: { select: { concepts: true } } },
@@ -57,12 +54,10 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
       ...parsed,
       topicId: existing?.id ?? null,
       conceptCount: existing?._count.concepts ?? 0,
-      /** What still has to happen before a plan can exist. */
       needsExpansion: !existing || existing._count.concepts === 0,
     };
   });
 
-  /** An outcome decomposes into subjects; the outcome itself is not teachable. */
   app.post("/api/roadmap/outcome", async (req, reply) => {
     const body = z
       .object({
@@ -92,10 +87,9 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
     return { outcome: { id: outcome.id, name: outcome.name }, components };
   });
 
-  /** The ordered path, the milestones, and what is already behind the learner. */
   app.get("/api/roadmap/:learnerId", async (req, reply) => {
     const { learnerId } = req.params as { learnerId: string };
-    // Mastery reached outside a lesson still completes a step, so reconcile on read.
+    // Mastery reached outside a lesson still completes a step, so reconcile on read
     await reconcilePlan(prisma, learnerId);
     const plan = await prisma.plan.findFirst({
       where: activePlanWhere(learnerId),
@@ -118,9 +112,7 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
       goal: { topic: plan.goal.topic.name, kind: plan.goal.topic.kind, depth: plan.goal.depth },
       version: plan.version,
       totalConcepts: plan.steps.length,
-      /** What the learner knows, which is what a progress bar is claiming to show. */
       completed: plan.steps.filter((s) => atLeast(mastery.get(s.conceptId) ?? "unknown", s.requiredLevel)).length,
-      /** Steps that were actually taught, which is a different and smaller number. */
       taught: plan.steps.filter((s) => s.completedAt).length,
       milestones: plan.milestones.map((m) => ({
         claim: m.template.claim,
@@ -134,7 +126,6 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
           currentMastery: mastery.get(c.conceptId) ?? "unknown",
         })),
       })),
-      /** Steps not claimed by any milestone still have to be taught. */
       steps: plan.steps.map((s) => ({
         conceptId: s.conceptId,
         name: s.concept.canonicalName,

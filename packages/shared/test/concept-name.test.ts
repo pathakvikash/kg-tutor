@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { checkConceptName } from "../src/concept-name.js";
 
 describe("checkConceptName", () => {
-  /** Every one of these was written into the graph by a real expansion. */
   const observed: [string, string][] = [
     ["Arrays or Linked Lists", "disjunction"],
     ["Recursion or iterative traversal", "disjunction"],
@@ -23,7 +22,6 @@ describe("checkConceptName", () => {
     });
   }
 
-  /** The other 28 from the same expansion were fine and must stay fine. */
   const good = [
     "Array", "Dynamic Array", "Static Arrays", "Binary Search Tree", "Binary Heap",
     "Hash Function", "Hash Table", "Hash Collision Resolution", "Linked List",

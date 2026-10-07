@@ -2,7 +2,6 @@ import type { PrismaClient } from "@kg/db";
 import { atLeast, type MasteryLevel } from "@kg/shared";
 import { activePlanWhere, loadMastery } from "./plan.js";
 
-/** Completion is derived from mastery, since mastery does not only arrive from lessons. */
 export async function reconcilePlan(
   prisma: PrismaClient,
   learnerId: string,
@@ -33,7 +32,6 @@ export async function reconcilePlan(
   const milestones: string[] = [];
   for (const m of plan.milestones) {
     if (m.completedAt) continue;
-    // A milestone claiming no concepts is malformed, not satisfied.
     if (m.template.concepts.length === 0) continue;
     if (!m.template.concepts.every((c) => met(c.conceptId, c.requiredLevel))) continue;
     await prisma.milestoneInstance.update({ where: { id: m.id }, data: { completedAt: now } });

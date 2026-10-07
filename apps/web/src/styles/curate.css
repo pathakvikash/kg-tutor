@@ -1,5 +1,3 @@
-/* Page-scoped styles for curate; shared tokens and primitives live in styles.css. */
-
 .cur > .notice,
 .cur .cur-lead,
 .cur .cur-sub,
@@ -16,7 +14,6 @@
   line-height: 1.5;
 }
 
-/* Decision text uses --ink-mid; --ink-soft is too faint to carry it. */
 .cur-sub,
 .cur-note,
 .cur-detail,
@@ -42,7 +39,6 @@
 
 .cur-sk { margin-bottom: var(--s-3); }
 
-/* Near misses */
 .cur-misses summary { cursor: pointer; font-weight: 600; }
 .cur-misses ul { list-style: none; margin: var(--s-2) 0 0; padding: 0; }
 .cur-misses li {
@@ -53,7 +49,6 @@
 .cur-miss-meta { font-size: var(--t-meta); color: var(--ink-mid); }
 .cur-miss-links { display: flex; flex-wrap: wrap; gap: var(--s-3); font-size: var(--t-meta); }
 
-/* Open proposals: one panel each, since a table overflows at narrow widths. */
 .cur-proposals, .cur-decided { display: flex; flex-direction: column; gap: var(--s-3); }
 
 .cur-card-head { align-items: baseline; margin-bottom: var(--s-1); }
@@ -67,7 +62,7 @@
   border-bottom: 1px solid var(--rule);
 }
 
-/* No hue on these numbers: --danger and --positive-text resolve wrong in dark mode. */
+/* No hue on these numbers: --danger and --positive-text resolve wrong in dark mode */
 .cur-shift { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s-2); }
 .cur-rate {
   font-family: var(--font-serif); font-size: var(--t-h); line-height: 1;
@@ -79,7 +74,7 @@
   margin: 0;
   font-size: var(--t-meta); color: var(--ink-mid); line-height: 1.4;
 }
-/* Scoped to the row; in the flex column a flex-basis reads as a height. */
+/* Scoped to the row; in the flex column a flex-basis reads as a height */
 .cur-shift > .cur-shift-t { flex: 1 1 220px; }
 
 .cur-meters { display: flex; flex-wrap: wrap; gap: var(--s-5); }
@@ -96,7 +91,7 @@
   background: var(--rule-strong); border-radius: var(--r-pill);
 }
 .cur-bar-fill.is-met { background: var(--m-functional); }
-/* The threshold tick sits at the midpoint because the scale is twice the threshold. */
+/* The threshold tick sits at the midpoint because the scale is twice the threshold */
 .cur-bar-tick {
   position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
   background: var(--ink-mid);
@@ -113,7 +108,6 @@
   font-family: var(--font-mono); font-size: var(--t-micro); font-weight: 500;
   letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft);
 }
-/* The contract, stated where the field is, instead of hinted at in a placeholder. */
 .cur-contract {
   margin: 0 0 var(--s-2); max-width: var(--measure-narrow);
   font-size: var(--t-small); color: var(--ink-mid); line-height: 1.55;
@@ -130,7 +124,6 @@
   display: flex; align-items: flex-start; flex-wrap: wrap;
   gap: var(--s-3); margin-top: var(--s-3);
 }
-/* Keep Reject away from Accept so the two decisions cannot be misclicked. */
 .cur-reject { margin-left: auto; }
 .cur-confirm { margin-top: var(--s-2); max-width: var(--measure-narrow); }
 @media (max-width: 620px) {
@@ -141,13 +134,12 @@
 .cur-decision-meta { margin: var(--s-1) 0 var(--s-2); font-size: var(--t-meta); color: var(--ink-mid); }
 .cur-decision .head { gap: var(--s-2); }
 
-/* Read-only tables; the scroll stays local instead of moving the whole page. */
 .table-wrap > .cur-table { min-width: 560px; }
 .cur-table td { vertical-align: top; }
 .cur-table a { text-decoration: none; }
 .cur-table a:hover { text-decoration: underline; }
 
-/* Stacked, not inline: this lives in the narrowest column of the widest table. */
+/* Stacked, not inline: this lives in the narrowest column of the widest table */
 .cur-dismiss {
   display: flex; flex-direction: column; align-items: flex-start;
   gap: var(--s-1); margin-top: var(--s-1);
@@ -155,7 +147,6 @@
 .cur-dismiss input { width: 100%; min-width: 0; }
 .cur-dismissed { margin-top: var(--s-2); font-size: var(--t-small); }
 .cur-dismissed ul { list-style: none; margin: var(--s-2) 0 0; padding: 0; }
-/* The second group: stored here, but not what this list is hiding right now. */
 .cur-dismissed-note { margin: var(--s-3) 0 0; color: var(--ink-mid); }
 .cur-dismissed li {
   display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: baseline;

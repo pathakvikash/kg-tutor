@@ -5,7 +5,6 @@ import { join } from "node:path";
 
 export interface ExecuteRequest {
   code: string;
-  /** Appended after the learner's code; usually assertions. */
   harness?: string | undefined;
   timeoutMs?: number | undefined;
 }
@@ -25,7 +24,7 @@ function clip(s: string): string {
   return s.length > MAX_OUTPUT ? `${s.slice(0, MAX_OUTPUT)}\n…output truncated` : s;
 }
 
-/** Isolation, not a sandbox: hostile code still reaches the filesystem and the network. (16) */
+/** Isolation, not a sandbox; hostile code still reaches the filesystem and the network */
 export async function executeJs(req: ExecuteRequest): Promise<ExecuteResult> {
   const timeoutMs = req.timeoutMs ?? 5_000;
   const dir = await mkdtemp(join(tmpdir(), "kg-exec-"));
@@ -38,7 +37,6 @@ export async function executeJs(req: ExecuteRequest): Promise<ExecuteResult> {
     return await new Promise<ExecuteResult>((resolve) => {
       const child = spawn(process.execPath, ["--no-warnings", file], {
         cwd: dir,
-        // A stripped environment: no API keys, no DATABASE_URL, nothing inherited.
         env: { PATH: "/usr/bin:/bin", NODE_ENV: "sandbox" },
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
@@ -58,7 +56,7 @@ export async function executeJs(req: ExecuteRequest): Promise<ExecuteResult> {
 
       const timer = setTimeout(() => {
         timedOut = true;
-        // Kill the group, not just the child — a spawned grandchild would outlive it.
+        // Kill the group, not just the child, or a spawned grandchild outlives it
         try {
           if (child.pid) process.kill(-child.pid, "SIGKILL");
         } catch {

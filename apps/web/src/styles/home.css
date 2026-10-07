@@ -1,6 +1,3 @@
-/* Page-scoped styles for home; shared tokens and primitives live in styles.css. */
-
-/* Shared button treatments; these belong in styles.css, not in a page sheet. */
 .btn--primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -9,7 +6,7 @@
 }
 .btn--primary:hover { color: var(--on-accent); opacity: 0.9; }
 
-/* button:hover in styles.css paints accent, so bare controls reset the colour. */
+/* button:hover in styles.css paints accent, so bare controls reset the colour */
 .btn--bare {
   border: none;
   background: none;
@@ -22,25 +19,21 @@
 }
 .btn--bare:hover { color: var(--ink); }
 
-/* Inert controls use aria-disabled, so hover colour is neutralised by hand. */
 .home [aria-disabled="true"]:hover { color: var(--ink); }
 .home .btn--primary[aria-disabled="true"]:hover {
   border-color: var(--accent);
   color: var(--on-accent);
 }
 
-/* Head and single-panel states */
 .home-top { margin-bottom: var(--s-5); }
 .home-top h2 { margin-bottom: var(--s-1); }
 .home-solo { margin-bottom: var(--s-5); }
 
-/* Cards; the auto-fit grid itself lives in styles.css. */
 .home-card { gap: var(--s-2); }
 .home-card > p { margin: 0; font-size: var(--t-body); line-height: 1.55; }
 .home-card--lead { grid-column: 1 / -1; }
 
 .home-card-head { justify-content: space-between; gap: var(--s-3); }
-/* Only the lead card gets the serif voice. */
 .home-card-title {
   font-family: var(--font-serif);
   font-size: var(--t-lead);
@@ -78,7 +71,7 @@
   text-align: right;
 }
 
-/* Specificity, not preference: `.home-card > p` above outranks a bare class. */
+/* Specificity, not preference: `.home-card > p` above outranks a bare class */
 .home-card > p.home-transition { font-size: var(--t-small); }
 .home-card > p.home-goal { font-size: var(--t-small); }
 .home-transition .mono { font-size: var(--t-meta); color: var(--ink-mid); }
@@ -86,7 +79,6 @@
 
 .home-fail-why { margin: 0 0 var(--s-2); }
 
-/* Builds; finished jobs stay for the session, so this list can grow. */
 .home-jobs {
   list-style: none;
   margin: 0;
@@ -102,7 +94,6 @@
 .home-job-tick .mono { font-size: var(--t-meta); }
 .home-job-report, .home-job-note { font-size: var(--t-small); }
 
-/* The due list; tracks are max-content so a narrow row collapses instead of overflowing. */
 .home-list { margin-top: var(--s-6); }
 .home-list-head { margin-bottom: var(--s-2); }
 .home-due-rows { list-style: none; margin: 0; padding: 0; }
@@ -120,7 +111,6 @@
   border-radius: var(--r-sm);
 }
 .home-due-open:hover { background: var(--surface-alt); }
-/* Overrides the shared due-kind uppercase; these labels are whole phrases. */
 .home-due .due-kind {
   text-transform: none;
   letter-spacing: 0.01em;
@@ -140,14 +130,12 @@
 .home-more { margin: var(--s-3) 0 0; font-size: var(--t-small); }
 
 @media (max-width: 700px) {
-  /* Kind first, on its own line: it is the ranking, and it is the widest track. */
   .home-due-open { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
   .home-due-open .due-kind { justify-self: start; }
 }
 
-/* Working language */
 .home-lang { margin-top: var(--s-6); }
-/* Not a flex container: Chrome drops the disclosure marker on a flex summary. */
+/* Not a flex container: Chrome drops the disclosure marker on a flex summary */
 .home-lang-summary { cursor: pointer; font-size: var(--t-small); }
 .home-lang-summary .eyebrow { display: inline; }
 .home-lang-value { font-weight: 600; margin-left: var(--s-2); }
@@ -161,4 +149,4 @@
   color: var(--positive-text);
   max-width: var(--measure-narrow);
 }
-/* Kept in the DOM when empty; a live region added on success announces unreliably. */
+/* Kept in the DOM when empty; a live region added on success announces unreliably */

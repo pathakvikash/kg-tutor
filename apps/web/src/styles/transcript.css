@@ -1,6 +1,6 @@
-/* Transcript page styles; loaded after styles.css, so equal-specificity rules here win. */
+/* Transcript page styles; loaded after styles.css, so equal-specificity rules here win */
 
-/* Two classes, to beat .inspector h4 and .build-section h4 on specificity. */
+/* Two classes, to beat .inspector h4 and .build-section h4 on specificity */
 .md .md-h {
   font-family: var(--font-serif);
   font-weight: 600;
@@ -13,7 +13,7 @@
 .md .md-h2 { font-size: var(--t-section); }
 .md .md-h3,
 .md .md-h4 { font-size: var(--t-body); }
-/* `.md > *:first-child` in styles.css loses the tie to `.md-h`. */
+/* `.md > *:first-child` in styles.css loses the tie to `.md-h` */
 .md > .md-h:first-child { margin-top: 0; }
 
 .w-root .w-heading {
@@ -26,7 +26,6 @@
   margin: 0 0 2px;
 }
 
-/* Container queries: the widget column width is not the viewport width. */
 .chat,
 .inspector,
 .w-root { container-type: inline-size; }
@@ -35,22 +34,18 @@
   .w-compare { grid-template-columns: 1fr; }
 }
 
-/* Qualified by .w-root to match the specificity of the base collapse rule. */
 .w-root .w-regions { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 @container (max-width: 288px) {
-  /* 288px is where auto-fit drops to one column on its own. */
   .w-root .w-regions { grid-template-columns: 1fr; }
 }
-/* Region labels wrap instead of truncating in a narrow column. */
 .w-region-title {
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
 }
 
-/* Step dots need a 24px target, so the visible 9px dot is a pseudo-element. */
 .w-tl-dots {
-  gap: var(--s-4); /* 16px, or the 25px targets overlap */
+  gap: var(--s-4);
   row-gap: var(--s-4);
   flex-wrap: wrap;
 }
@@ -72,19 +67,16 @@
   position: absolute;
   inset: var(--s-2);
   border-radius: var(--r-pill);
-  /* --ink-soft, not --rule-strong: this ring is the whole boundary of a control. */
+  /* --ink-soft, not --rule-strong: this ring is the whole boundary of a control */
   border: 1.5px solid var(--ink-soft);
   background: var(--surface);
   transition: transform var(--dur-fast) var(--ease);
 }
-/* Hollow ring = not reached, filled = done, amber donut = here. */
 .w-tl-dots .dot.done::before {
   background: var(--ink-soft);
   border-color: var(--ink-soft);
 }
-/* An inset ring, not an outer halo, which would widen the hit rect into its neighbours. */
 .w-tl-dots .dot.on {
-  /* Cancels the base scale, which would grow the hit area into its neighbours. */
   transform: none;
 }
 .w-tl-dots .dot.on::before {
@@ -98,10 +90,8 @@
   .w-tl-dots .dot::before { transition: none; }
 }
 
-/* Only the hover colour: `button:hover` would still turn an inert label amber. */
 .w-tl-head button[aria-disabled="true"]:hover { color: var(--ink); }
 
-/* Quiz options: the glyph and its .sr-only twin carry the outcome without hue. */
 .w-root .w-opt {
   display: flex;
   align-items: flex-start;
@@ -122,12 +112,11 @@
   line-height: inherit;
 }
 .w-root .w-opt-label { min-width: 0; }
-/* An answered option is inert, not blocked, so the global fade is undone here. */
 .w-root .w-opt[aria-disabled="true"] {
   opacity: 1;
   cursor: default;
 }
-/* Must follow the rule above at equal specificity to keep the unchosen fade. */
+/* Must follow the rule above at equal specificity to keep the unchosen fade */
 .w-root .w-opt.dim { opacity: 0.62; }
 .w-root .w-opt.dim:hover {
   border-color: var(--rule-strong);
@@ -135,15 +124,12 @@
 }
 .w-root .w-feedback.right { color: var(--positive-text); }
 
-/* Build log. 150px, or the two longest event labels wrap. */
 .ev { grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1.4fr); }
-/* Hue only carries succeeded/failed; the label already names the kind. */
 .ev.concept_created .ev-kind,
 .ev.milestone_written .ev-kind { color: var(--positive-text); }
 .ev.name_rejected .ev-kind,
 .ev.milestone_rejected .ev-kind,
 .ev.milestones_failed .ev-kind { color: var(--danger); }
-/* The one event that means the build gave up on a whole phase. */
 .ev.milestones_failed {
   box-shadow: inset 3px 0 0 var(--danger);
   background: var(--danger-bg);
@@ -157,7 +143,6 @@
   line-clamp: 2;
 }
 @media (max-width: 700px) {
-  /* Repeats the base single-column rule, which the .ev above would outrank. */
   .ev { grid-template-columns: 1fr; }
   .ev-detail {
     -webkit-line-clamp: 4;
@@ -165,5 +150,5 @@
   }
 }
 
-/* Model tables: min-width must not exceed the bubble the table renders in. */
+/* Model tables: min-width must not exceed the bubble the table renders in */
 .md-table { min-width: min(320px, 100%); }

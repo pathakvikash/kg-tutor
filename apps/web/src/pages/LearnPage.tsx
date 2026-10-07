@@ -11,9 +11,8 @@ import { DEPTH_LABEL, MASTERY_MEANING } from "../vocabulary";
 import type { Mastery } from "../api";
 
 interface Turn {
-  /** Server row id, present only on turns that came back from the transcript. */
   id?: string;
-  /** Stable client key; the streaming turn is found by this, never by array index. */
+  /** Stable client key; the streaming turn is found by this, never by array index */
   lid: string;
   createdAt?: string;
   role: string;
@@ -22,21 +21,17 @@ interface Turn {
     kind?: string; itemId?: string; requiresTransfer?: boolean;
     intent?: string; language?: string; spec?: unknown; goalText?: string;
     streaming?: boolean; stopped?: boolean; code?: string | null; codeLanguage?: string | null;
-    /** Grade turns: matches the meta the server persists, so a reload renders the same. */
     correct?: boolean; chips?: string[];
-    /** Splits the old catch-all .turn.note into progress the learner cares about and diagnostics. */
     note?: "progress" | "diag";
   } | null;
 }
 
-/** What is on screen, so "not asked yet" stops being drawn as "nothing here". */
 type Phase = "loading" | "ready" | "failed";
 
 interface Failure {
   title: string;
   message: string;
   remedy?: string | null;
-  /** Bound to the operation that failed, so retrying does not mean guessing. */
   retry?: () => void;
   retryLabel?: string;
 }
@@ -49,7 +44,7 @@ function failureOf(err: unknown): { message: string; remedy: string | null } {
   return { message: err instanceof Error ? err.message : String(err), remedy: null };
 }
 
-/** Only enough to offer the learner a choice; grading is irreversible. */
+/** Only enough to offer the learner a choice; grading is irreversible */
 function looksLikeQuestion(text: string): boolean {
   const t = text.trim();
   if (t.endsWith("?")) return true;
@@ -75,7 +70,7 @@ export function LearnPage() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState<{ label: string; step?: string } | null>(null);
-  /** Separate from `busy`, which clears at the first byte while the answer is still arriving. */
+  /** Separate from `busy`, which clears at the first byte while the answer is still arriving */
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<Failure | null>(null);
   const [pending, setPending] = useState<{ itemId: string; prompt: string; requiresTransfer: boolean } | null>(null);
@@ -86,19 +81,17 @@ export function LearnPage() {
   const [showIntake, setShowIntake] = useState(false);
   const [intakeGoal, setIntakeGoal] = useState<string | null>(null);
   const [override, setOverride] = useState<{ conceptId: string; name: string } | null>(null);
-  /** Held text that reads as a question while a check is open, awaiting the learner's call. */
   const [ambiguous, setAmbiguous] = useState<string | null>(null);
   const [due, setDue] = useState<number | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
 
-  /** One token per operation; with no AbortSignal, Stop only discards the result. */
+  /** One token per operation; with no AbortSignal, Stop only discards the result */
   const op = useRef(0);
   const begin = () => ++op.current;
   const live = (token: number) => op.current === token;
 
   useEffect(() => {
-    // The stored learner still has to be resolved against the server's roster.
     void api.learners()
       .then((l) => setLearnerId(resolveLearner(learnerId, l)))
       .catch(() => undefined);
@@ -109,18 +102,16 @@ export function LearnPage() {
     if (!id) { setPhase("ready"); return null; }
     setPhase("loading"); setError(null);
     void api.sessions(id).then(setSessions).catch(() => undefined);
-    // Returned as well as stored: callers cannot read the fresh plan out of state yet.
     let loaded: any = null;
     let broke: Failure | null = null;
     try { loaded = await api.plan(id); setPlan(loaded); }
     catch (err) {
       setPlan(null);
-      // Only a 404 confirms an empty plan; any other error is unknown, not empty.
+      // Only a 404 confirms an empty plan; any other error is unknown, not empty
       if (!(err instanceof HttpError && err.isMissing)) {
         broke = { title: "Your plan could not be loaded.", ...failureOf(err) };
       }
     }
-    // Resume the open session rather than starting blank on every reload.
     try {
       const t = await api.transcript(id);
       const rows: Turn[] = (t.turns ?? []).map((x: any) => ({ ...x, lid: x.id ?? nextLid() }));
@@ -155,13 +146,12 @@ export function LearnPage() {
 
   useEffect(() => { void load(learnerId); setViewingSession(null); }, [learnerId, load]);
 
-  /** Progress only; `load` also replaces the transcript, which is wrong mid-session. */
+  /** Progress only; `load` also replaces the transcript, which is wrong mid-session */
   const refreshPlan = useCallback(async (id: string) => {
     if (!id) return;
     try { setPlan(await api.plan(id)); } catch { /* keep the plan we have */ }
   }, []);
 
-  /** An interrupted assessment reopens itself rather than waiting behind a button. */
   useEffect(() => {
     if (!learnerId) return;
     let cancelled = false;
@@ -170,7 +160,6 @@ export function LearnPage() {
         const r = await api.openIntake(learnerId);
         if (!cancelled && r?.intake) { setShowIntake(true); return; }
       } catch { /* fall through */ }
-      // A graph build in flight counts too: nothing else can reattach to it.
       try {
         const jobs = await api.expansions();
         if (cancelled) return;
@@ -187,7 +176,7 @@ export function LearnPage() {
   const current = override ?? (planned ? { conceptId: planned.conceptId, name: planned.name } : null);
   const readOnly = !!viewingSession;
   const locked = !!busy || streaming;
-  /** Every step met. `current` is null here, so the whole composer would otherwise go inert. */
+  /** Every step met. `current` is null here, so the whole composer would otherwise go inert */
   const planComplete =
     phase === "ready" && !!plan && plan.steps.length > 0 &&
     plan.steps.every((s: any) => s.completed) && !override;
@@ -203,7 +192,6 @@ export function LearnPage() {
 
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [turns, busy]);
 
-  // Grows with what is typed, up to about six rows, then scrolls.
   useEffect(() => {
     const el = composer.current;
     if (!el) return;
@@ -221,7 +209,7 @@ export function LearnPage() {
       return next;
     });
 
-  /** A stream can end without `done` or `failed`, so every bubble needs resolving. */
+  /** A stream can end without `done` or `failed`, so every bubble needs resolving */
   const settleStream = (lid: string) =>
     setTurns((prev) => {
       const i = prev.findIndex((t) => t.lid === lid);
@@ -233,7 +221,6 @@ export function LearnPage() {
       return next;
     });
 
-  /** Switching to a past session shows it read-only until it is resumed. */
   const openSession = async (id: string) => {
     if (locked) return;
     begin();
@@ -320,7 +307,6 @@ export function LearnPage() {
     const target = conceptId ?? current?.conceptId;
     if (!target) return;
     const token = begin();
-    // Two model calls, labelled separately so a long wait reads as two steps.
     setBusy({ label: "writing the explanation", step: "step 1 of 2" });
     setError(null); setPending(null); setDetour(null); setAmbiguous(null);
     try {
@@ -353,7 +339,6 @@ export function LearnPage() {
     } finally { if (live(token)) setBusy(null); }
   };
 
-  /** The graded path. Everything here is permanent, so nothing reaches it by accident. */
   const grade = async (text: string) => {
     if (locked || readOnly || !current || !pending) return;
     const token = begin();
@@ -372,7 +357,6 @@ export function LearnPage() {
       push({
         role: "tutor",
         text: r.grade.correct ? `**Correct.** ${r.grade.reasoning}` : `**Not quite.** ${r.grade.reasoning}`,
-        // Same shape the server persists for this turn, so a reload renders it the same way.
         meta: {
           kind: "grade", correct: r.grade.correct,
           chips: [
@@ -387,7 +371,6 @@ export function LearnPage() {
       if (r.action.kind === "detour") {
         setDetour({ conceptId: r.action.prerequisiteConceptId, name: r.action.prerequisiteName });
       }
-      // Advance only when evidence actually earned it; the server re-checks.
       try {
         const done = await api.completeStep(learnerId, current.conceptId);
         if (done.completedMilestones?.length) {
@@ -395,7 +378,6 @@ export function LearnPage() {
         }
         setOverride(null);
       } catch (err) {
-        // Only "not yet at the required level" is expected here; nothing else stays quiet.
         const message = err instanceof Error ? err.message : String(err);
         if (!/not yet at the required level/i.test(message)) {
           push({ role: "note", meta: { note: "progress" }, text: `Could not advance the plan: ${message}` });
@@ -404,7 +386,6 @@ export function LearnPage() {
       await refreshPlan(learnerId);
     } catch (err) {
       if (!live(token)) return;
-      // Grading never happened, so the answer goes back to being unsent.
       setTurns((prev) => prev.filter((t) => t.lid !== mine));
       setInput(text);
       setError({
@@ -414,7 +395,6 @@ export function LearnPage() {
     } finally { if (live(token)) setBusy(null); }
   };
 
-  /** The ungraded path. A check stays open across it — asking is not answering. */
   const ask = async (text: string) => {
     if (locked || readOnly || !current) return;
     const token = begin();
@@ -424,12 +404,10 @@ export function LearnPage() {
 
     const streamLid = nextLid();
     let visualFor: string | null = null;
-    /** Whether the answer already reached an end the learner was told about. */
     let settled = false;
 
     try {
       await askStream(learnerId, current.conceptId, text, {
-        // The bubble must open before routing, or early deltas have nowhere to land.
         onOpen: () => {
           if (!live(token)) return;
           setBusy(null); setStreaming(true);
@@ -438,7 +416,6 @@ export function LearnPage() {
         onRouted: (r) => {
           if (!live(token)) return;
           setBusy(null);
-          // Annotates the answer already on screen; it never decides whether to show one.
           patch(streamLid, (t) => ({ ...t, meta: { ...t.meta, intent: r.intent } }));
           if (r.action === "start_roadmap") {
             push({ role: "goal-offer", text: r.goalText ?? text, meta: { goalText: r.goalText } });
@@ -465,7 +442,6 @@ export function LearnPage() {
           settled = true;
           patch(streamLid, (t) => ({ ...t, meta: { ...t.meta, streaming: false } }));
           setStreaming(false);
-          // Only after the text has landed, so the simulation is not competing with it.
           if (visualFor) void showMe(visualFor);
         },
         onFailed: (message) => {
@@ -489,7 +465,6 @@ export function LearnPage() {
     } finally {
       if (live(token)) {
         setBusy(null); setStreaming(false);
-        // A stream that ends with no event is a failure, not a success.
         if (!settled) {
           settleStream(streamLid);
           setError({
@@ -507,13 +482,11 @@ export function LearnPage() {
     const text = input.trim();
     if (!text || !current || locked || readOnly) return;
     setInput("");
-    // With a check open, a graded question costs permanent evidence, so ask first.
     if (pending && looksLikeQuestion(text)) { setAmbiguous(text); return; }
     if (pending) { void grade(text); return; }
     void ask(text);
   };
 
-  /** Session-local: the check itself stays on the server and returns on a reload. */
   const skipCheck = () => {
     if (locked || readOnly || !pending) return;
     setPending(null); setAmbiguous(null);
@@ -529,9 +502,8 @@ export function LearnPage() {
     push({ role: "note", meta: { note: "progress" }, text: "Stopped." });
   };
 
-  /** Builds a steppable example for the sequencing that prose cannot show. */
   const showMe = async (focus?: string) => {
-    // `locked` too: begin() mid-answer would invalidate the live stream's token.
+    // `locked` too: begin() mid-answer would invalidate the live stream's token
     if (!current || readOnly || locked) return;
     const token = begin();
     setBusy({ label: "building an interactive example" }); setError(null);
@@ -541,7 +513,6 @@ export function LearnPage() {
       push({ role: "widget", text: w.conceptName, meta: { spec: w.spec } });
     } catch (err) {
       if (!live(token)) return;
-      // A failed widget is not a failed lesson.
       push({
         role: "note", meta: { note: "progress" },
         text: `Could not build an interactive example: ${failureOf(err).message}`,
@@ -550,7 +521,6 @@ export function LearnPage() {
   };
 
   const reset = async () => {
-    // Start over stays available in flight; it is the way out of a slow answer.
     const token = begin();
     setBusy({ label: "starting over" }); setStreaming(false);
     try {
@@ -579,7 +549,6 @@ export function LearnPage() {
           onComplete={() => {
             setShowIntake(false);
             setIntakeGoal(null);
-            // The summary promises a first step, so actually start it here.
             void load(learnerId).then((fresh) => {
               push({ role: "roadmap", text: "" });
               const first = fresh?.steps?.find((st: any) => !st.completed);
@@ -655,7 +624,6 @@ export function LearnPage() {
                   Next up: <strong>{current.name}</strong>. Start the lesson, then ask anything.
                 </p>
               ) : (
-                // Only reached when the server actually said this learner has no plan.
                 <div className="panel panel--dashed stack">
                   <p className="empty-line">No plan yet — nothing has been set as a goal.</p>
                   <button className="primary" onClick={() => setShowIntake(true)}>
@@ -669,7 +637,7 @@ export function LearnPage() {
           {turns.map((t) => {
             const stamp = relativeTime(t.createdAt);
             if (t.role === "system") {
-              // A real heading: the inspector's jump-list needs a target.
+              // A real heading: the inspector's jump-list needs a target
               return (
                 <div className="turn system" key={t.lid} id={`lesson-${t.lid}`}>
                   <h2 className="lesson-divider">
@@ -721,7 +689,6 @@ export function LearnPage() {
                   {t.role === "roadmap" ? (
                     <Roadmap
                       learnerId={learnerId}
-                      // A past session is read-only; picking here would teach into the open one.
                       onPick={readOnly ? undefined : (conceptId, name) => {
                         setOverride({ conceptId, name });
                         void teach(conceptId, name);
@@ -751,12 +718,10 @@ export function LearnPage() {
                   ) : t.role === "widget" ? (
                     <Widget spec={t.meta?.spec} />
                   ) : t.role === "code" ? (
-                    // Fenced so the example is highlighted and its markdown stays literal.
                     <Markdown text={`\`\`\`${t.meta?.language ?? ""}\n${t.text}\n\`\`\``} />
                   ) : (
                     <>
                       <Markdown text={t.text} />
-                      {/* A separate field so the snippet's line breaks survive. */}
                       {t.meta?.code && (
                         <Markdown
                           text={`\`\`\`${t.meta.codeLanguage ?? ""}\n${t.meta.code}\n\`\`\``}
@@ -810,7 +775,6 @@ export function LearnPage() {
           )}
 
           {busy && (
-            // Keyed on the label so the clock restarts for each step.
             <div className="turn busy-turn" key={busy.label}>
               <Busy label={busy.step ? `${busy.label} · ${busy.step}` : busy.label} block />
             </div>
@@ -844,7 +808,7 @@ export function LearnPage() {
           )}
 
           {error && (
-            // Its own role, not .turn.note: that selector outranks .err on specificity.
+            // Not .turn.note, whose selector outranks .err on specificity
             <div className="turn failure">
               <div className="notice notice--error" role="alert">
                 <strong>{error.title}</strong>
@@ -920,7 +884,6 @@ export function LearnPage() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
-                    // Shift+Enter is a newline; an IME composition commit is not a send.
                     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                       e.preventDefault();
                       send();
@@ -934,7 +897,7 @@ export function LearnPage() {
                   aria-describedby={pending ? "check-hint" : undefined}
                   disabled={!current}
                 />
-                {/* One element, two actions: swapping buttons would drop focus mid-answer. */}
+                {/* One element, two actions: swapping buttons would drop focus mid-answer */}
                 <button
                   className="primary"
                   onClick={locked ? stop : send}
@@ -958,7 +921,6 @@ export function LearnPage() {
                 >
                   Show me
                 </button>
-                {/* Enabled while busy on purpose: it is the way out of a slow answer. */}
                 {turns.length > 0 && <button onClick={() => void reset()}>Start over</button>}
               </>
             )}
@@ -1006,7 +968,7 @@ export function LearnPage() {
         )}
 
         {phase === "failed" && (
-          // No role="alert": the transcript copy already announces this failure.
+          // No role="alert": the transcript copy already announces this failure
           <div className="notice notice--error">
             <strong>The plan could not be loaded.</strong>
             This is not the same as having no plan. The retry is in the transcript.
@@ -1018,7 +980,6 @@ export function LearnPage() {
             <section>
               <div className="head inspector-head">
                 <h4>Goal</h4>
-                {/* A historical transcript must not act on the open session. */}
                 {!readOnly && (
                   <button className="linkish" onClick={() => push({ role: "roadmap", text: "" })}>
                     show roadmap
@@ -1052,7 +1013,6 @@ export function LearnPage() {
                       <strong>
                         {s.completed ? "✓ " : `${s.position + 1}. `}{s.name}
                       </strong>
-                      {/* A chip, not a colour: the accent alone was the only encoding. */}
                       {isCurrent && <span className="lesson-pill lesson-pill--accent">now</span>}
                     </div>
                     <div className="fm">{s.currentMastery} → needs {s.requiredLevel}</div>
@@ -1098,7 +1058,6 @@ export function LearnPage() {
         )}
 
         {sessions.length > 0 && (
-          // Collapsed and capped so the plan stays visible in the sidebar.
           <details className="history">
             <summary>History ({sessions.length})</summary>
             <div className="head inspector-head">

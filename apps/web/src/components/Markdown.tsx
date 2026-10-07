@@ -1,16 +1,14 @@
 import { Fragment, type ReactNode } from "react";
 import { highlight, resolveLanguage } from "./highlight";
 
-// Builds React elements, never HTML, so model output has no injection surface.
+// Builds React elements, never HTML, so model output has no injection surface
 
-/** A header row followed by a separator row; a lone pipe in prose is not a table. */
 function isTableStart(line: string, next: string): boolean {
   return line.includes("|") && next.includes("-") && /^\s*\|?[\s:-]*-[\s:|-]*\|?\s*$/.test(next);
 }
 
 function inline(text: string, keyPrefix: string): ReactNode[] {
   const out: ReactNode[] = [];
-  // Order matters: code first, so `**` inside a code span stays literal.
   const pattern = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[[^\]\n]+\]\([^)\s]+\))/g;
   let last = 0;
   let m: RegExpExecArray | null;
@@ -29,7 +27,7 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
     } else {
       const link = /\[([^\]]+)\]\(([^)\s]+)\)/.exec(token);
       const href = link?.[2] ?? "";
-      // Only http(s) — a `javascript:` href from model output must never become a link.
+      // Only http(s); a `javascript:` href from model output must never become a link
       out.push(
         /^https?:\/\//i.test(href) ? (
           <a key={key} href={href} target="_blank" rel="noreferrer noopener">{link?.[1]}</a>
@@ -61,7 +59,7 @@ export function Markdown({ text }: { text: string }) {
         body.push(lines[i] ?? "");
         i++;
       }
-      i++; // closing fence
+      i++;
       const source = body.join("\n");
       const html = highlight(source, lang);
       blocks.push(
@@ -77,7 +75,6 @@ export function Markdown({ text }: { text: string }) {
     const heading = /^(#{1,4})\s+(.*)$/.exec(line);
     if (heading) {
       const depth = heading[1]!.length;
-      // Model output sits under the page's own h1-h3, so #..#### map to h4..h6.
       const Tag = depth === 1 ? "h4" : depth === 2 ? "h5" : "h6";
       blocks.push(
         <Tag key={key++} className={`md-h md-h${depth}`}>
@@ -162,7 +159,6 @@ export function Markdown({ text }: { text: string }) {
       continue;
     }
 
-    // Every earlier branch has declined this line, so consume it before testing the next.
     const para: string[] = [line];
     i++;
     while (

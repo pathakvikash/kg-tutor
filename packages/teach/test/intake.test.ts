@@ -4,7 +4,6 @@ import {
 } from "../src/intake.js";
 import { DEFAULT_THRESHOLDS } from "@kg/shared";
 
-/** a → b → c → d → e, plus a side branch a → x → y. */
 const EDGES = [
   { srcId: "a", dstId: "b" }, { srcId: "b", dstId: "c" },
   { srcId: "c", dstId: "d" }, { srcId: "d", dstId: "e" },
@@ -48,7 +47,6 @@ describe("buildChains", () => {
 
 describe("binary-search probing", () => {
   it("starts in the middle of a chain, not at the foundation", () => {
-    // Asking about the most basic thing first wastes the budget on a near-certain pass.
     const state = initialState([["a", "b", "c", "d", "e"]]);
     const probe = nextProbe(state);
     expect(probe?.conceptId).toBe("c");
@@ -72,7 +70,6 @@ describe("binary-search probing", () => {
   });
 
   it("finds where knowledge stops in about log(n) questions", () => {
-    // Learner knows a, b, c but not d or e.
     const known = new Set(["a", "b", "c"]);
     let state = initialState([["a", "b", "c", "d", "e"]]);
     let asked = 0;
@@ -100,7 +97,6 @@ describe("binary-search probing", () => {
   });
 
   it("stops early once a chain is resolved, without spending the whole budget", () => {
-    // Binary search converges in about log2(n), so the full budget is not needed.
     const long = Array.from({ length: 60 }, (_, i) => `c${i}`);
     let state = initialState([long]);
     let asked = 0;
@@ -115,7 +111,6 @@ describe("binary-search probing", () => {
   });
 
   it("hard-stops at the budget when many chains remain unresolved", () => {
-    // The cap is a product constraint: leftover uncertainty is corrected by teaching.
     const chains = Array.from({ length: 12 }, (_, c) =>
       Array.from({ length: 40 }, (_, i) => `chain${c}-${i}`),
     );
@@ -128,7 +123,6 @@ describe("binary-search probing", () => {
       asked++;
     }
     expect(asked).toBe(DEFAULT_THRESHOLDS.maxInitialProbes);
-    // And plenty is still unknown, which is the accepted trade.
     expect(state.chains.filter((c) => c.lo <= c.hi).length).toBeGreaterThan(0);
   });
 
@@ -148,15 +142,13 @@ describe("binary-search probing", () => {
 describe("derivedBeliefs", () => {
   it("marks probed concepts assessed and implied ones inferred", () => {
     let state = initialState([["a", "b", "c", "d", "e"]]);
-    const p = nextProbe(state)!; // "c"
+    const p = nextProbe(state)!;
     state = applyAnswer(state, p, true);
     const beliefs = new Map(derivedBeliefs(state).map((b) => [b.conceptId, b]));
 
     expect(beliefs.get("c")).toMatchObject({ mastery: "functional", source: "assessed" });
-    // a and b sit below a passed probe, so they are believed but not demonstrated.
     expect(beliefs.get("a")).toMatchObject({ source: "inferred" });
     expect(beliefs.get("b")).toMatchObject({ source: "inferred" });
-    // Nothing above the probe is claimed at all.
     expect(beliefs.get("d")).toBeUndefined();
   });
 

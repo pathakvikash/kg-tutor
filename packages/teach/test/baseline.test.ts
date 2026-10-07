@@ -22,10 +22,8 @@ describe("baselineTurn", () => {
     expect(llm.calls[0]?.system).toBe(BASELINE_SYSTEM_PROMPT);
     expect(llm.calls[0]?.tier).toBe("strong");
 
-    // The asymmetry is the experiment: the baseline accumulates nothing.
     expect(await prisma.evidenceEvent.count()).toBe(0);
     expect(await prisma.learnerConceptState.count()).toBe(0);
-    // But it is cost-comparable.
     expect(await prisma.usageRecord.count({ where: { sessionId: session.id } })).toBe(1);
   });
 });

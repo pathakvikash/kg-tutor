@@ -1,9 +1,6 @@
-/* Page-scoped styles for review-session; shared tokens and primitives live in styles.css. */
-
-/* Centres the measured column whichever sheet lands last. */
 .review-session { margin-inline: auto; }
 
-/* Doubled selector to beat the shared single-class margins on .progress and .btn. */
+/* Doubled selector to beat the shared single-class margins on .progress and .btn */
 .page.review-session > * { margin: 0; }
 .page.review-session > * + * { margin-top: var(--s-4); }
 
@@ -13,14 +10,12 @@
 .rs-note { font-size: var(--t-small); color: var(--ink-soft); }
 .rs-remedy { color: var(--ink-mid); }
 
-/* The item */
 .rs-name { font-size: var(--t-lead); font-weight: 600; }
 .rs-why { font-size: var(--t-body); color: var(--ink); }
 .rs-rank { font-size: var(--t-small); color: var(--ink-mid); }
 .rs-state { font-size: var(--t-small); color: var(--ink-soft); }
 .rs-state .mastery-mark { margin-right: var(--s-2); vertical-align: -1px; }
 
-/* The question; structure colour, matching .turn.question in the lesson. */
 .rs-q {
   --rail: var(--structure);
   font-size: var(--t-body);
@@ -31,11 +26,10 @@
 .rs-q > :first-child { margin-top: 0; }
 .rs-q > :last-child { margin-bottom: 0; }
 
-/* A deliberately harder item has to arrive looking like one. */
 .rs-transfer { font-size: var(--t-small); color: var(--accent-text); }
 
 .rs-answer { display: flex; flex-direction: column; gap: var(--s-1); }
-/* Height is scripted to the content, so max-height is only a ceiling. */
+/* Height is scripted to the content, so max-height is only a ceiling */
 .review-session textarea {
   margin: 0;
   resize: vertical;
@@ -45,7 +39,6 @@
 
 .rs-hint { font-family: var(--font-mono); font-size: var(--t-micro); }
 
-/* The verdict */
 .rs-verdict { margin-bottom: 0; }
 .rs-verdict > * + * { margin-top: var(--s-3); }
 
@@ -59,7 +52,6 @@
   font-size: var(--t-small);
 }
 
-/* The done screen */
 .rs-bar-full { width: 100%; }
 
 .rs-failures .rs-note { color: var(--ink-mid); }

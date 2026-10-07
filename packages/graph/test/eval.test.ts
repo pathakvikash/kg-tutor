@@ -42,7 +42,6 @@ describe("scoreAdjudicator", () => {
     const mergeHappy = await scoreAdjudicator(new Fixed(() => "same"));
     const overCautious = await scoreAdjudicator(new Fixed(() => "distinct"));
 
-    // Both are wrong on most pairs; only one corrupts the graph irreversibly.
     expect(mergeHappy.falseSames.length).toBeGreaterThan(0);
     expect(overCautious.falseSames).toHaveLength(0);
     expect(mergeHappy.weightedError).toBeGreaterThan(overCautious.weightedError * 3);

@@ -18,7 +18,6 @@ describe("milestone trimming", () => {
   });
 
   it("respects the required level, not just presence", () => {
-    // `functional` does not satisfy a `solid` requirement.
     const r = trimMilestone(reqs, state({ a: "solid", b: "solid", c: "solid", d: "functional" }));
     expect(r.remaining.map((x) => x.conceptId)).toEqual(["d"]);
     expect(r.foldForward).toBe(true);
@@ -38,7 +37,6 @@ describe("milestone trimming", () => {
 
 describe("malformed milestones", () => {
   it("does not treat a milestone with no concepts as satisfied", () => {
-    // "Nothing required" is not "everything done".
     const r = trimMilestone([], () => "unknown");
     expect(r.malformed).toBe(true);
     expect(r.foldForward).toBe(false);

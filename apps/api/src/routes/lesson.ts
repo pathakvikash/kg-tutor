@@ -7,7 +7,6 @@ import { isActionable } from "@kg/teach";
 import { prisma, getLlm } from "../context.js";
 import { openSession, saveTurn } from "../sessions.js";
 
-/** Six most recent turns, oldest first, so follow-up questions have a referent. */
 async function recentTurns(sessionId: string): Promise<string> {
   const turns = await prisma.lessonTurn.findMany({
     where: { sessionId, role: { in: ["learner", "tutor"] } },
@@ -15,7 +14,7 @@ async function recentTurns(sessionId: string): Promise<string> {
     take: 6,
   });
   if (turns.length === 0) return "";
-  // Attribution has to survive: a learner mistake must not read as an established fact.
+  // Attribution has to survive: a learner mistake must not read as an established fact
   return turns
     .reverse()
     .map((t) =>
@@ -31,7 +30,6 @@ const NO_MODEL = {
   detail: "Set LLM_PROVIDER=claude-code, or ANTHROPIC_API_KEY / OPENAI_API_KEY, then restart.",
 };
 
-/** Code gets its own field so the model never has to embed a fence in prose. */
 const explanationSchema = z.object({
   hook: z.string(),
   explanation: z.string(),
@@ -73,7 +71,6 @@ prose. Prose fields may use markdown (bold, inline code, lists); the code field 
 
 Respond with JSON: {"hook","explanation","example":{"language","code","walkthrough"}}`;
 
-/** Shared by both answer paths. */
 const ANSWER_SYSTEM = `Answer the learner's question directly and concretely. Do not restate the whole lesson.
 
 Your answer is rendered as markdown. Write markdown:
@@ -88,7 +85,6 @@ Your answer is rendered as markdown. Write markdown:
   one sentence — an interactive one is rendered separately.`;
 
 export async function lessonRoutes(app: FastifyInstance): Promise<void> {
-  /** Explanation for the concept being taught; generated until a content library exists. (12) */
   app.post("/api/lesson/explain", async (req, reply) => {
     const body = z.object({ learnerId: z.string(), conceptId: z.string() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
@@ -137,7 +133,6 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
 
     const sessionId = await openSession(body.data.learnerId);
 
-    // Persisted as a candidate so the promotion pipeline has something to promote.
     const bucket = [learner.background ?? "none", concept.canonicalName].join("|").slice(0, 120);
     const content = await prisma.explanationContent.create({
       data: {
@@ -173,11 +168,10 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  /** Everything said in the learner's open session, so a reload resumes rather than resets. */
   app.get("/api/lesson/:learnerId/transcript", async (req) => {
     const { learnerId } = req.params as { learnerId: string };
     const session = await prisma.session.findFirst({
-      // The lesson transcript is the lesson's, so a review pass cannot appear in it.
+      // A review pass must not appear in the lesson transcript
       where: { learnerId, kind: "lesson", endedAt: null },
       orderBy: { startedAt: "desc" },
     });
@@ -189,7 +183,6 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     return { sessionId: session.id, turns };
   });
 
-  /** Ends the open session, so "start over" is explicit rather than a lost reload. */
   app.post("/api/lesson/:learnerId/reset", async (req) => {
     const { learnerId } = req.params as { learnerId: string };
     await prisma.session.updateMany({
@@ -199,14 +192,12 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  /** The check that follows an explanation. Generates items on demand if none exist. */
   app.post("/api/lesson/check", async (req, reply) => {
     const body = z
       .object({
         learnerId: z.string(),
         conceptId: z.string(),
         level: z.enum(["familiar", "functional", "solid"]).default("functional"),
-        /** Which transcript the question lands in; the answered-since scan reads it. */
         kind: z.enum(["lesson", "review"]).default("lesson"),
       })
       .safeParse(req.body);
@@ -221,7 +212,6 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     const language = learner.workingLanguage;
 
     let item = await selectItem(prisma, body.data.conceptId, body.data.level, [], { language });
-    // Regenerate when the bank only has items in a language the learner does not write.
     if (!item || isWrongLanguage(item, language)) {
       await generateItems(prisma, llm, body.data.conceptId, { language });
       item = await selectItem(prisma, body.data.conceptId, body.data.level, [], { language });
@@ -247,7 +237,6 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  /** Streaming answer path: a routed event lands first, then text deltas. */
   app.post("/api/lesson/ask/stream", async (req, reply) => {
     const body = z
       .object({ learnerId: z.string(), conceptId: z.string(), question: z.string().min(1) })
@@ -278,7 +267,6 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
         include: { src: true },
       });
 
-      // Routing and the answer have no data dependency, so they run concurrently.
       const sessionId = await openSession(body.data.learnerId);
       const history = await recentTurns(sessionId);
 
@@ -297,10 +285,9 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
 
       await saveTurn(sessionId, body.data.learnerId, concept.id, "learner", body.data.question);
 
-      // The client needs this before any delta arrives, or early deltas are dropped.
+      // The client needs this before any delta arrives, or early deltas are dropped
       send("open", { sessionId });
 
-      // Routing reports when it lands instead of holding the answer text back.
       const routing = routeChatQuestion(llm, {
         question: body.data.question,
         currentConceptName: concept.canonicalName,
@@ -338,7 +325,7 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
 
       const [route] = await Promise.all([routing, pump]);
 
-      // Saved only once complete: a half-written answer is not a turn worth resuming.
+      // Saved only once complete: a half-written answer is not a turn worth resuming
       await saveTurn(sessionId, body.data.learnerId, concept.id, "tutor", answer, {
         intent: route.intent,
       });
@@ -353,7 +340,6 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  /** A learner question mid-lesson: chat routes, it never teaches. (19) */
   app.post("/api/lesson/ask", async (req, reply) => {
     const body = z
       .object({ learnerId: z.string(), conceptId: z.string(), question: z.string().min(1) })
@@ -377,7 +363,6 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
       prerequisiteNames: prereqs.map((p) => ({ conceptId: p.srcId, name: p.src.canonicalName })),
     });
 
-    // A request to learn something else is acted on, not answered.
     if (isActionable(route.intent)) {
       await saveTurn(sessionId, body.data.learnerId, body.data.conceptId, "learner", body.data.question);
       return {
@@ -392,7 +377,6 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
       };
     }
 
-    // The learner naming their own gap is the cleanest missing-edge signal. (19)
     if (route.intent === "prerequisite_gap") {
       await recordEvidence(prisma, {
         learnerId: body.data.learnerId,
@@ -428,10 +412,8 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
     return {
       sessionId,
       intent: route.intent,
-      // The client follows up with a widget call rather than two model calls at once.
       suggestVisual: route.wantsVisual,
       answer,
-      // The UI offers a detour rather than silently taking one.
       detourTo: route.intent === "prerequisite_gap" ? route.prerequisiteConceptId : null,
       namedConcept: route.namedConcept,
       reasoning: route.reasoning,
@@ -439,7 +421,6 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
   });
 }
 
-/** Advancing the plan once a step reaches its required level. */
 export async function progressRoutes(app: import("fastify").FastifyInstance): Promise<void> {
   app.post("/api/learners/:id/steps/:conceptId/complete", async (req, reply) => {
     const { id, conceptId } = req.params as { id: string; conceptId: string };
@@ -457,7 +438,7 @@ export async function progressRoutes(app: import("fastify").FastifyInstance): Pr
       where: { learnerId_conceptId: { learnerId: id, conceptId } },
     });
     const { atLeast } = await import("@kg/shared");
-    // Completion is earned by evidence, not asserted by the client.
+    // Completion is earned by evidence, not asserted by the client
     if (!state || !atLeast(state.mastery, step.requiredLevel)) {
       return reply.code(422).send({
         error: "not yet at the required level",
@@ -466,7 +447,6 @@ export async function progressRoutes(app: import("fastify").FastifyInstance): Pr
       });
     }
 
-    // One reconciler, so a finished lesson and a finished intake advance the plan alike.
     const { reconcilePlan } = await import("@kg/planner");
     const { milestones: completedMilestones } = await reconcilePlan(prisma, id);
 

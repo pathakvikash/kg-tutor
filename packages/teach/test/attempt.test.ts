@@ -99,7 +99,6 @@ describe("runAttempt", () => {
     const prompts = llm.calls.map((c) => `${c.system}\n${c.user}`).join("\n");
     expect(prompts).toContain(GRADE_SYSTEM_PROMPT.slice(0, 40));
     expect(prompts.toLowerCase()).not.toContain("explanation the learner was shown");
-    // The failure modes are supplied as a rubric; the explanation text never is.
     expect(prompts).toContain(FM);
   });
 
@@ -113,7 +112,6 @@ describe("runAttempt", () => {
       prisma, llm, prompt: "q", response: "a promise is a future value",
       requiresTransfer: true, ctx: ctx({ learnerId: f.l, conceptId: f.promises }),
     });
-    // A fluent paraphrase must not promote straight to solid. (16)
     expect(out.evidenceKind).toBe("restated");
     expect(out.state.after.mastery).toBe("familiar");
     expect(out.propagatedTo).toEqual([]);
@@ -135,7 +133,6 @@ describe("runAttempt", () => {
 
     const stored = await prisma.misconception.findFirstOrThrow({ where: { conceptId: f.promises } });
     expect(stored.belief).toContain("runs immediately");
-    // Links back to the edge whose failure mode it confirms — the promotion signal. (11)
     expect(stored.matchedFailureMode).toBe(FM);
   });
 
@@ -196,7 +193,6 @@ describe("grading a correct answer", () => {
     expect(out.grade.correct).toBe(true);
     expect(out.evidenceKind).toBe("transferred");
     expect(out.action.kind).toBe("advance");
-    // One model call — no retry was needed, which is the point.
     expect(llm.calls).toHaveLength(1);
   });
 

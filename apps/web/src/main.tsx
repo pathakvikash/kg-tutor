@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-// styles.css names these families and nothing else loads them.
+// styles.css names these families and nothing else loads them
 import "@fontsource/ibm-plex-sans/400.css";
 import "@fontsource/ibm-plex-sans/500.css";
 import "@fontsource/ibm-plex-sans/600.css";
@@ -13,7 +13,6 @@ import "@fontsource/zilla-slab/700.css";
 import "@xyflow/react/dist/style.css";
 import "./styles.css";
 
-/* Page sheets load after the base so a page can override a primitive. */
 import "./styles/home.css";
 import "./styles/learn.css";
 import "./styles/graph.css";

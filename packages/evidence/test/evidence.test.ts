@@ -21,7 +21,6 @@ const concept = async (name: string) =>
 const learner = async () =>
   (await prisma.learner.create({ data: { email: `e${n++}@x.test` } })).id;
 
-/** N learners attempt `target`; `knew` of them demonstrated `prereq` beforehand. */
 async function cohort(opts: {
   prereq: string; target: string; n: number; knew: number;
   failIfIgnorant: number; failIfKnew: number; topicId: string;
@@ -29,7 +28,6 @@ async function cohort(opts: {
   let t = Date.UTC(2026, 0, 1);
   for (let i = 0; i < opts.n; i++) {
     const l = await learner();
-    // Two goals across the cohort, so the diversity requirement can be satisfied.
     await prisma.goal.create({
       data: { learnerId: l, topicId: opts.topicId, depth: i % 2 === 0 ? "use" : "build" },
     });
@@ -61,7 +59,6 @@ describe("evaluateClaim", () => {
     const topic = await prisma.topic.create({ data: { name: "js", description: "" } });
     const prereq = await concept("the event loop");
     const target = await concept("promises");
-    // 10 knew it and 1 failed; 10 did not and 9 failed.
     await cohort({ prereq, target, n: 20, knew: 10, failIfKnew: 1, failIfIgnorant: 9, topicId: topic.id });
 
     const claim = await evaluateClaim(prisma, prereq, target);
@@ -75,12 +72,10 @@ describe("evaluateClaim", () => {
     const topic = await prisma.topic.create({ data: { name: "js", description: "" } });
     const prereq = await concept("unrelated thing");
     const target = await concept("a genuinely hard concept");
-    // Everyone fails a lot, whether or not they know the "prerequisite".
     await cohort({ prereq, target, n: 20, knew: 10, failIfKnew: 8, failIfIgnorant: 9, topicId: topic.id });
 
     const claim = await evaluateClaim(prisma, prereq, target);
     expect(claim.treatmentFailureRate).toBeGreaterThan(0.8);
-    // High failure, but knowing it barely helps — so it is not a prerequisite.
     expect(claim.effectSize).toBeLessThan(0.2);
     expect(claim.passes).toBe(false);
     expect(claim.rejectedFor.join(" ")).toContain("effect size");
@@ -186,13 +181,11 @@ describe("proposals", () => {
 
     const reversed = await reverseProposal(prisma, proposalId!, "effect did not hold");
     expect(reversed.retired).toBe(1);
-    // Retired, never deleted — the record of what was believed survives.
     const after = await prisma.edge.findUniqueOrThrow({ where: { id: edgeId } });
     expect(after.retiredAt).not.toBeNull();
     expect(after.retiredReason).toBe("effect did not hold");
   });
 
-  /** A deprecated concept still has a row, so findUniqueOrThrow does not catch this. */
   it("refuses to approve a proposal whose endpoint has since been deprecated", async () => {
     const s = await passingScenario();
     const [candidate] = await findMissingEdgeCandidates(prisma);
@@ -205,7 +198,6 @@ describe("proposals", () => {
     });
 
     await expect(applyProposal(prisma, proposalId!, "vikash", FM)).rejects.toThrow(/deprecated/);
-    // Nothing written, and the proposal is left open rather than half-applied.
     expect(await prisma.edge.count({ where: { promotedById: proposalId } })).toBe(0);
     const after = await prisma.promotionProposal.findUniqueOrThrow({ where: { id: proposalId! } });
     expect(after.status).toBe("open");

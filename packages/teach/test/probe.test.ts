@@ -41,7 +41,6 @@ describe("selectProbes", () => {
     const pre = await concept("the event loop");
     const next = await concept("promises");
     await hardEdge(pre, next, FM);
-    // Never demonstrated — credited by backwards propagation, and it gates what is next.
     await state(l, pre, "solid", 0.45, now, "inferred");
 
     const probes = await selectProbes({
@@ -130,7 +129,6 @@ describe("trimToTimeBudget", () => {
 
   it("never drops a readiness probe, even over budget", () => {
     const probes = [p("readiness", "a"), p("readiness", "b"), p("review", "c")];
-    // Skipping one would mean teaching into a gap, which is not a time saving.
     expect(trimToTimeBudget(probes, 1).map((x) => x.conceptId)).toEqual(["a", "b"]);
   });
 });

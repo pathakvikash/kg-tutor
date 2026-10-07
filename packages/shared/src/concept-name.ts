@@ -1,24 +1,17 @@
-// A concept name must denote exactly one concept; compounds are rejected at proposal time.
-
 export interface ConceptNameCheck {
   ok: boolean;
   reason?: "empty" | "too_long" | "conjunction" | "disjunction" | "parenthetical" | "meta_noun";
-  /** The halves, when it split cleanly — a caller may propose them separately. */
   parts?: string[];
 }
 
-/** " and " / " & " / " / " joining two noun phrases. */
 const CONJUNCTION = /\s+(?:and|&)\s+|\s+\/\s+/i;
-/** " or " — a disjunction is never one concept. */
 const DISJUNCTION = /\s+or\s+/i;
-/** A trailing gloss or enumeration: "Graph terminology (vertices, edges, ...)". */
 const PARENTHETICAL_LIST = /\([^)]*,[^)]*\)/;
-/** Nouns naming a category of knowledge rather than a thing to know. */
 const META_NOUN = /\b(?:concepts?|topics?|fundamentals|basics|terminology|principles|ideas)\s*$/i;
 
 const MAX_WORDS = 8;
 
-/** Conservative heuristic: it rejects, never rewrites; `parts` lets a caller propose the halves. */
+/** Conservative heuristic: it rejects, never rewrites */
 export function checkConceptName(name: string | null | undefined): ConceptNameCheck {
   const n = (name ?? "").trim();
   if (n.length === 0) return { ok: false, reason: "empty" };
@@ -26,12 +19,12 @@ export function checkConceptName(name: string | null | undefined): ConceptNameCh
 
   if (PARENTHETICAL_LIST.test(n)) return { ok: false, reason: "parenthetical" };
 
-  // Check disjunction first, so "A or B" is not split into two required things.
+  // Check disjunction first, so "A or B" is not split into two required things
   if (DISJUNCTION.test(n)) {
     return { ok: false, reason: "disjunction", parts: split(n, DISJUNCTION) };
   }
   if (CONJUNCTION.test(n)) {
-    // A slash or "and" between two single words is a synonym, not a join.
+    // A slash or "and" between two single words is a synonym, not a join
     const parts = split(n, CONJUNCTION);
     if (parts.every((p) => p.split(/\s+/).length === 1)) return { ok: true };
     return { ok: false, reason: "conjunction", parts };

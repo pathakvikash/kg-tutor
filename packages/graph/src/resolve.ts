@@ -13,21 +13,18 @@ import { trivialDecision, type Adjudicator } from "./adjudicate.js";
 
 export interface ProposeInput {
   name: string;
-  /** Becomes immutable identity if this creates a concept. (05) */
+  /** Becomes immutable identity if this creates a concept */
   sense: string;
   context?: string | undefined;
-  /** Concepts this was discovered next to; drives the graph-local retrieval arm. */
   expectedNeighborIds?: string[];
 }
 
 export interface ProposeResult {
   conceptId: string;
-  /** `bound` = an alias was attached to an existing concept; nothing was created. */
   outcome: "created" | "bound";
   decision: ResolverDecision;
   candidates: ResolverCandidate[];
   proposalId: string;
-  /** Edge written alongside a create, when the verdict implied subsumption. */
   edgeId?: string;
 }
 
@@ -41,12 +38,12 @@ function normalizeName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/** Transaction-scoped, so two sessions reaching the same name bind instead of both inserting. */
+/** Transaction-scoped, so two sessions reaching the same name bind instead of both inserting */
 async function lockOnName(tx: Prisma.TransactionClient, name: string): Promise<void> {
   await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, normalizeName(name));
 }
 
-/** The only legitimate way a Concept enters the graph; adjudicate before opening the transaction. (05) */
+/** The only way a Concept enters the graph; adjudicate before opening the transaction */
 export async function proposeConcept(
   deps: ResolverDeps,
   input: ProposeInput,
@@ -94,7 +91,7 @@ export async function proposeConcept(
       },
     });
 
-    // Recheck under the lock; another session may have taken the name meanwhile.
+    // Another session may have taken the name before we got the lock
     const existing = await tx.conceptAlias.findUnique({
       where: { name: normalizeName(input.name) },
     });
@@ -135,7 +132,7 @@ export async function proposeConcept(
     const concept = await tx.concept.create({
       data: { canonicalName: input.name.trim(), sense: input.sense.trim() },
     });
-    // Prisma cannot type the vector column, so set it separately in the same transaction.
+    // Prisma cannot type the vector column, so it is set in a separate statement
     await tx.$executeRawUnsafe(
       `UPDATE "Concept" SET "senseVector" = $1::vector WHERE id = $2`,
       toVectorLiteral(vector),
@@ -183,13 +180,13 @@ export interface ProposeEdgeInput {
 
 export interface ProposeEdgeResult {
   edgeId: string | null;
-  /** What actually got written — a `hard` proposal can land as `soft`. (03, 15) */
+  /** What got written; a `hard` proposal can land as `soft` */
   strength: EdgeStrength;
   demoted: boolean;
   rejected?: "cycle" | "self_loop";
 }
 
-/** A `hard` proposal with a weak failure mode is written `soft`, not dropped. (03, 13, 15) */
+/** A `hard` proposal with a weak failure mode is written `soft`, not dropped */
 export async function proposeEdge(
   prisma: PrismaClient,
   input: ProposeEdgeInput,

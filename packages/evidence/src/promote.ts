@@ -3,7 +3,7 @@ import type { PrismaClient } from "@kg/db";
 import { DEFAULT_THRESHOLDS, checkFailureMode, type Thresholds } from "@kg/shared";
 import { evaluateClaim, type ControlledClaim } from "./control.js";
 
-/** Tiered by blast radius: `auto` is local and self-correcting, `review` needs a human. (11) */
+/** `auto` is local and self-correcting; `review` needs a human */
 export type PromotionTier = "auto" | "review";
 
 export function tierFor(kind: string): PromotionTier {
@@ -19,13 +19,11 @@ export function tierFor(kind: string): PromotionTier {
 export interface MissingEdgeCandidate {
   prerequisiteId: string;
   targetId: string;
-  /** Learners who spontaneously asked about the prerequisite while attempting the target. */
   spontaneousRequests: number;
-  /** Misconceptions at the target that name the prerequisite's territory. */
   misconceptions: number;
 }
 
-/** Finds absent edges learners behave as though exist; a spontaneous request has no selection confound. (19) */
+/** Spontaneous requests carry no selection confound, unlike failure rates */
 export async function findMissingEdgeCandidates(
   prisma: PrismaClient,
 ): Promise<MissingEdgeCandidate[]> {
@@ -70,7 +68,7 @@ export interface ProposalResult {
   created: boolean;
 }
 
-/** Writes a proposal with its evidence packet, never an edge; structural changes are proposals. (11) */
+/** Writes a proposal with its evidence packet, never an edge directly */
 export async function proposeNewHardEdge(
   prisma: PrismaClient,
   candidate: MissingEdgeCandidate,
@@ -128,7 +126,7 @@ export async function proposeNewHardEdge(
   return { proposalId: proposal.id, claim, created: true };
 }
 
-/** Promoted edges stay `provisional` and keep their packet, so reversal stays routine. (11) */
+/** Promoted edges stay `provisional` and keep their packet so they can be reversed */
 export async function applyProposal(
   prisma: PrismaClient,
   proposalId: string,
@@ -143,7 +141,7 @@ export async function applyProposal(
     prisma.concept.findUnique({ where: { id: p.srcId } }),
     prisma.concept.findUnique({ where: { id: p.dstId } }),
   ]);
-  // Both ends must still be live; an open proposal can outlive the concepts it names.
+  // An open proposal can outlive the concepts it names
   const dead = [
     !src ? "the source concept no longer exists" : null,
     !dst ? "the target concept no longer exists" : null,
@@ -196,7 +194,7 @@ export async function rejectProposal(
   });
 }
 
-/** Reversal is routine, not an incident. The edge is retired, never deleted. (11) */
+/** The edge is retired, never deleted */
 export async function reverseProposal(
   prisma: PrismaClient,
   proposalId: string,

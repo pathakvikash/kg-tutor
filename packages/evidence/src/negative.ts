@@ -5,13 +5,11 @@ export interface FictionCandidate {
   srcName: string;
   dstName: string;
   failureMode: string;
-  /** Learner attempts at the target since this edge was written. */
   attempts: number;
-  /** How many exhibited the failure mode this edge claims. */
   observed: number;
 }
 
-/** Failure modes no learner has exhibited; a candidate is a prompt to look, not a verdict. (11) */
+/** A candidate is a prompt to look, not a verdict */
 export async function findUnobservedFailureModes(
   prisma: PrismaClient,
   minAttempts = 30,
@@ -53,13 +51,11 @@ export interface UnusedPrerequisite {
   edgeId: string;
   srcName: string;
   dstName: string;
-  /** Learners who reached the target without ever demonstrating the prerequisite. */
   bypassed: number;
   total: number;
   bypassRate: number;
 }
 
-/** A hard prerequisite that learners routinely succeed without is not hard. (11) */
 export async function findBypassedPrerequisites(
   prisma: PrismaClient,
   minLearners = 10,
@@ -105,7 +101,6 @@ export async function findBypassedPrerequisites(
     .sort((a, b) => b.bypassRate - a.bypassRate);
 }
 
-/** Review is ordered by how many learners actually cross an edge. (15) */
 export async function reviewQueueByTraversal(
   prisma: PrismaClient,
   limit = 50,

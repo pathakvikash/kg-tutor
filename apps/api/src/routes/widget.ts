@@ -4,7 +4,7 @@ import { extractJson, type LLMProvider } from "@kg/llm";
 import { assignVariant } from "@kg/teach";
 import { prisma, getLlm } from "../context.js";
 
-/** Must stay in step with apps/web/src/widget/catalog.ts; a name missing there renders nothing. */
+/** Must stay in step with apps/web/src/widget/catalog.ts; a name missing there renders nothing */
 const CATALOG = `Components you may use. Anything not listed here does not exist.
 
 Stack        { gap?: number }                      Vertical layout. Use as the root.
@@ -64,7 +64,7 @@ Rules:
 
 Respond with the JSON spec and nothing else.`;
 
-/** A model-authored spec is untrusted: a dangling child id renders as a blank page. */
+/** A model-authored spec is untrusted: a dangling child id renders as a blank page */
 function validateSpec(raw: unknown): { ok: true; spec: any } | { ok: false; reason: string } {
   const parsed = z
     .object({
@@ -99,7 +99,6 @@ function validateSpec(raw: unknown): { ok: true; spec: any } | { ok: false; reas
 }
 
 async function generate(llm: LLMProvider, user: string): Promise<any> {
-  // One retry with the validation failure fed back, then give up.
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await llm.complete({
       system: WIDGET_SYSTEM,
@@ -148,7 +147,6 @@ export async function widgetRoutes(app: FastifyInstance): Promise<void> {
             : "",
         ].filter(Boolean).join("\n"),
       );
-      // Persisted like every other turn, so a reload does not discard the widget.
       if (body.data.learnerId) {
         const learnerId = body.data.learnerId;
         const open = await prisma.session.findFirst({

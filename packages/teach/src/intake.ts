@@ -1,12 +1,8 @@
 import type { PrismaClient } from "@kg/db";
 import { DEFAULT_THRESHOLDS, type MasteryLevel, type Thresholds } from "@kg/shared";
 
-// Intake targets the fewest questions that make the first teaching steps defensible. (07)
-
 export interface Chain {
-  /** Ordered foundation → goal-facing. */
   ids: string[];
-  /** Binary-search window into `ids`: everything below `lo` is believed known. */
   lo: number;
   hi: number;
 }
@@ -19,12 +15,10 @@ export interface IntakeState {
 export interface ProbeChoice {
   conceptId: string;
   chainIndex: number;
-  /** Where in its chain, so the UI can say why this question is being asked. */
   position: number;
   chainLength: number;
 }
 
-/** Longest-path chains through the prerequisite graph; chains may overlap on shared foundations. */
 export function buildChains(
   conceptIds: string[],
   edges: { srcId: string; dstId: string }[],
@@ -53,7 +47,6 @@ export function buildChains(
   };
   for (const id of conceptIds) depthOf(id);
 
-  // A leaf here means "nothing in the topic depends on it" — the end of a chain.
   const leaves = conceptIds.filter((id) => !hasChild.has(id));
   const chains: string[][] = [];
   for (const leaf of leaves.length > 0 ? leaves : conceptIds) {
@@ -70,7 +63,6 @@ export function buildChains(
     }
     chains.push(path.reverse());
   }
-  // A single-concept chain teaches the probe nothing, unless it is all the topic has.
   const searchable = chains.filter((c) => c.length > 1);
   return searchable.length > 0 ? searchable : chains;
 }
@@ -82,7 +74,6 @@ export function initialState(chains: string[][]): IntakeState {
   };
 }
 
-/** Binary search within a chain, round-robin across chains, so breadth comes first. */
 export function nextProbe(
   state: IntakeState,
   t: Thresholds = DEFAULT_THRESHOLDS,
@@ -95,7 +86,6 @@ export function nextProbe(
     .filter(({ chain }) => chain.lo <= chain.hi);
   if (open.length === 0) return null;
 
-  // Round-robin: fewest questions asked of this chain so far wins.
   const perChain = new Map<number, number>();
   for (const a of state.asked) perChain.set(a.chainIndex, (perChain.get(a.chainIndex) ?? 0) + 1);
   open.sort(
@@ -107,7 +97,6 @@ export function nextProbe(
   for (const { chain, chainIndex } of open) {
     for (let offset = 0; offset <= chain.hi - chain.lo; offset++) {
       const mid = Math.floor((chain.lo + chain.hi) / 2);
-      // Prefer the midpoint, then walk outward if it was already asked in another chain.
       const candidate = mid + (offset % 2 === 0 ? offset / 2 : -Math.ceil(offset / 2));
       if (candidate < chain.lo || candidate > chain.hi) continue;
       const conceptId = chain.ids[candidate];
@@ -123,7 +112,6 @@ export function nextProbe(
   return null;
 }
 
-/** A pass implies the foundations below it, so the window moves up; a failure moves it down. */
 export function applyAnswer(
   state: IntakeState,
   probe: ProbeChoice,
@@ -144,22 +132,19 @@ export function applyAnswer(
 export interface DerivedBelief {
   conceptId: string;
   mastery: MasteryLevel;
-  /** `assessed` when directly probed; `inferred` when implied by a pass above it. */
   source: "assessed" | "inferred";
 }
 
-/** Probed concepts are `assessed`; anything below a pass is `inferred` and still worth probing. (06) */
 export function derivedBeliefs(state: IntakeState): DerivedBelief[] {
   const out = new Map<string, DerivedBelief>();
 
   for (const chain of state.chains) {
-    // Everything strictly below `lo` was cleared by a pass higher up.
     for (let i = 0; i < chain.lo; i++) {
       const id = chain.ids[i];
       if (id && !out.has(id)) out.set(id, { conceptId: id, mastery: "functional", source: "inferred" });
     }
   }
-  // Direct evidence overwrites inference, never the other way round.
+  // Direct evidence overwrites inference, never the other way round
   for (const a of state.asked) {
     out.set(a.conceptId, {
       conceptId: a.conceptId,
@@ -170,7 +155,6 @@ export function derivedBeliefs(state: IntakeState): DerivedBelief[] {
   return [...out.values()];
 }
 
-/** The topic's concepts and prerequisite edges, ready for `buildChains`. */
 export async function loadTopicGraph(
   prisma: PrismaClient,
   topicId: string,

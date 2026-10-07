@@ -1,4 +1,4 @@
-/** Splits already-written compound concept names: repair:compound-concepts [--apply]. */
+/** Splits already-written compound concept names; repair:compound-concepts [--apply] */
 import { PrismaClient } from "@kg/db";
 import { checkConceptName } from "@kg/shared";
 import { splitCompoundConcept, DeterministicEmbedding, LLMAdjudicator } from "@kg/graph";
@@ -28,7 +28,6 @@ async function main(): Promise<void> {
   console.log(`${bad.length} concept name(s) that do not denote one concept:\n`);
   for (const c of bad) {
     const halves = (c.check.parts ?? []).filter((h) => checkConceptName(h).ok);
-    // Which halves already exist tells you whether this is a duplicate or a genuine gap.
     const existing: string[] = [];
     for (const h of halves) {
       const hit = await prisma.concept.findFirst({
@@ -88,7 +87,6 @@ the single real concept underneath it ("graph connectivity").
 
 Respond with JSON: {"parts":[{"name","sense"}]}`;
 
-  /** Names and defines each half. One small call per compound. */
   const partsFor = async (compound: {
     name: string; sense: string; reason: string; suggested: string[];
   }) => {

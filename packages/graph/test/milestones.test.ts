@@ -41,7 +41,6 @@ describe("generateMilestones", () => {
     expect(t.concepts).toHaveLength(2);
   });
 
-  /** A claim resting on one concept is that concept, not a capability worth finishing. */
   it("rejects a claim that rests on a single concept", async () => {
     const topicId = await topicWith(three);
     const r = await generateMilestones(
@@ -53,7 +52,6 @@ describe("generateMilestones", () => {
     expect(r.rejected[0]?.reason).toBe("rests on a single concept");
   });
 
-  // An empty milestone would hand out a completion for nothing.
   it("rejects a claim whose concepts do not exist", async () => {
     const topicId = await topicWith(three);
     const r = await generateMilestones(
@@ -123,7 +121,6 @@ describe("generateMilestones", () => {
       llmReturning([{ claim: "you can pick a sequence type", concepts: ["Stack", "Arrays or Linked Lists"] }]),
       topicId,
     );
-    // Only Stack survives, so the claim rests on one concept and is refused.
     expect(r.written).toHaveLength(0);
     expect(r.rejected[0]?.reason).toBe("rests on a single concept");
   });

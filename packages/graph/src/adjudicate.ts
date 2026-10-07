@@ -19,7 +19,7 @@ const rawDecision = z.object({
   reasoning: z.string(),
 });
 
-/** An id that was never offered is downgraded to `distinct` rather than trusted. (05) */
+/** An id that was never offered is downgraded to `distinct`, not trusted */
 export function validateDecision(
   raw: unknown,
   candidates: ResolverCandidate[],
@@ -92,7 +92,6 @@ export function buildAdjudicationPrompt(input: AdjudicationInput): string {
   return lines.join("\n");
 }
 
-/** No candidates means nothing to compare against, so no model call is warranted. (17) */
 export function trivialDecision(input: AdjudicationInput): ResolverDecision | null {
   if (input.candidates.length === 0) {
     return { verdict: "distinct", relatedConceptId: null, reasoning: "no candidates found" };

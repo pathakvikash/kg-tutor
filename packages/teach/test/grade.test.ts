@@ -2,9 +2,8 @@ import { describe, it, expect } from "vitest";
 import type { CompletionRequest, LLMProvider } from "@kg/llm";
 import { gradeResponse } from "../src/grade.js";
 
-/** The grader must receive the item's code, not just its prompt. */
 describe("gradeResponse", () => {
-  /** Records exactly what the grader was asked, which is the thing under test. */
+  /** Records what the grader was asked, which is the thing under test */
   const capture = () => {
     const seen: string[] = [];
     const llm: LLMProvider = {

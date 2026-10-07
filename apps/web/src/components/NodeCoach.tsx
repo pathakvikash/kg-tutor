@@ -7,7 +7,6 @@ import { MASTERY_RANK as RANK, atLeast } from "../vocabulary";
 type Tab = "assess" | "ask";
 const TABS: Tab[] = ["assess", "ask"];
 
-/** Assessment and chat for the concept selected in the graph. (19) */
 export function NodeCoach({
   learnerId, conceptId, conceptName, mastery, requiredLevel = "functional",
   unmetPrerequisites = [], onStateChanged, onPick,
@@ -17,11 +16,9 @@ export function NodeCoach({
   conceptName: string;
   mastery: Mastery;
   requiredLevel?: Mastery;
-  /** Hard prerequisites not reached yet; assessing over one blames the wrong concept. */
+  /** Hard prerequisites not reached yet; assessing over one blames the wrong concept */
   unmetPrerequisites?: { id: string; name: string; mastery: Mastery }[];
-  /** The node's colour is derived from mastery, so the graph has to be told. */
   onStateChanged: () => void;
-  /** Jump to a prerequisite instead. */
   onPick?: (conceptId: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>("assess");
@@ -34,11 +31,9 @@ export function NodeCoach({
   const [turns, setTurns] = useState<{ role: "learner" | "tutor"; text: string }[]>([]);
   const [input, setInput] = useState("");
   const chat = useRef<HTMLDivElement>(null);
-  /** Guards the stream itself: two Enters used to open two streams into one turns array. */
   const inFlight = useRef(false);
   const ids = useId();
 
-  // Cleared on a selection change, or an answer is graded against the wrong concept.
   useEffect(() => {
     setQuestion(null); setAnswer(""); setResult(null);
     setError(null); setTurns([]); setInput("");
@@ -47,14 +42,12 @@ export function NodeCoach({
   }, [conceptId]);
 
   useEffect(() => {
-    // Scroll the chat box itself; scrollIntoView moves the whole inspector.
+    // Scroll the chat box itself; scrollIntoView moves the whole inspector
     const el = chat.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns, busy]);
 
-  /** Already at or past what the plan needs — so nothing here can raise it. */
   const atCeiling = atLeast(mastery, requiredLevel);
-  /** The level worth testing: one above where they are, capped at what the plan needs. */
   const target: Mastery = atCeiling
     ? requiredLevel
     : (["familiar", "functional", "solid"] as const)[Math.min(RANK[mastery], 2)] ?? "functional";
@@ -83,7 +76,6 @@ export function NodeCoach({
       setResult(r);
       setQuestion(null);
       setAnswer("");
-      // Mastery may have moved, and so may a prerequisite's — the server credits those.
       onStateChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -116,7 +108,6 @@ export function NodeCoach({
         onFailed: (message) => { setError(message); },
       });
     } catch (e) {
-      // A dropped connection rejects instead of reporting `failed`.
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       inFlight.current = false;
@@ -125,14 +116,13 @@ export function NodeCoach({
     }
   };
 
-  /** Roving tabindex, so the pair is one tab stop and the arrows move between them. */
   const onTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
     if (step === 0) return;
     event.preventDefault();
     const next = TABS[(TABS.indexOf(tab) + step + TABS.length) % TABS.length]!;
     setTab(next);
-    // getElementById, not querySelector: useId values contain colons.
+    // getElementById, not querySelector: useId values contain colons
     document.getElementById(`${ids}-tab-${next}`)?.focus();
   };
 
@@ -235,7 +225,7 @@ export function NodeCoach({
                 rows={4} value={answer} onChange={(e) => setAnswer(e.target.value)}
                 placeholder="In your own words."
                 aria-label={`Your answer about ${conceptName}`}
-                // readOnly, not disabled: disabling a focused control blurs it to <body>.
+                // readOnly, not disabled: disabling a focused control blurs it to <body>
                 readOnly={busy !== null}
                 aria-disabled={busy !== null}
               />
@@ -304,7 +294,6 @@ export function NodeCoach({
             {turns.map((t, i) => (
               <div key={i} className={`bubble ${t.role}`}>
                 {t.role === "tutor" ? <Markdown text={t.text} /> : t.text}
-                {/* The caret marks a stream still in flight, not a finished answer. */}
                 {t.role === "tutor" && streaming && i === turns.length - 1 && (
                   <span className="caret" />
                 )}

@@ -10,7 +10,6 @@ import { prisma, getLlm } from "../context.js";
 
 const NO_MODEL = { error: "no model configured", detail: "Choose one in Settings." };
 
-/** Picks or generates the question for a probe. */
 async function questionFor(
   conceptId: string,
   language?: string | null,
@@ -26,7 +25,6 @@ async function questionFor(
     : null;
 }
 
-/** What the last answer was judged to be, carried into the next response. */
 export interface AnswerVerdict {
   conceptName: string;
   correct: boolean;
@@ -46,7 +44,6 @@ async function advance(intakeId: string, lastAnswer?: AnswerVerdict): Promise<un
   });
   const q = await questionFor(probe.conceptId, learner?.workingLanguage);
   if (!q) {
-    // No item and no way to make one: skip rather than stalling the intake.
     const skipped = applyAnswer(state, probe, false);
     await prisma.intakeSession.update({
       where: { id: intakeId }, data: { state: skipped as never },
@@ -55,7 +52,7 @@ async function advance(intakeId: string, lastAnswer?: AnswerVerdict): Promise<un
   }
 
   const concept = await prisma.concept.findUniqueOrThrow({ where: { id: probe.conceptId } });
-  // Never write state here: a resume GET would put a stale copy over a fresh answer.
+  // Never write state here: a resume GET would put a stale copy over a fresh answer
   await prisma.intakeSession.update({
     where: { id: intakeId },
     data: { currentConceptId: probe.conceptId, currentItemId: q.itemId },
@@ -74,13 +71,11 @@ async function advance(intakeId: string, lastAnswer?: AnswerVerdict): Promise<un
       prompt: q.prompt,
       code: q.code,
       codeLanguage: q.codeLanguage,
-      // Shown to the learner so a question about something unfamiliar is not arbitrary.
       why: `Finding where your knowledge stops — this is step ${probe.position + 1} of ${probe.chainLength} in this chain.`,
     },
   };
 }
 
-/** Shared by start and finish so both plan against one goal, making the later plan a revision. */
 async function activeGoalFor(
   learnerId: string, topicId: string, depth: "use" | "debug" | "build",
 ): Promise<string> {
@@ -96,7 +91,6 @@ async function activeGoalFor(
   return created.id;
 }
 
-/** Writes what the intake concluded into the learner model, then plans. (07) */
 async function finish(intakeId: string): Promise<unknown> {
   const intake = await prisma.intakeSession.findUniqueOrThrow({ where: { id: intakeId } });
   const state = intake.state as unknown as IntakeState;
@@ -107,7 +101,7 @@ async function finish(intakeId: string): Promise<unknown> {
     await recordEvidence(prisma, {
       learnerId: intake.learnerId,
       conceptId: b.conceptId,
-      // An inferred belief must not look like demonstrated mastery. (06)
+      // An inferred belief must not look like demonstrated mastery
       kind: b.source === "assessed" ? "applied" : "downstream_success",
     });
   }
@@ -116,7 +110,7 @@ async function finish(intakeId: string): Promise<unknown> {
     intake.learnerId, intake.topicId, intake.depth as "use" | "debug" | "build",
   );
   const plan = await buildPlan({ prisma, learnerId: intake.learnerId, goalId });
-  // Reconcile now, or the fresh plan opens with already-satisfied steps still pending.
+  // Reconcile now, or the fresh plan opens with already-satisfied steps still pending
   await reconcilePlan(prisma, intake.learnerId);
 
   await prisma.intakeSession.update({
@@ -124,7 +118,6 @@ async function finish(intakeId: string): Promise<unknown> {
     data: { status: "complete", currentConceptId: null, currentItemId: null },
   });
 
-  // Named, not counted: a count is not a result a learner can check.
   const knownIds = beliefs.filter((b) => b.mastery !== "unknown").map((b) => b.conceptId);
   const knownConcepts = await prisma.concept.findMany({
     where: { id: { in: knownIds } },
@@ -156,7 +149,6 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
         topicId: z.string(),
         depth: z.enum(["use", "debug", "build"]),
         goalText: z.string().optional(),
-        /** Self-report. A prior on where to probe — never evidence of mastery. (07) */
         alreadyKnow: z.string().optional(),
       })
       .safeParse(req.body);
@@ -182,7 +174,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    // Self-report is a low-confidence prior: it can redirect probing, never cause a skip. (07)
+    // Self-report is a low-confidence prior: it can redirect probing, never cause a skip
     if (body.data.alreadyKnow?.trim()) {
       const named = await prisma.concept.findMany({
         where: { id: { in: conceptIds } },
@@ -196,7 +188,6 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    // Plan up front so the roadmap exists from the start; the assessment only revises it.
     const goalId = await activeGoalFor(body.data.learnerId, body.data.topicId, body.data.depth);
     const provisional = await buildPlan({
       prisma, learnerId: body.data.learnerId, goalId,
@@ -274,7 +265,6 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  /** Is there an assessment to pick up? withQuestion costs a probe selection, so it is opt-in. */
   app.get("/api/intake/open/:learnerId", async (req) => {
     const { learnerId } = req.params as { learnerId: string };
     const withQuestion = (req.query as { withQuestion?: string }).withQuestion === "1";
@@ -288,7 +278,6 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     const head = { intake: { id: intake.id, topic: topic?.name ?? null, depth: intake.depth } };
     if (!withQuestion) return { ...head, intakeId: intake.id, status: intake.status };
 
-    // Re-derive the question rather than trust a stored one: the item may have been retired.
     const resumed = await advance(intake.id);
     return { ...head, ...(resumed as object) };
   });
@@ -307,7 +296,6 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     return { ...intake, asked: state.asked.length };
   });
 
-  /** Every session for a learner, so past lessons are reachable rather than lost. */
   app.get("/api/learners/:id/sessions", async (req) => {
     const { id } = req.params as { id: string };
     const sessions = await prisma.session.findMany({
@@ -346,7 +334,6 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     return { sessionId: id, open: session.endedAt === null, turns };
   });
 
-  /** Deleting a session clears its transcript; evidence detaches so mastery survives. */
   app.delete("/api/sessions/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const session = await prisma.session.findUnique({ where: { id } });
@@ -381,7 +368,6 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  /** Reopening a past session makes it the live one again. */
   app.post("/api/sessions/:id/resume", async (req, reply) => {
     const { id } = req.params as { id: string };
     const session = await prisma.session.findUnique({ where: { id } });

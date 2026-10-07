@@ -7,17 +7,14 @@ import type { GraphEdge, GraphNode } from "./api";
 export interface ForceNode extends SimulationNodeDatum {
   id: string;
   degree: number;
-  /** Longest prerequisite chain behind this concept. Drives the vertical bias. */
   depth: number;
 }
 type ForceLink = SimulationLinkDatum<ForceNode> & { strength: "hard" | "soft" };
 
-/** Orb geometry: the simulation, the node box and the dot must all agree. */
 export const ORB_W = 130;
-/** Dot (34 at most) + gap + two lines of 11px label. */
+/** Dot (34 at most) + gap + two lines of 11px label */
 export const ORB_H = 70;
 
-/** Size carries degree, so hubs read as hubs at a glance without a legend. */
 export function orbDotSize(degree: number): number {
   return Math.min(34, 15 + degree * 2.2);
 }
@@ -27,7 +24,6 @@ export interface ForceResult {
   simulation: Simulation<ForceNode, ForceLink>;
 }
 
-/** Longest prerequisite chain behind each concept; foundations are 0. */
 export function prerequisiteDepth(nodes: GraphNode[], edges: GraphEdge[]): Map<string, number> {
   const incoming = new Map<string, string[]>();
   for (const e of edges) {
@@ -40,7 +36,7 @@ export function prerequisiteDepth(nodes: GraphNode[], edges: GraphEdge[]): Map<s
   const walk = (id: string): number => {
     const cached = depth.get(id);
     if (cached !== undefined) return cached;
-    // A soft prerequisite pair may cycle; the DB only forbids hard ones.
+    // A soft prerequisite pair may cycle; the DB only forbids hard ones
     if (visiting.has(id)) return 0;
     visiting.add(id);
     const parents = incoming.get(id) ?? [];
@@ -54,7 +50,6 @@ export function prerequisiteDepth(nodes: GraphNode[], edges: GraphEdge[]): Map<s
   return depth;
 }
 
-/** Horizontal position comes from the simulation, vertical from prerequisite depth. */
 export function runForceLayout(
   nodes: GraphNode[],
   edges: GraphEdge[],
@@ -75,7 +70,6 @@ export function runForceLayout(
     id: n.id,
     degree: degree.get(n.id) ?? 0,
     depth: depth.get(n.id) ?? 0,
-    // Seeding on a circle keeps the layout reproducible across runs.
     x: opts.width / 2 + Math.cos((i / nodes.length) * Math.PI * 2) * 180,
     y: depthY(n.id),
   }));
@@ -93,16 +87,12 @@ export function runForceLayout(
         .distance((l) => (l.strength === "hard" ? 95 : 150))
         .strength((l) => (l.strength === "hard" ? 1 : 0.3)),
     )
-    // Hubs repel more, so dense areas open up instead of collapsing into a knot.
     .force("charge", forceManyBody<ForceNode>().strength((d) => -230 - d.degree * 45))
     .force("center", forceCenter(opts.width / 2, opts.height / 2))
-    // Strong enough to hold the depth ordering, weak enough to leave clustering horizontal.
     .force("depth", forceY<ForceNode>((d) => depthY(d.id)).strength(0.85))
-    // Radius comes from the label box, not the dot, or labels overlap.
     .force("collide", forceCollide<ForceNode>().radius((d) => ORB_W / 2 + orbDotSize(d.degree) / 2))
     .stop();
 
-  // Ticked to completion synchronously; an animated settle is unreadable.
   sim.tick(opts.ticks ?? 320);
 
   const out = new Map<string, { x: number; y: number }>();
@@ -110,7 +100,6 @@ export function runForceLayout(
   return out;
 }
 
-/** Concepts within `hops` of a seed, following edges in both directions. */
 export function neighborhood(
   seedId: string,
   edges: GraphEdge[],
