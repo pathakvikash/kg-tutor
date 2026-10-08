@@ -11,6 +11,9 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # corepack enable fails on Render's default Node 26 (read-only /usr/bin)
+      - key: NODE_VERSION
+        value: "22"
       - key: DATABASE_URL
         sync: false
       - key: CORS_ORIGIN
