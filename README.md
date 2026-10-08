@@ -134,7 +134,9 @@ has been run end to end yet.
    below. On start it runs `pnpm db:deploy` (migrations) and then the API. Check
    `/api/health` on the service URL.
 3. Seed once from your machine against the deployed database:
-   `DATABASE_URL='<neon url>' pnpm db:seed`. It is safe to run again.
+   `export DATABASE_URL='<neon url>' && pnpm db:deploy && pnpm db:seed`. The seed
+   needs the tables, so migrate first if Render hasn't started yet. Both are safe to
+   run again.
 4. Vercel: import the repo, set the root directory to `apps/web`, and add
    `VITE_API_URL=<render url>` with no trailing slash. `apps/web/vercel.json` handles
    the SPA rewrite.
