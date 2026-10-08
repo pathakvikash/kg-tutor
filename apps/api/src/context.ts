@@ -22,8 +22,11 @@ export async function loadModelSettings(): Promise<ModelSettings> {
   if (row) return row.value as unknown as ModelSettings;
   const fromEnv = llmFromEnv();
   if (!fromEnv) return { provider: "none", small: "", strong: "" };
+  // OpenRouter model ids contain "/", so prefer the env over parsing the name
   const [, models] = fromEnv.name.split(":");
-  const [small = "", strong = ""] = (models ?? "").split("/");
+  const [parsedSmall = "", parsedStrong = ""] = (models ?? "").split("/");
+  const small = process.env.LLM_MODEL_SMALL ?? parsedSmall;
+  const strong = process.env.LLM_MODEL_STRONG ?? parsedStrong;
   const provider = fromEnv.name.startsWith("claude-code")
     ? "claude-code"
     : fromEnv.name.startsWith("anthropic")
@@ -50,16 +53,17 @@ export async function refreshLlm(): Promise<void> {
 
 function buildFromSettings(s: ModelSettings): LLMProvider | null {
   const models = { small: s.small, strong: s.strong };
+  const baseUrl = process.env.LLM_BASE_URL ? { baseUrl: process.env.LLM_BASE_URL } : {};
   switch (s.provider) {
     case "claude-code":
       return isProduction() ? null : new ClaudeCodeLLM({ models });
     case "anthropic": {
       const key = process.env.ANTHROPIC_API_KEY;
-      return key ? new AnthropicLLM({ apiKey: key, models }) : null;
+      return key ? new AnthropicLLM({ apiKey: key, models, ...baseUrl }) : null;
     }
     case "openai": {
-      const key = process.env.OPENAI_API_KEY ?? process.env.LLM_API_KEY;
-      return key ? new OpenAICompatibleLLM({ apiKey: key, models }) : null;
+      const key = process.env.LLM_API_KEY ?? process.env.OPENAI_API_KEY;
+      return key ? new OpenAICompatibleLLM({ apiKey: key, models, ...baseUrl }) : null;
     }
     default:
       return null;
