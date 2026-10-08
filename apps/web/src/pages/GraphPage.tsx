@@ -376,10 +376,10 @@ function Graph() {
   const [layingOut, setLayingOut] = useState(false);
   const mode = (params.get("view") === "teach" ? "teach" : "explore") as Mode;
   const topicId = params.get("topic") ?? "";
-  const [stickyLearner] = useStickyLearner();
+  const [stickyLearner, setStickyLearner] = useStickyLearner();
   const [learners, setLearners] = useState<any[]>([]);
   const stickyKnown = learners.length === 0 || learners.some((l) => l.id === stickyLearner);
-  const learnerId = params.get("learner") ?? (stickyKnown ? stickyLearner : "");
+  const learnerId = stickyKnown ? stickyLearner : "";
   const selection: Selection | null = params.get("node")
     ? { kind: "node", id: params.get("node")! }
     : params.get("edge")
@@ -444,6 +444,15 @@ function Graph() {
   );
 
   useEffect(() => { void api.learners().then(setLearners).catch(() => undefined); }, []);
+
+  // A shared ?learner= link seeds the picker once, then the picker owns it
+  useEffect(() => {
+    const fromUrl = params.get("learner");
+    if (!fromUrl) return;
+    setStickyLearner(fromUrl);
+    patch({ learner: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);

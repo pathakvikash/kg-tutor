@@ -9,7 +9,7 @@ import { MetricsPage } from "./pages/MetricsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ReviewSessionPage } from "./pages/ReviewSessionPage";
 import { api, apiUrl } from "./api";
-import { useLearner } from "./learnerStore";
+import { resolveLearner, useLearner } from "./learnerStore";
 import { useLlmConfig } from "./llmConfig";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
@@ -40,7 +40,11 @@ function LearnerPicker() {
     // Refetch on every change: a learner made on Home is not in the list yet
     let cancelled = false;
     api.learners()
-      .then((l) => { if (!cancelled) setLearners(l); })
+      .then((l) => {
+        if (cancelled) return;
+        setLearners(l);
+        setLearnerId(resolveLearner(learnerId, l));
+      })
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, [learnerId]);

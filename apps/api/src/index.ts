@@ -47,13 +47,14 @@ const LLM_ROUTES = new Set([
   "POST /api/learners/:id/attempt",
   "POST /api/learners/:id/chat",
   "POST /api/intake/:id/answer",
-  "GET /api/intake/open/:learnerId",
   "POST /api/roadmap/resolve",
   "POST /api/expansions",
   "POST /api/expansions/:id/retry",
   "POST /api/llm/models",
   "POST /api/llm/test",
 ]);
+// Routes that need a resolved model; the intake read is cheap, so not rate-limited as LLM
+const MODEL_ROUTES = new Set([...LLM_ROUTES, "GET /api/intake/open/:learnerId"]);
 
 // Hops of proxy in front of the API; 0 locally so x-forwarded-for cannot be spoofed
 const trustProxy = Number(process.env.TRUST_PROXY ?? 0);
@@ -108,7 +109,7 @@ app.decorateRequest("llm", null);
 app.addHook("preHandler", async (req) => {
   // /api/llm/* take their config in the body, so a stale header must not block them
   const route = `${req.method === "HEAD" ? "GET" : req.method} ${req.routeOptions.url}`;
-  if (!LLM_ROUTES.has(route) || route.includes(" /api/llm/")) return;
+  if (!MODEL_ROUTES.has(route) || route.includes(" /api/llm/")) return;
   const header = req.headers["x-llm-config"];
   req.llm = await resolveLlm(typeof header === "string" ? header : undefined, getLlm);
 });
