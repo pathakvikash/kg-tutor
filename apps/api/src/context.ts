@@ -113,8 +113,7 @@ function purposeOf(system: string): string {
   return "other";
 }
 
-export function resolverDeps() {
-  const provider = getLlm();
+export function resolverDeps(provider: LLMProvider | null) {
   if (!provider) return null;
   return { prisma, embedding, adjudicator: new LLMAdjudicator(provider) };
 }

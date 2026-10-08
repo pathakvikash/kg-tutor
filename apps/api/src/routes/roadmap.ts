@@ -3,7 +3,7 @@ import { z } from "zod";
 import { completeJson } from "@kg/llm";
 import { activePlanWhere, reconcilePlan } from "@kg/planner";
 import { atLeast } from "@kg/shared";
-import { prisma, getLlm } from "../context.js";
+import { prisma } from "../context.js";
 import { requireAdmin } from "../admin.js";
 
 const resolveSchema = z.object({
@@ -37,8 +37,8 @@ export async function roadmapRoutes(app: FastifyInstance): Promise<void> {
     const body = z.object({ goal: z.string().min(2) }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
-    const llm = getLlm();
-    if (!llm) return reply.code(503).send({ error: "no model configured" });
+    const llm = req.llm;
+    if (!llm) return reply.code(503).send({ error: "no model configured", detail: "Add your API key in Settings." });
 
     const parsed = await completeJson(
       llm,

@@ -1,5 +1,19 @@
 import { ClaudeCodeLLM } from "./claude-code.js";
-import { LLMError, type CompletionRequest, type LLMProvider, type ModelTier } from "./provider.js";
+import {
+  LLMError,
+  providerError,
+  providerFetch,
+  readCapped,
+  type CompletionRequest,
+  type LLMProvider,
+  type ModelTier,
+} from "./provider.js";
+
+const COMPLETION_TIMEOUT_MS = 180_000;
+const MAX_RESPONSE_BYTES = 2_000_000;
+
+// ponytail: model-id heuristic; a reasoning model with another name still gets max_tokens
+const REASONING_MODEL = /(^|\/)(o\d|gpt-5)/;
 
 export interface TierModels {
   small: string;
@@ -21,24 +35,32 @@ export class OpenAICompatibleLLM implements LLMProvider {
 
   async complete(req: CompletionRequest): Promise<string> {
     const base = this.opts.baseUrl ?? "https://api.openai.com/v1";
-    const res = await fetch(`${base}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${this.opts.apiKey}`,
+    const model = this.opts.models[req.tier];
+    const limit = req.maxTokens ?? 2048;
+    const sampling = REASONING_MODEL.test(model)
+      ? { max_completion_tokens: limit }
+      : { temperature: req.temperature ?? 0, max_tokens: limit };
+    const res = await providerFetch(
+      `${base}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.opts.apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: req.system },
+            { role: "user", content: req.user },
+          ],
+          ...sampling,
+        }),
       },
-      body: JSON.stringify({
-        model: this.opts.models[req.tier],
-        messages: [
-          { role: "system", content: req.system },
-          { role: "user", content: req.user },
-        ],
-        temperature: req.temperature ?? 0,
-        max_tokens: req.maxTokens ?? 2048,
-      }),
-    });
-    if (!res.ok) throw new LLMError(`chat completion failed: ${res.status} ${await res.text()}`);
-    const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+      COMPLETION_TIMEOUT_MS,
+    );
+    if (!res.ok) throw await providerError(res, this.opts.apiKey, "chat completion");
+    const body = JSON.parse(await readCapped(res, MAX_RESPONSE_BYTES)) as { choices?: { message?: { content?: string } }[] };
     const content = body.choices?.[0]?.message?.content;
     if (typeof content !== "string") throw new LLMError("no content in completion response");
     return content;
@@ -60,23 +82,27 @@ export class AnthropicLLM implements LLMProvider {
 
   async complete(req: CompletionRequest): Promise<string> {
     const base = this.opts.baseUrl ?? "https://api.anthropic.com/v1";
-    const res = await fetch(`${base}/messages`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": this.opts.apiKey,
-        "anthropic-version": "2023-06-01",
+    const res = await providerFetch(
+      `${base}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": this.opts.apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: this.opts.models[req.tier],
+          system: req.system,
+          messages: [{ role: "user", content: req.user }],
+          temperature: req.temperature ?? 0,
+          max_tokens: req.maxTokens ?? 2048,
+        }),
       },
-      body: JSON.stringify({
-        model: this.opts.models[req.tier],
-        system: req.system,
-        messages: [{ role: "user", content: req.user }],
-        temperature: req.temperature ?? 0,
-        max_tokens: req.maxTokens ?? 2048,
-      }),
-    });
-    if (!res.ok) throw new LLMError(`messages call failed: ${res.status} ${await res.text()}`);
-    const body = (await res.json()) as { content?: { type: string; text?: string }[] };
+      COMPLETION_TIMEOUT_MS,
+    );
+    if (!res.ok) throw await providerError(res, this.opts.apiKey, "messages call");
+    const body = JSON.parse(await readCapped(res, MAX_RESPONSE_BYTES)) as { content?: { type: string; text?: string }[] };
     const text = body.content?.find((c) => c.type === "text")?.text;
     if (typeof text !== "string") throw new LLMError("no text block in messages response");
     return text;

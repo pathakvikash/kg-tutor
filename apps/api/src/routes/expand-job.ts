@@ -1,21 +1,21 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { expandTopicShallow } from "@kg/graph";
-import { prisma, getLlm, resolverDeps } from "../context.js";
+import type { LLMProvider } from "@kg/llm";
+import { prisma, resolverDeps } from "../context.js";
 import { requireAdmin } from "../admin.js";
 
 /** Expansion takes minutes, so it runs as a polled job rather than one long request */
-async function runJob(jobId: string): Promise<void> {
+async function runJob(jobId: string, llm: LLMProvider | null): Promise<void> {
   const job = await prisma.expansionJob.findUniqueOrThrow({ where: { id: jobId } });
-  const llm = getLlm();
-  const resolver = resolverDeps();
+  const resolver = resolverDeps(llm);
 
   if (!llm || !resolver) {
     await prisma.expansionJob.update({
       where: { id: jobId },
       data: {
         status: "failed",
-        error: "No model configured. Set LLM_PROVIDER=claude-code or an API key.",
+        error: "No model configured. Add your API key in Settings.",
         finishedAt: new Date(),
       },
     });
@@ -90,7 +90,7 @@ export async function expandJobRoutes(app: FastifyInstance): Promise<void> {
     const job = await prisma.expansionJob.create({
       data: { topicName: body.data.topicName, description: body.data.description ?? null },
     });
-    void runJob(job.id);
+    void runJob(job.id, req.llm);
     return job;
   });
 
@@ -105,7 +105,7 @@ export async function expandJobRoutes(app: FastifyInstance): Promise<void> {
     const job = await prisma.expansionJob.create({
       data: { topicName: old.topicName, description: old.description },
     });
-    void runJob(job.id);
+    void runJob(job.id, req.llm);
     return job;
   });
 

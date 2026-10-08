@@ -16,7 +16,9 @@ import { settingsRoutes } from "./routes/settings.js";
 import { intakeRoutes } from "./routes/intake.js";
 import { roadmapRoutes } from "./routes/roadmap.js";
 import { widgetRoutes } from "./routes/widget.js";
-import { providerStatus, refreshLlm } from "./context.js";
+import { llmRoutes } from "./routes/llm.js";
+import { resolveLlm, type LLMProvider } from "@kg/llm";
+import { getLlm, providerStatus, refreshLlm } from "./context.js";
 import { installErrorHandler } from "./errors.js";
 import { isProduction } from "./admin.js";
 
@@ -48,13 +50,18 @@ const LLM_ROUTES = new Set([
   "POST /api/roadmap/resolve",
   "POST /api/expansions",
   "POST /api/expansions/:id/retry",
+  "POST /api/llm/models",
+  "POST /api/llm/test",
 ]);
 
 // Hops of proxy in front of the API; 0 locally so x-forwarded-for cannot be spoofed
 const trustProxy = Number(process.env.TRUST_PROXY ?? 0);
 
 const app = Fastify({
-  logger: { level: process.env.LOG_LEVEL ?? "info" },
+  logger: {
+    level: process.env.LOG_LEVEL ?? "info",
+    redact: ['req.headers["x-llm-config"]', "req.headers.authorization"],
+  },
   trustProxy: trustProxy > 0 ? trustProxy : false,
 });
 
@@ -89,6 +96,18 @@ app.addContentTypeParser(
 
 installErrorHandler(app);
 
+declare module "fastify" {
+  interface FastifyRequest {
+    llm: LLMProvider | null;
+  }
+}
+app.decorateRequest("llm", null);
+// preHandler, not onRequest: runs after rate-limit, so spam cannot drive DNS lookups
+app.addHook("preHandler", async (req) => {
+  const header = req.headers["x-llm-config"];
+  req.llm = await resolveLlm(typeof header === "string" ? header : undefined, getLlm);
+});
+
 await app.register(graphRoutes);
 await app.register(learnerRoutes);
 await app.register(reviewRoutes);
@@ -101,6 +120,7 @@ await app.register(settingsRoutes);
 await app.register(intakeRoutes);
 await app.register(roadmapRoutes);
 await app.register(widgetRoutes);
+await app.register(llmRoutes);
 
 if (existsSync(join(webDist, "index.html"))) {
   await app.register(fastifyStatic, { root: webDist });

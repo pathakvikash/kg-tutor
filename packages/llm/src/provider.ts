@@ -112,6 +112,51 @@ export class LLMAuthError extends LLMError {
   }
 }
 
+/** Reads a response body, throwing once it passes `maxBytes` so a hostile host cannot fill memory */
+export async function readCapped(res: Response, maxBytes: number): Promise<string> {
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    size += value.byteLength;
+    if (size > maxBytes) {
+      void reader.cancel();
+      throw new LLMError("response too large");
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+}
+
+/** fetch with no redirects and a deadline; transport failures become a fixed-message LLMError */
+export async function providerFetch(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    if ((err as Error).name === "TimeoutError") throw err;
+    throw new LLMError("Could not reach the model provider.");
+  }
+}
+
+/** Never puts the key or more than 300 chars of the provider's body into the message */
+export async function providerError(res: Response, apiKey: string, what: string): Promise<LLMError> {
+  if (res.status === 401 || res.status === 403) {
+    return new LLMAuthError(
+      `The model provider rejected the API key (${res.status}).`,
+      "Check the key in Settings (or the server env) and that it can use this model.",
+    );
+  }
+  const body = await readCapped(res, 2_000_000).catch(() => "");
+  return new LLMError(`${what} failed: ${res.status} ${body.slice(0, 300).replaceAll(apiKey, "[redacted]")}`);
+}
+
 /** A raw control char inside a JSON string is never valid, so repairing cannot corrupt one */
 function escapeControlCharsInStrings(body: string): string {
   const out: string[] = [];

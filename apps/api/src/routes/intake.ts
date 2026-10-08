@@ -6,16 +6,17 @@ import {
   loadTopicGraph, nextProbe, recordEvidence, selectItem, generateItems, isWrongLanguage,
   type IntakeState, type ProbeChoice,
 } from "@kg/teach";
-import { prisma, getLlm } from "../context.js";
+import type { LLMProvider } from "@kg/llm";
+import { prisma } from "../context.js";
 import { requireAdmin } from "../admin.js";
 
-const NO_MODEL = { error: "no model configured", detail: "Choose one in Settings." };
+const NO_MODEL = { error: "no model configured", detail: "Add your API key in Settings." };
 
 async function questionFor(
   conceptId: string,
+  llm: LLMProvider | null,
   language?: string | null,
 ): Promise<{ itemId: string; prompt: string; code: string | null; codeLanguage: string | null } | null> {
-  const llm = getLlm();
   let item = await selectItem(prisma, conceptId, "functional", [], { language });
   if ((!item || isWrongLanguage(item, language)) && llm) {
     await generateItems(prisma, llm, conceptId, { language });
@@ -32,7 +33,11 @@ export interface AnswerVerdict {
   reasoning: string;
 }
 
-async function advance(intakeId: string, lastAnswer?: AnswerVerdict): Promise<unknown> {
+async function advance(
+  intakeId: string,
+  llm: LLMProvider | null,
+  lastAnswer?: AnswerVerdict,
+): Promise<unknown> {
   const intake = await prisma.intakeSession.findUniqueOrThrow({ where: { id: intakeId } });
   const state = intake.state as unknown as IntakeState;
   const probe = nextProbe(state);
@@ -43,13 +48,13 @@ async function advance(intakeId: string, lastAnswer?: AnswerVerdict): Promise<un
     where: { id: intake.learnerId },
     select: { workingLanguage: true },
   });
-  const q = await questionFor(probe.conceptId, learner?.workingLanguage);
+  const q = await questionFor(probe.conceptId, llm, learner?.workingLanguage);
   if (!q) {
     const skipped = applyAnswer(state, probe, false);
     await prisma.intakeSession.update({
       where: { id: intakeId }, data: { state: skipped as never },
     });
-    return advance(intakeId, lastAnswer);
+    return advance(intakeId, llm, lastAnswer);
   }
 
   const concept = await prisma.concept.findUniqueOrThrow({ where: { id: probe.conceptId } });
@@ -196,7 +201,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return {
-      ...(await advance(intake.id) as object),
+      ...(await advance(intake.id, req.llm) as object),
       plan: {
         version: provisional.version,
         steps: provisional.steps.length,
@@ -210,7 +215,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     const body = z.object({ answer: z.string() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
-    const llm = getLlm();
+    const llm = req.llm;
     if (!llm) return reply.code(503).send(NO_MODEL);
 
     const intake = await prisma.intakeSession.findUniqueOrThrow({ where: { id } });
@@ -259,7 +264,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
       where: { id },
       data: { state: applyAnswer(state, probe, grade.correct) as never },
     });
-    return advance(id, {
+    return advance(id, llm, {
       conceptName: concept.canonicalName,
       correct: grade.correct,
       reasoning: grade.reasoning,
@@ -279,7 +284,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     const head = { intake: { id: intake.id, topic: topic?.name ?? null, depth: intake.depth } };
     if (!withQuestion) return { ...head, intakeId: intake.id, status: intake.status };
 
-    const resumed = await advance(intake.id);
+    const resumed = await advance(intake.id, req.llm);
     return { ...head, ...(resumed as object) };
   });
 

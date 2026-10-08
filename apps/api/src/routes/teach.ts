@@ -2,15 +2,13 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { expandPrerequisitesOf, expandTopicShallow, type ExpandReport } from "@kg/graph";
 import { executeJs, routeChatQuestion, runAttempt, selectItem, generateItems } from "@kg/teach";
-import { prisma, getLlm, resolverDeps } from "../context.js";
+import { prisma, resolverDeps } from "../context.js";
 import { openSession, saveTurn } from "../sessions.js";
 import { isProduction, requireAdmin } from "../admin.js";
 
 const NO_MODEL = {
   error: "no model configured",
-  detail:
-    "Set ANTHROPIC_API_KEY or OPENAI_API_KEY and restart the API. " +
-    "This endpoint deliberately has no mock: fabricated graph content is worse than a clear failure.",
+  detail: "Add your API key in Settings.",
 };
 
 export async function teachRoutes(app: FastifyInstance): Promise<void> {
@@ -21,8 +19,8 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
-    const llm = getLlm();
-    const resolver = resolverDeps();
+    const llm = req.llm;
+    const resolver = resolverDeps(llm);
     if (!llm || !resolver) return reply.code(503).send(NO_MODEL);
 
     return expandTopicShallow({
@@ -37,8 +35,8 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/concepts/:id/deepen", async (req, reply) => {
     if (!requireAdmin(req, reply)) return reply;
     const { id } = req.params as { id: string };
-    const llm = getLlm();
-    const resolver = resolverDeps();
+    const llm = req.llm;
+    const resolver = resolverDeps(llm);
     if (!llm || !resolver) return reply.code(503).send(NO_MODEL);
 
     const concept = await prisma.concept.findUnique({
@@ -103,7 +101,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/concepts/:id/items/generate", async (req, reply) => {
     if (!requireAdmin(req, reply)) return reply;
     const { id } = req.params as { id: string };
-    const llm = getLlm();
+    const llm = req.llm;
     if (!llm) return reply.code(503).send(NO_MODEL);
     return generateItems(prisma, llm, id);
   });
@@ -137,7 +135,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
-    const llm = getLlm();
+    const llm = req.llm;
     if (!llm) return reply.code(503).send(NO_MODEL);
 
     const sessionId = body.data.sessionId ?? (await openSession(id, body.data.kind));
@@ -184,7 +182,7 @@ export async function teachRoutes(app: FastifyInstance): Promise<void> {
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
-    const llm = getLlm();
+    const llm = req.llm;
     if (!llm) return reply.code(503).send(NO_MODEL);
 
     const concept = await prisma.concept.findUniqueOrThrow({

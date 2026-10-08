@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { extractJson, type LLMProvider } from "@kg/llm";
 import { assignVariant } from "@kg/teach";
-import { prisma, getLlm } from "../context.js";
+import { prisma } from "../context.js";
 
 /** Must stay in step with apps/web/src/widget/catalog.ts; a name missing there renders nothing */
 const CATALOG = `Components you may use. Anything not listed here does not exist.
@@ -123,8 +123,8 @@ export async function widgetRoutes(app: FastifyInstance): Promise<void> {
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
-    const llm = getLlm();
-    if (!llm) return reply.code(503).send({ error: "no model configured" });
+    const llm = req.llm;
+    if (!llm) return reply.code(503).send({ error: "no model configured", detail: "Add your API key in Settings." });
 
     const concept = await prisma.concept.findUniqueOrThrow({ where: { id: body.data.conceptId } });
     const prereqs = await prisma.edge.findMany({

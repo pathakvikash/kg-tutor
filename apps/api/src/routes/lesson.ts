@@ -1,10 +1,11 @@
+import type { OutgoingHttpHeaders } from "node:http";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { completeJson, startStream } from "@kg/llm";
 import { activePlanWhere, loadMastery } from "@kg/planner";
 import { generateItems, isWrongLanguage, selectItem, routeChatQuestion, recordEvidence } from "@kg/teach";
 import { isActionable } from "@kg/teach";
-import { prisma, getLlm } from "../context.js";
+import { prisma } from "../context.js";
 import { openSession, saveTurn } from "../sessions.js";
 
 async function recentTurns(sessionId: string): Promise<string> {
@@ -27,7 +28,7 @@ async function recentTurns(sessionId: string): Promise<string> {
 
 const NO_MODEL = {
   error: "no model configured",
-  detail: "Set LLM_PROVIDER=claude-code, or ANTHROPIC_API_KEY / OPENAI_API_KEY, then restart.",
+  detail: "Add your API key in Settings.",
 };
 
 const explanationSchema = z.object({
@@ -88,7 +89,7 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/lesson/explain", async (req, reply) => {
     const body = z.object({ learnerId: z.string(), conceptId: z.string() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
-    const llm = getLlm();
+    const llm = req.llm;
     if (!llm) return reply.code(503).send(NO_MODEL);
 
     const concept = await prisma.concept.findUniqueOrThrow({ where: { id: body.data.conceptId } });
@@ -202,7 +203,7 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
       })
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
-    const llm = getLlm();
+    const llm = req.llm;
     if (!llm) return reply.code(503).send(NO_MODEL);
 
     const learner = await prisma.learner.findUniqueOrThrow({
@@ -243,10 +244,12 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
-    const llm = getLlm();
+    const llm = req.llm;
     if (!llm) return reply.code(503).send(NO_MODEL);
 
+    // raw writeHead skips headers set on reply, which carry the CORS ones
     reply.raw.writeHead(200, {
+      ...(reply.getHeaders() as OutgoingHttpHeaders),
       "content-type": "text/event-stream",
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
@@ -345,7 +348,7 @@ export async function lessonRoutes(app: FastifyInstance): Promise<void> {
       .object({ learnerId: z.string(), conceptId: z.string(), question: z.string().min(1) })
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
-    const llm = getLlm();
+    const llm = req.llm;
     if (!llm) return reply.code(503).send(NO_MODEL);
 
     const concept = await prisma.concept.findUniqueOrThrow({ where: { id: body.data.conceptId } });
