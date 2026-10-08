@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Busy } from "../components/Busy";
-import { HttpError, api, apiUrl } from "../api";
+import { HttpError, api, apiUrl, failure } from "../api";
 
 type Async<T> =
   | { phase: "loading" }
@@ -13,22 +13,7 @@ const asError = (e: unknown): Error => (e instanceof Error ? e : new Error(Strin
 /** For the call api.ts has no wrapper for; same HttpError shape */
 async function reviewFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl(url), init);
-  if (!res.ok) {
-    const text = await res.text();
-    let remedy: string | null = null;
-    let message = text;
-    try {
-      const body = JSON.parse(text) as { error?: unknown; remedy?: string; detail?: string };
-      remedy = body.remedy ?? null;
-      message =
-        typeof body.error === "string"
-          ? body.error
-          : body.error
-            ? JSON.stringify(body.error)
-            : body.detail ?? text;
-    } catch { /* keep the raw text */ }
-    throw new HttpError(res.status, message || `HTTP ${res.status}`, remedy);
-  }
+  if (!res.ok) throw await failure(res);
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 

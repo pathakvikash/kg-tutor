@@ -7,6 +7,44 @@
   font-size: var(--t-section);
   margin: 0;
 }
+/* Sections breathe more than the fields inside them */
+.settings .set-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+.settings .set-page .eyebrow {
+  margin-top: var(--s-4);
+}
+.settings form.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+.settings .set-copy {
+  margin: 0;
+  max-width: var(--measure-narrow);
+  line-height: 1.5;
+}
+.settings .set-keyrow {
+  align-self: stretch;
+}
+.settings .set-keyrow input {
+  flex: 1 1 200px;
+  max-width: 420px;
+}
+.settings .set-admin > summary {
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-size: var(--t-section);
+  font-weight: 600;
+}
+.settings .set-admin[open] > summary {
+  margin-bottom: var(--s-3);
+}
+.settings .set-admin > :not(summary) + * {
+  margin-top: var(--s-5);
+}
 
 /* Fields: the hint stays outside the label, out of the control's accessible name */
 .settings .set-field {

@@ -171,7 +171,13 @@ export async function learnerRoutes(app: FastifyInstance): Promise<void> {
       },
       orderBy: { version: "desc" },
     });
-    if (!plan) return reply.code(404).send({ error: "no active plan" });
+    if (!plan) {
+      // No plan yet is a normal state; only an unknown learner is a 404
+      if (!(await prisma.learner.findUnique({ where: { id } }))) {
+        return reply.code(404).send({ error: "learner not found" });
+      }
+      return { plan: null };
+    }
 
     const mastery = await loadMastery(prisma, id);
     // The next step is the first one not yet mastered, not the first one left unmarked

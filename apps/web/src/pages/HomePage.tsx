@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { api, apiUrl, HttpError } from "../api";
+import { api, apiUrl, failure, HttpError } from "../api";
 import { Busy } from "../components/Busy";
 import { Markdown } from "../components/Markdown";
 import { DEPTH_LABEL, DUE_KIND, dueKindLabel } from "../vocabulary";
@@ -46,7 +46,7 @@ async function createLearner(email: string): Promise<{ id: string }> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email }),
   });
-  if (!res.ok) throw new HttpError(res.status, await res.text());
+  if (!res.ok) throw await failure(res);
   return res.json() as Promise<{ id: string }>;
 }
 

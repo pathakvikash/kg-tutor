@@ -10,6 +10,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { ReviewSessionPage } from "./pages/ReviewSessionPage";
 import { api, apiUrl } from "./api";
 import { useLearner } from "./learnerStore";
+import { useLlmConfig } from "./llmConfig";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 function DueBadge() {
@@ -60,6 +61,7 @@ function ProviderBadge() {
   // A 500 can still parse as JSON, so check both res.ok and the shape
   const [state, setState] = useState<"loading" | "unreachable" | Health>("loading");
   const [slow, setSlow] = useState(false);
+  const config = useLlmConfig();
   useEffect(() => {
     let cancelled = false;
     // The free host sleeps when idle, and waking it can take a minute
@@ -84,13 +86,18 @@ function ProviderBadge() {
       </span>
     );
   }
+  const mine = config !== null;
   return (
     <NavLink
       to="/settings"
-      className={state.llm ? "badge" : "badge warn"}
-      title={state.llm ?? "Choose a model in Settings."}
+      className={mine || state.llm ? "badge" : "badge warn"}
+      title={mine ? "Using the key saved in this browser." : (state.llm ?? "Choose a model in Settings.")}
     >
-      {state.llm ? `model: ${state.llm.split(":")[0]}` : "No model set"}
+      {mine
+        ? `model: ${config.provider} · your key`
+        : state.llm
+          ? "model: server default"
+          : "no model, click to set"}
     </NavLink>
   );
 }
