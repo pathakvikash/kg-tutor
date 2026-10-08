@@ -47,6 +47,7 @@ const LLM_ROUTES = new Set([
   "POST /api/learners/:id/attempt",
   "POST /api/learners/:id/chat",
   "POST /api/intake/:id/answer",
+  "GET /api/intake/open/:learnerId",
   "POST /api/roadmap/resolve",
   "POST /api/expansions",
   "POST /api/expansions/:id/retry",
@@ -88,8 +89,9 @@ app.addContentTypeParser(
     if (text.length === 0) return done(null, {});
     try {
       done(null, JSON.parse(text));
-    } catch (err) {
-      done(err as Error, undefined);
+    } catch {
+      // The raw SyntaxError quotes a slice of the body, which may hold a key
+      done(Object.assign(new Error("Body is not valid JSON."), { statusCode: 400 }), undefined);
     }
   },
 );
@@ -104,6 +106,9 @@ declare module "fastify" {
 app.decorateRequest("llm", null);
 // preHandler, not onRequest: runs after rate-limit, so spam cannot drive DNS lookups
 app.addHook("preHandler", async (req) => {
+  // /api/llm/* take their config in the body, so a stale header must not block them
+  const route = `${req.method === "HEAD" ? "GET" : req.method} ${req.routeOptions.url}`;
+  if (!LLM_ROUTES.has(route) || route.includes(" /api/llm/")) return;
   const header = req.headers["x-llm-config"];
   req.llm = await resolveLlm(typeof header === "string" ? header : undefined, getLlm);
 });

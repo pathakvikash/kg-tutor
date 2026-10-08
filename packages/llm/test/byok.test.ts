@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ByokConfigError,
+  AnthropicLLM,
   LLMAuthError,
   OpenAICompatibleLLM,
   assertPublicHttpsUrl,
@@ -123,6 +124,22 @@ describe("provider hardening", () => {
     const err = await llm.complete({ system: "s", user: "u", tier: "small" }).catch((e) => e);
     expect(err.message).not.toContain(KEY);
     expect(err.message.length).toBeLessThan(400);
+  });
+
+  it("redacts a key that straddles the 300-char cut", async () => {
+    vi.stubGlobal("fetch", async () => new Response(`${"x".repeat(290)}${KEY}`, { status: 500 }));
+    const err = await llm.complete({ system: "s", user: "u", tier: "small" }).catch((e) => e);
+    expect(err.message).not.toContain(KEY.slice(0, 5));
+    expect(err.message).toContain("[redacted]");
+  });
+
+  it.each([
+    ["openai", { choices: [{ message: { content: "" } }] }],
+    ["anthropic", { content: [{ type: "text", text: "" }] }],
+  ])("rejects an empty %s answer", async (provider, payload) => {
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify(payload), { status: 200 }));
+    const model = provider === "openai" ? llm : new AnthropicLLM({ apiKey: KEY, models: { small: "a", strong: "b" } });
+    await expect(model.complete({ system: "s", user: "u", tier: "small" })).rejects.toThrow(/empty answer/);
   });
 
   it("sends max_completion_tokens and no temperature to reasoning models", async () => {

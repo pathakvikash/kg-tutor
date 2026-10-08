@@ -15,6 +15,9 @@ const MAX_RESPONSE_BYTES = 2_000_000;
 // ponytail: model-id heuristic; a reasoning model with another name still gets max_tokens
 const REASONING_MODEL = /(^|\/)(o\d|gpt-5)/;
 
+const EMPTY_ANSWER = () =>
+  new LLMError("The model returned an empty answer. Try a larger token limit or a non-reasoning model.");
+
 export interface TierModels {
   small: string;
   strong: string;
@@ -63,6 +66,7 @@ export class OpenAICompatibleLLM implements LLMProvider {
     const body = JSON.parse(await readCapped(res, MAX_RESPONSE_BYTES)) as { choices?: { message?: { content?: string } }[] };
     const content = body.choices?.[0]?.message?.content;
     if (typeof content !== "string") throw new LLMError("no content in completion response");
+    if (content === "") throw EMPTY_ANSWER();
     return content;
   }
 }
@@ -105,6 +109,7 @@ export class AnthropicLLM implements LLMProvider {
     const body = JSON.parse(await readCapped(res, MAX_RESPONSE_BYTES)) as { content?: { type: string; text?: string }[] };
     const text = body.content?.find((c) => c.type === "text")?.text;
     if (typeof text !== "string") throw new LLMError("no text block in messages response");
+    if (text === "") throw EMPTY_ANSWER();
     return text;
   }
 }

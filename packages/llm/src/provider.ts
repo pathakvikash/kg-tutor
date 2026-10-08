@@ -145,7 +145,7 @@ export async function providerFetch(
   }
 }
 
-/** Never puts the key or more than 300 chars of the provider's body into the message */
+/** Never puts the key or more than 300 chars of the provider's body into the message; redact first so a key at the cut cannot leak */
 export async function providerError(res: Response, apiKey: string, what: string): Promise<LLMError> {
   if (res.status === 401 || res.status === 403) {
     return new LLMAuthError(
@@ -154,7 +154,7 @@ export async function providerError(res: Response, apiKey: string, what: string)
     );
   }
   const body = await readCapped(res, 2_000_000).catch(() => "");
-  return new LLMError(`${what} failed: ${res.status} ${body.slice(0, 300).replaceAll(apiKey, "[redacted]")}`);
+  return new LLMError(`${what} failed: ${res.status} ${body.replaceAll(apiKey, "[redacted]").slice(0, 300)}`);
 }
 
 /** A raw control char inside a JSON string is never valid, so repairing cannot corrupt one */
