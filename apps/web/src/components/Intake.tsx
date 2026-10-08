@@ -252,7 +252,7 @@ export function Intake({
             </button>
           )}
           {onCancel && (
-            <button className="linkish" onClick={onCancel}>back to the lesson</button>
+            <button className="linkish" onClick={onCancel}>Back to the lesson</button>
           )}
           {busy && <Busy label={busy} />}
         </div>
@@ -278,7 +278,7 @@ export function Intake({
 
         {pollFails > 1 && !lostContact && (
           <p className="muted build-hint" role="status">
-            Not hearing back from the build — still asking.
+            Not hearing back from the build. Still asking.
           </p>
         )}
 
@@ -286,8 +286,8 @@ export function Intake({
           <div className="notice notice--error" role="alert">
             <strong>Lost contact with this build.</strong>
             <p>
-              It stopped answering. The work may still be running server-side, or the job
-              may be gone — either way nothing more will appear here on its own.
+              It stopped answering. The work may still be running, or the job may be gone.
+              Nothing more will appear here on its own.
             </p>
             {error && (
               <p className="retry-failed">
@@ -298,7 +298,7 @@ export function Intake({
               <button className="primary" onClick={() => void retryBuild()} aria-disabled={!!busy || undefined}>
                 Retry the build
               </button>
-              <button onClick={startOver}>Not what I meant — start over</button>
+              <button onClick={startOver}>Start over</button>
               {busy && <Busy label={busy} clock={false} />}
             </div>
           </div>
@@ -316,7 +316,7 @@ export function Intake({
               <button className="primary" onClick={() => void retryBuild()} aria-disabled={!!busy || undefined}>
                 Try the build again
               </button>
-              <button onClick={startOver}>Not what I meant — start over</button>
+              <button onClick={startOver}>Start over</button>
               {busy && <Busy label={busy} clock={false} />}
             </div>
           </div>
@@ -369,16 +369,15 @@ export function Intake({
 
         <p className="muted build-hint">
           Each question is asked of the model three times independently and only what a
-          majority names is kept — that filter is why this takes minutes, and it is what
-          stops the graph filling with plausible-sounding concepts nobody needs.
+          majority names is kept. That is why this takes minutes.
         </p>
 
         {!failed && !lostContact && (
           <div className="row intake-actions">
-            <button onClick={startOver}>Not what I meant — start over</button>
+            <button onClick={startOver}>Start over</button>
             {onCancel && (
               <button className="linkish" onClick={onCancel}>
-                leave it running and go back
+                Leave it running and go back
               </button>
             )}
           </div>
@@ -395,7 +394,7 @@ export function Intake({
           {resolved
             ? `Aiming at ${resolved.canonicalName}. A few questions so the first lesson lands in the right place.`
             : "A few questions so the first lesson lands in the right place."}
-          {" "}Under a minute — the teaching itself does most of the assessing.
+          {" "}It takes under a minute.
         </p>
 
         <label className="intake-field">
@@ -440,8 +439,7 @@ export function Intake({
             placeholder="e.g. functions, scope"
           />
           <em className="muted hint">
-            This only decides where to start asking. It never skips a concept on its own —
-            self-report is a hint, not evidence.
+            This only decides where to start asking. Nothing is skipped on your word alone.
           </em>
         </label>
 
@@ -464,7 +462,7 @@ export function Intake({
             Change the goal
           </button>
           {onCancel && (
-            <button className="linkish" onClick={onCancel}>back to the lesson</button>
+            <button className="linkish" onClick={onCancel}>Back to the lesson</button>
           )}
           {busy && <Busy label={busy} />}
         </div>
@@ -477,7 +475,7 @@ export function Intake({
       <div className="intake page--narrow">
         {resumedFrom && (
           <div className="notice notice--info">
-            Picking up where you left off — {resumedFrom.topic ?? "your assessment"} (
+            Picking up where you left off: {resumedFrom.topic ?? "your assessment"} (
             {resumedFrom.depth}).{" "}
             <button
               className="linkish"
@@ -495,15 +493,15 @@ export function Intake({
           <div className={session.lastAnswer.correct ? "verdict ok" : "verdict gap"}>
             <strong>
               {session.lastAnswer.correct
-                ? `${session.lastAnswer.conceptName} — solid.`
-                : `${session.lastAnswer.conceptName} — not yet.`}
+                ? `${session.lastAnswer.conceptName}: solid.`
+                : `${session.lastAnswer.conceptName}: not yet.`}
             </strong>{" "}
             <span className="verdict-why"><Markdown text={session.lastAnswer.reasoning} /></span>
           </div>
         )}
         {roadmap && (
           <p className="muted probe-hint">
-            Your roadmap is built — <b>{roadmap.steps}</b> concepts
+            Your roadmap is ready: <b>{roadmap.steps}</b> concepts
             {roadmap.milestones > 0 ? ` across ${roadmap.milestones} milestones` : ""}. These
             questions only decide where you start and what gets skipped, so answering more
             of them means being taught less.
@@ -533,7 +531,7 @@ export function Intake({
           <div className="notice notice--error" role="alert">
             <strong>That answer was not recorded.</strong>
             <p>{error}</p>
-            <p className="muted">Your text is still in the box — send it again.</p>
+            <p className="muted">Your text is still in the box. Send it again.</p>
           </div>
         )}
         <div className="row intake-actions">
@@ -576,7 +574,7 @@ export function Intake({
       ) : (
         <p className="muted">
           Nothing came back as already solid, so the plan starts from the ground up.
-          That is a starting point, not a verdict — the teaching keeps assessing.
+          The teaching keeps assessing from there.
         </p>
       )}
 
@@ -587,7 +585,7 @@ export function Intake({
       )}
 
       <p className="muted">
-        Everything else gets sorted out while teaching — if the plan turns out wrong, it
+        Everything else gets sorted out while teaching. If the plan turns out wrong, it
         gets revised and you'll be told what changed.
       </p>
       <button className="primary" onClick={onComplete}>Start learning</button>

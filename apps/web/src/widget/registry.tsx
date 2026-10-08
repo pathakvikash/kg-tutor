@@ -235,8 +235,8 @@ export const { registry } = defineRegistry(catalog, {
                     <span className="w-opt-mark" aria-hidden="true">{state === "right" ? "✓" : "✗"}</span>
                   )}
                   <span className="w-opt-label">{o.label}</span>
-                  {state === "right" && <span className="sr-only"> — correct</span>}
-                  {state === "wrong" && <span className="sr-only"> — incorrect</span>}
+                  {state === "right" && <span className="sr-only">, correct</span>}
+                  {state === "wrong" && <span className="sr-only">, incorrect</span>}
                 </button>
               );
             })}

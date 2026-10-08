@@ -17,17 +17,20 @@ export class ErrorBoundary extends Component<
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div className="page page--measure">
+      <div className="page page--measure stack stack--loose">
         <div className="notice notice--error" role="alert">
-          <strong>This page could not be drawn.</strong>
-          <p style={{ margin: 0 }}>
-            {this.state.error.message || "An unexpected error."} The rest of the app is
-            still working — the navigation above still moves.
-          </p>
+          <strong>Something went wrong on this page.</strong>
+          <p>The rest of the app still works.</p>
+          {this.state.error.message && (
+            <details>
+              <summary>Details</summary>
+              <p className="mono">{this.state.error.message}</p>
+            </details>
+          )}
         </div>
-        <div className="row" style={{ marginTop: "var(--s-4)" }}>
+        <div className="row">
           <button className="primary" onClick={() => this.setState({ error: null })}>
-            Try drawing it again
+            Try again
           </button>
           <button onClick={() => window.location.reload()}>Reload the app</button>
         </div>

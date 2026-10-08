@@ -65,7 +65,7 @@ const KIND: Record<string, { label: string; blurb: string; acceptable: boolean }
 };
 
 const kindOf = (kind: string) =>
-  KIND[kind] ?? { label: kind.replace(/_/g, " "), blurb: "Unknown kind — read only here.", acceptable: false };
+  KIND[kind] ?? { label: kind.replace(/_/g, " "), blurb: "Unknown kind. Read only.", acceptable: false };
 
 const BAR = { effect: 0.2, learners: 12, goals: 2 };
 
@@ -112,7 +112,7 @@ function faultHelp(fault: FmFault, words: number, src: string | null, dst: strin
     case "empty":
       return "A hard edge is only accepted with a concrete failure mode named.";
     case "too_short":
-      return `${words} word${words === 1 ? "" : "s"} — six is the minimum, because six is about the shortest a real mistake can be described in.`;
+      return `${words} word${words === 1 ? "" : "s"}. Use at least six to describe a real mistake.`;
     case "circular":
       return `This only names ${src ?? "the prerequisite"} back. Say what the learner gets wrong without it.`;
     case "restates_target":
@@ -383,7 +383,7 @@ export function ReviewPage() {
       setConfirming({ ...confirming, [p.id]: null });
       announce(
         r.retired === 0
-          ? "Nothing to retire — this proposal has no live edge."
+          ? "Nothing to retire. This proposal has no live edge."
           : `Retired ${r.retired} edge${r.retired === 1 ? "" : "s"} promoted by this proposal.`,
       );
       await loadProposals();
@@ -419,15 +419,12 @@ export function ReviewPage() {
       <header className="cur-head">
         <h1>Curate</h1>
         <p className="cur-lead">
-          The review surface for the shared graph — what every future learner gets taught
-          from, not one learner's progress.
+          Review changes to the shared graph.
         </p>
       </header>
 
       <div className="notice notice--info">
-        Structural changes are proposals, never automatic writes. Accepting one requires a
-        concrete failure mode and produces a <em>provisional</em> edge, which stays
-        reversible from the Decided list below.
+        Nothing changes until you accept it, and accepted edges can be undone below.
       </div>
 
       <div className="cur-actions row">
@@ -442,9 +439,7 @@ export function ReviewPage() {
         {busy?.op === "scan" && <Busy label={busy.label} />}
       </div>
       <p className="cur-note">
-        Scan re-reads every learner's evidence for prerequisite edges the graph does not
-        have, and tests each one against a control arm. It is the slowest operation here
-        and it only ever creates proposals — it never writes an edge.
+        Looks for missing prerequisites in learner data. Slow; only creates proposals.
       </p>
 
       {scanNote && (
@@ -539,10 +534,8 @@ export function ReviewPage() {
                         </label>
                         <p className="cur-contract">
                           What specifically goes wrong without <ConceptName name={p.src} />? Six
-                          words or more, describing the wrong belief or wrong behaviour — not
-                          that the prerequisite is needed, and not{" "}
-                          <ConceptName name={p.src} /> or <ConceptName name={p.dst} /> named
-                          back at itself.
+                          words or more, describing the wrong belief or behaviour.
+                          Saying the prerequisite is needed does not count.
                         </p>
                         <textarea
                           id={`fm-${p.id}`}
@@ -558,7 +551,7 @@ export function ReviewPage() {
                         />
                         <p className="cur-fm-check" id={`fm-check-${p.id}`}>
                           {check.fault === null
-                            ? `${check.words} words — reads like a real failure mode.`
+                            ? `${check.words} words. Reads like a real failure mode.`
                             : check.fault === "empty"
                               ? "Required before this can be accepted."
                               : faultHelp(check.fault, check.words, p.src, p.dst)}
@@ -569,8 +562,8 @@ export function ReviewPage() {
                         {!hasEnds
                           ? "This proposal has no source or target concept on record, so no edge can be written from it."
                           : !endsLive
-                            ? "One end of this proposal is a concept that no longer exists, so no edge can be written from it. Reject it — the graph has moved on since it was raised."
-                            : "This kind cannot be executed from here — Accept would write a hard edge, which is not what it proposes. Reject it, or act on it directly in the graph."}
+                            ? "One end of this proposal is a concept that no longer exists, so no edge can be written from it. Reject it, since the graph has moved on."
+                            : "This kind cannot be accepted here. Reject it, or edit the graph directly."}
                       </p>
                     )}
 
@@ -643,8 +636,7 @@ export function ReviewPage() {
 
       <h2 className="section-title">Decided{count(proposals, decided.length)}</h2>
       <p className="cur-sub">
-        What has already been ruled on. An accepted proposal wrote a provisional edge, and
-        retiring that edge is a normal operation rather than an incident.
+        Accepted and rejected proposals.
       </p>
       <Loaded res={proposals} what="Proposals" onRetry={() => void loadProposals()} rows={2}>
         {() =>
@@ -728,9 +720,7 @@ export function ReviewPage() {
         <div>
           <h2 className="section-title">Looks like invention{inventionCount}</h2>
           <p className="cur-sub">
-            The graph starts as model assertion, so pruning fiction is worth more early
-            than adding more claims. Nothing here can be retired automatically: acting on a
-            row means editing that edge in the graph.
+            Edges learners never seem to need. Edit them in the graph.
           </p>
         </div>
         <label className="field">
@@ -760,8 +750,7 @@ export function ReviewPage() {
             return (
               <>
                 <div className="empty">
-                  Nothing flagged at {minAttempts}+ attempts — or not enough traffic yet to
-                  judge.
+                  Nothing flagged yet.
                 </div>
                 {hiddenHere.length + elsewhere.length > 0 && (
                   <DismissedList
@@ -790,11 +779,11 @@ export function ReviewPage() {
                             <EdgePair src={u.srcName} dst={u.dstName} />
                           </Link>
                         </td>
-                        <td className="mono">unobserved failure mode</td>
-                        <td className="cur-detail">
+                        <td className="mono" data-label="Signal">unobserved failure mode</td>
+                        <td className="cur-detail" data-label="Detail">
                           {u.attempts} attempts, never once exhibited: “{u.failureMode}”
                         </td>
-                        <td><DismissButton edgeId={u.edgeId} onDismiss={dismiss} /></td>
+                        <td data-label="Reviewed"><DismissButton edgeId={u.edgeId} onDismiss={dismiss} /></td>
                       </tr>
                     ))}
                     {bypassed.map((b: any) => (
@@ -804,11 +793,11 @@ export function ReviewPage() {
                             <EdgePair src={b.srcName} dst={b.dstName} />
                           </Link>
                         </td>
-                        <td className="mono">routinely bypassed</td>
-                        <td className="cur-detail">
+                        <td className="mono" data-label="Signal">routinely bypassed</td>
+                        <td className="cur-detail" data-label="Detail">
                           {pct(b.bypassRate)} of {b.total} learners succeeded without it
                         </td>
-                        <td><DismissButton edgeId={b.edgeId} onDismiss={dismiss} /></td>
+                        <td data-label="Reviewed"><DismissButton edgeId={b.edgeId} onDismiss={dismiss} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -838,8 +827,7 @@ export function ReviewPage() {
         {queue.phase === "ready" ? ` (${queue.data.length}${queue.data.length === 100 ? "+" : ""})` : ""}
       </h2>
       <p className="cur-sub">
-        Most of the graph is never crossed by anyone; reviewing that is wasted attention.
-        Hard prerequisite edges only, provisional first, then by how many plans cross them.
+        Most-used edges first.
       </p>
       <Loaded res={queue} what="The review queue" onRetry={() => void loadQueue()} rows={3}>
         {(rows) =>
@@ -860,8 +848,8 @@ export function ReviewPage() {
                             <EdgePair src={q.srcName} dst={q.dstName} />
                           </Link>
                         </td>
-                        <td className="mono">{q.traversals}</td>
-                        <td>
+                        <td className="mono" data-label="Plans crossing it">{q.traversals}</td>
+                        <td data-label="Status">
                           <span className={q.provisional ? "chip prov" : "chip"}>
                             {q.provisional ? "provisional" : "canonical"}
                           </span>
@@ -874,7 +862,7 @@ export function ReviewPage() {
               {rows.length > queueLimit && (
                 <p className="cur-sub">
                   Showing {queueLimit} of {rows.length}
-                  {rows.length === 100 ? " returned (the route caps at 100)" : ""} —{" "}
+                  {rows.length === 100 ? " returned (capped at 100)" : ""}.{" "}
                   <button className="linkish" onClick={() => setQueueLimit(rows.length)}>
                     show all {rows.length}
                   </button>
@@ -895,7 +883,7 @@ function serverFailureMessage(err: Error): string {
   if (reason === "circular") return "The server read this as naming the prerequisite back at itself.";
   if (reason === "restates_target") return "The server read this as restating the target, not a mistake.";
   if (reason === "vague") return "The server read this as asserting a failure without describing one.";
-  if (err instanceof HttpError && err.remedy) return `${m} — ${err.remedy}`;
+  if (err instanceof HttpError && err.remedy) return `${m}. ${err.remedy}`;
   return m;
 }
 
@@ -943,7 +931,7 @@ function DismissedList({
         <li key={edgeId}>
           <Link to={`/graph?edge=${edgeId}`}>edge {edgeId.slice(0, 8)}</Link>
           <span className="cur-detail">{reason}</span>
-          <button className="linkish" onClick={() => onUndismiss(edgeId)}>restore</button>
+          <button className="linkish" onClick={() => onUndismiss(edgeId)}>Restore</button>
         </li>
       ))}
     </ul>

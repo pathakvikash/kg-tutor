@@ -137,7 +137,7 @@
 .home-lang { margin-top: var(--s-6); }
 /* Not a flex container: Chrome drops the disclosure marker on a flex summary */
 .home-lang-summary { cursor: pointer; font-size: var(--t-small); }
-.home-lang-summary .eyebrow { display: inline; }
+.home-lang-summary .eyebrow { display: inline; margin-right: var(--s-2); }
 .home-lang-value { font-weight: 600; margin-left: var(--s-2); }
 .home-lang[open] .home-lang-summary { margin-bottom: var(--s-3); }
 .home-lang-body { gap: var(--s-3); }

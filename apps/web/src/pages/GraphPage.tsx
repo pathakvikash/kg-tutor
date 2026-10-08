@@ -17,7 +17,7 @@ const nodeTypes = { concept: ConceptNode };
 
 const FIT = { padding: 0.14, maxZoom: 1.6, duration: 200 };
 
-const LEGEND_BREAKPOINT = 900;
+const LEGEND_BREAKPOINT = 1000;
 
 type Mode = "explore" | "teach";
 
@@ -64,7 +64,7 @@ function DeepenButton({
         ok: true,
         text:
           added === 0
-            ? `Nothing new — the model named ${r.conceptsReused} concept(s) already here.`
+            ? `Nothing new. The model named ${r.conceptsReused} concept(s) already here.`
             : `${added} new prerequisite${added === 1 ? "" : "s"} · ` +
               `${r.conceptsCreated} new concept(s), ${r.conceptsReused} reused` +
               (r.edgesRejectedAsCycle > 0 ? `, ${r.edgesRejectedAsCycle} rejected as a cycle` : ""),
@@ -87,7 +87,7 @@ function DeepenButton({
       <h4 className="eyebrow">Go deeper</h4>
       <p className="muted deepen-why">
         Asks the model what {conceptName} builds on. This adds concepts and edges to the
-        shared graph — it is not a change to one learner.
+        shared graph for every learner.
       </p>
       <div className="row">
         <button
@@ -142,13 +142,13 @@ function Legend({
           ))}
         </span>
       ) : (
-        <span className="lg muted">Pick a learner to colour concepts by mastery</span>
+        <span className="lg muted">Choose a learner at the top to colour concepts by mastery</span>
       )}
       <span className="lg">
         <svg className="lg-line" viewBox="0 0 26 6" aria-hidden="true">
           <line x1="0" y1="3" x2="26" y2="3" stroke="var(--rule-strong)" strokeWidth="1.8" />
         </svg>
-        hard — required
+        hard: required
       </span>
       <span className="lg">
         <svg className="lg-line" viewBox="0 0 26 6" aria-hidden="true">
@@ -157,7 +157,7 @@ function Legend({
             stroke="var(--rule-strong)" strokeWidth="1.2" strokeDasharray="4 3"
           />
         </svg>
-        soft — adds depth
+        soft: adds depth
       </span>
       <span className="lg">
         <svg className="lg-line" viewBox="0 0 26 6" aria-hidden="true">
@@ -195,16 +195,13 @@ function Inspector({
       <>
         <h3 className="insp-title">Exploring</h3>
         <p className="muted insp-lead">
-          Click a concept to see what it needs and what it unlocks. Click an edge to see
-          the dependency itself — including the specific misunderstanding that happens
-          without it, which is what the tutor uses to diagnose a wrong answer.
+          Click a concept or an edge for details.
         </p>
         <section className="insp-section">
           <h4 className="eyebrow">Modes</h4>
           <p className="muted insp-lead">
-            <strong>Explore</strong> clusters by connection — good for finding hubs and
-            gaps. <strong>Teach</strong> layers by dependency — good for reading the order
-            a learner would go through.
+            <strong>Explore</strong> groups by connection. <strong>Teach</strong> orders by
+            prerequisite.
           </p>
         </section>
       </>
@@ -240,8 +237,7 @@ function Inspector({
             <div className="edge-detail">{e.failureMode}</div>
           ) : (
             <p className="muted">
-              None — which is why this is <code>soft</code>. A hard edge is only accepted
-              with a concrete failure named.
+              None, so this edge is <code>soft</code>. A hard edge needs a concrete failure.
             </p>
           )}
         </section>
@@ -258,8 +254,8 @@ function Inspector({
   if (!node) {
     return (
       <div className="notice notice--info">
-        That concept is not in this view — it may sit outside the current topic filter.
-        Pick another concept on the canvas.
+        That concept is not in this view. It may be outside the topic filter. Pick
+        another concept on the canvas.
       </div>
     );
   }
@@ -327,7 +323,7 @@ function Inspector({
 
       <section className="insp-section">
         <h4 className="eyebrow">Requires ({incoming.length})</h4>
-        {incoming.length === 0 && <p className="muted">Nothing — a starting point here.</p>}
+        {incoming.length === 0 && <p className="muted">Nothing. This is a starting point.</p>}
         {incoming.map((e) => (
           <div className="rel" key={e.id}>
             <button className="linkish" onClick={() => onHop(e.source)}>{name(e.source)}</button>{" "}
@@ -380,7 +376,7 @@ function Graph() {
   const [layingOut, setLayingOut] = useState(false);
   const mode = (params.get("view") === "teach" ? "teach" : "explore") as Mode;
   const topicId = params.get("topic") ?? "";
-  const [stickyLearner, setStickyLearner] = useStickyLearner();
+  const [stickyLearner] = useStickyLearner();
   const [learners, setLearners] = useState<any[]>([]);
   const stickyKnown = learners.length === 0 || learners.some((l) => l.id === stickyLearner);
   const learnerId = params.get("learner") ?? (stickyKnown ? stickyLearner : "");
@@ -431,8 +427,7 @@ function Graph() {
 
   const setMode = (m: Mode) => patch({ view: m === "explore" ? null : m });
   const setTopicId = (id: string) => patch({ topic: id || null, node: null, edge: null, focus: null });
-  const setLearnerId = (id: string) => { setStickyLearner(id); patch({ learner: id || null }); };
-  const setFocusId = useCallback((id: string | null) => patch({ focus: id }), [patch]);
+    const setFocusId = useCallback((id: string | null) => patch({ focus: id }), [patch]);
   const setHops = (n: number) => patch({ hops: n === 1 ? null : String(n) });
   const setLive = (fn: (v: boolean) => boolean) => patch({ live: fn(live) ? null : "off" });
   const setSelection = useCallback(
@@ -708,51 +703,44 @@ function Graph() {
       <div className="toolbar graph-toolbar">
         <div className="gt-filters">
           <label className="field">
-            view
+            View
             <select value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
               <option value="explore">Explore</option>
               <option value="teach">Teach</option>
             </select>
           </label>
           <label className="field">
-            topic
+            Topic
             <select value={topicId} onChange={(e) => setTopicId(e.target.value)}>
-              <option value="">all</option>
+              <option value="">All topics</option>
               {(graph?.topics ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            learner
-            <select value={learnerId} onChange={(e) => setLearnerId(e.target.value)}>
-              <option value="">none</option>
-              {learners.map((l) => <option key={l.id} value={l.id}>{l.email ?? l.name ?? l.id}</option>)}
             </select>
           </label>
         </div>
 
         <div className="gt-status">
-          <button onClick={() => void load()} aria-disabled={loading}>reload</button>
-          {loading && graph && <Busy label="refreshing" clock={false} />}
+          <button onClick={() => void load()} aria-disabled={loading}>Reload</button>
+          {loading && graph && <Busy label="Refreshing" clock={false} />}
           <span className={live ? "live" : "live off"} title={
             live
-              ? "Checks every 3s for changes made elsewhere — a graph expansion finishing, " +
-                "or mastery moving after a lesson or an assessment — and redraws when it finds one."
-              : "Not watching for changes. The view only updates when you press reload."
+              ? "Checks every 3s for changes made elsewhere, such as a graph expansion finishing " +
+                "or mastery moving after a lesson, and redraws when it finds one."
+              : "Not watching for changes. The view only updates when you press Reload."
           }>
             <span className="pulse" />
             <button className="live-toggle" aria-pressed={live} onClick={() => setLive((v) => !v)}>
               {live
                 ? refreshedAt
-                  ? `auto-refresh · updated ${clockTime(refreshedAt)}`
-                  : "auto-refresh"
-                : "auto-refresh off"}
+                  ? `Auto-refresh · updated ${clockTime(refreshedAt)}`
+                  : "Auto-refresh"
+                : "Auto-refresh off"}
             </button>
           </span>
         </div>
 
         {narrow ? (
           <details className="gt-legend gt-legend--fold">
-            <summary>key{counts ? ` · ${counts.nodes} concepts` : ""}</summary>
+            <summary>Key{counts ? ` · ${counts.nodes} concepts` : ""}</summary>
             {legend}
           </details>
         ) : (
@@ -823,8 +811,7 @@ function Graph() {
                   {topicId ? (
                     <>
                       <p>
-                        No concepts are tagged with this topic yet — which is a filter
-                        result, not an empty database.
+                        No concepts are tagged with this topic yet.
                       </p>
                       <div className="row empty-action">
                         <button onClick={() => setTopicId("")}>Show all topics</button>

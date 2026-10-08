@@ -625,7 +625,7 @@ export function LearnPage() {
                 </p>
               ) : (
                 <div className="panel panel--dashed stack">
-                  <p className="empty-line">No plan yet — nothing has been set as a goal.</p>
+                  <p className="empty-line">No plan yet.</p>
                   <button className="primary" onClick={() => setShowIntake(true)}>
                     Tell me what you want to learn
                   </button>
@@ -698,8 +698,8 @@ export function LearnPage() {
                     <div className="goal-offer">
                       <div>
                         That is a different subject from what you are on. I can build you a
-                        real roadmap for <strong>{t.text}</strong> — assess where you
-                        already are, then order it — rather than describing one.
+                        roadmap for <strong>{t.text}</strong>: check where you are, then
+                        order the steps.
                       </div>
                       {!readOnly && (
                         <div className="row">
@@ -739,7 +739,7 @@ export function LearnPage() {
           {planComplete && (
             <div className="panel done-card stack">
               <p className="eyebrow">plan complete</p>
-              <h2>{plan.goal.topic} — every step met</h2>
+              <h2>{plan.goal.topic}: every step met</h2>
               <p className="done-sub">
                 {stepCount} concept{stepCount === 1 ? "" : "s"} covered
                 {plan.milestones.length > 0 && (
@@ -759,8 +759,7 @@ export function LearnPage() {
                 </ul>
               )}
               <p className="muted empty-line">
-                Nothing here is finished for good — confidence fades, so what you proved
-                comes back to be re-proved.
+                Topics will come back for review over time.
               </p>
               <div className="row">
                 <Link className="btn primary" to="/review-session">
@@ -794,7 +793,7 @@ export function LearnPage() {
                     Grade this as my answer
                   </button>
                   <button onClick={() => void ask(ambiguous)}>
-                    Just ask — the check stays open
+                    Just ask, keep the check open
                   </button>
                   <button
                     className="linkish"
@@ -820,7 +819,7 @@ export function LearnPage() {
                       {error.retryLabel ?? "Try again"}
                     </button>
                   )}
-                  <button className="linkish" onClick={() => setError(null)}>dismiss</button>
+                  <button className="linkish" onClick={() => setError(null)}>Dismiss</button>
                 </div>
               </div>
             </div>
@@ -846,114 +845,116 @@ export function LearnPage() {
           <div ref={bottom} />
         </div>
 
-        <div className="composer">
-          <div className="composer-inner">
-            {readOnly ? (
-              <>
-                <span className="muted composer-note">
-                  Viewing a past session. Resume it to continue.
-                </span>
-                <button
-                  className="primary"
-                  onClick={() => void resume(viewingSession!)}
-                  aria-disabled={locked || undefined}
-                >
-                  Resume this session
-                </button>
-                <button onClick={() => void load(learnerId).then(() => setViewingSession(null))}>
-                  Back to current
-                </button>
-              </>
-            ) : planComplete ? (
-              <>
-                <span className="muted composer-note">
-                  This plan is complete. Pick a concept from the roadmap to revisit, or set
-                  a new goal.
-                </span>
-                <button onClick={() => setShowIntake(true)}>Set a new goal</button>
-              </>
-            ) : (
-              <>
-                <label className="sr-only" htmlFor="composer-input">
-                  {pending ? "Answer the check, or ask a question" : "Ask a question"}
-                </label>
-                <textarea
-                  id="composer-input"
-                  ref={composer}
-                  rows={2}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      send();
+        {(current || readOnly || planComplete || turns.length > 0) && (
+          <div className="composer">
+            <div className="composer-inner">
+              {readOnly ? (
+                <>
+                  <span className="muted composer-note">
+                    Viewing a past session. Resume it to continue.
+                  </span>
+                  <button
+                    className="primary"
+                    onClick={() => void resume(viewingSession!)}
+                    aria-disabled={locked || undefined}
+                  >
+                    Resume this session
+                  </button>
+                  <button onClick={() => void load(learnerId).then(() => setViewingSession(null))}>
+                    Back to current
+                  </button>
+                </>
+              ) : planComplete ? (
+                <>
+                  <span className="muted composer-note">
+                    This plan is complete. Pick a concept from the roadmap to revisit, or set
+                    a new goal.
+                  </span>
+                  <button onClick={() => setShowIntake(true)}>Set a new goal</button>
+                </>
+              ) : (
+                <>
+                  <label className="sr-only" htmlFor="composer-input">
+                    {pending ? "Answer the check, or ask a question" : "Ask a question"}
+                  </label>
+                  <textarea
+                    id="composer-input"
+                    ref={composer}
+                    rows={2}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        send();
+                      }
+                    }}
+                    placeholder={
+                      pending
+                        ? "Answer the check, or ask something instead"
+                        : "Ask a question…"
                     }
-                  }}
-                  placeholder={
-                    pending
-                      ? "Answer the check — or ask something instead"
-                      : "Ask a question…"
-                  }
-                  aria-describedby={pending ? "check-hint" : undefined}
-                  disabled={!current}
-                />
-                {/* One element, two actions: swapping buttons would drop focus mid-answer */}
+                    aria-describedby={pending ? "check-hint" : undefined}
+                    disabled={!current}
+                  />
+                  {/* One element, two actions: swapping buttons would drop focus mid-answer */}
+                  <button
+                    className="primary"
+                    onClick={locked ? stop : send}
+                    disabled={!current}
+                    aria-disabled={(!locked && !input.trim()) || undefined}
+                  >
+                    {locked ? "Stop" : "Send"}
+                  </button>
+                  <button
+                    onClick={() => void teach()}
+                    disabled={!current}
+                    aria-disabled={locked || undefined}
+                  >
+                    {turns.length === 0 ? "Start lesson" : "Re-explain"}
+                  </button>
+                  <button
+                    onClick={() => void showMe(input.trim() || undefined)}
+                    disabled={!current}
+                    aria-disabled={locked || undefined}
+                    title="Build an interactive example of this concept or of what you typed"
+                  >
+                    Show me
+                  </button>
+                  {turns.length > 0 && <button onClick={() => void reset()}>Start over</button>}
+                </>
+              )}
+            </div>
+            {pending && !readOnly && !planComplete && (
+              <div className="composer-inner check-actions">
+                <span className="eyebrow" id="check-hint">
+                  a check is open · answering it records evidence
+                </span>
                 <button
-                  className="primary"
-                  onClick={locked ? stop : send}
-                  disabled={!current}
-                  aria-disabled={(!locked && !input.trim()) || undefined}
-                >
-                  {locked ? "Stop" : "Send"}
-                </button>
-                <button
-                  onClick={() => void teach()}
-                  disabled={!current}
+                  onClick={() => void grade("I don't know")}
                   aria-disabled={locked || undefined}
+                  title="Answered honestly. It costs this check and records that the concept is not established yet."
                 >
-                  {turns.length === 0 ? "Start lesson" : "Re-explain"}
+                  I don't know this
                 </button>
                 <button
-                  onClick={() => void showMe(input.trim() || undefined)}
-                  disabled={!current}
+                  onClick={skipCheck}
                   aria-disabled={locked || undefined}
-                  title="Build an interactive example of this concept — or of whatever you have typed"
+                  title="Leave it unanswered. Nothing is recorded, and it comes back."
                 >
-                  Show me
+                  Skip this check
                 </button>
-                {turns.length > 0 && <button onClick={() => void reset()}>Start over</button>}
-              </>
+              </div>
             )}
           </div>
-          {pending && !readOnly && !planComplete && (
-            <div className="composer-inner check-actions">
-              <span className="eyebrow" id="check-hint">
-                a check is open · answering it records evidence
-              </span>
-              <button
-                onClick={() => void grade("I don't know")}
-                aria-disabled={locked || undefined}
-                title="Answered honestly. It costs this check and records that the concept is not established yet."
-              >
-                I don't know this
-              </button>
-              <button
-                onClick={skipCheck}
-                aria-disabled={locked || undefined}
-                title="Leave it unanswered. Nothing is recorded, and it comes back."
-              >
-                Skip this check
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       <aside className="inspector">
         {override && (
           <div className="notice notice--warn inspector-banner">
             On a detour to <strong>{override.name}</strong>.{" "}
-            <button className="linkish" onClick={() => setOverride(null)}>back to the plan</button>
+            <button className="linkish" onClick={() => setOverride(null)}>Back to the plan</button>
           </div>
         )}
 
@@ -982,7 +983,7 @@ export function LearnPage() {
                 <h4>Goal</h4>
                 {!readOnly && (
                   <button className="linkish" onClick={() => push({ role: "roadmap", text: "" })}>
-                    show roadmap
+                    Show roadmap
                   </button>
                 )}
               </div>
@@ -1034,8 +1035,8 @@ export function LearnPage() {
           </>
         )}
 
-        {phase === "ready" && !plan && (
-          <p className="muted">No plan yet. Set a goal to get one.</p>
+        {phase === "ready" && !plan && turns.length > 0 && (
+          <p className="muted">No plan yet.</p>
         )}
 
         {lessons.length > 0 && (

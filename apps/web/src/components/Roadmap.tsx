@@ -35,7 +35,7 @@ export function Roadmap({
     if (error.missing) {
       return (
         <div className="rm">
-          <p className="muted empty-line">No roadmap yet — set a goal to get one.</p>
+          <p className="muted empty-line">No plan yet.</p>
         </div>
       );
     }

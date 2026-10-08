@@ -146,4 +146,4 @@
 
 /* Two base hover rules out-specify the global aria-disabled look */
 .graph-page button[aria-disabled="true"]:hover { color: var(--ink); }
-.graph-page button.primary[aria-disabled="true"]:hover { opacity: 0.55; color: #fff; }
+.graph-page button.primary[aria-disabled="true"]:hover { opacity: 0.55; color: var(--on-accent); }

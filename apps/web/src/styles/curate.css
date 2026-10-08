@@ -152,3 +152,22 @@
   display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: baseline;
   padding: var(--s-1) 0;
 }
+
+/* Same stacked-row pattern as the Learner mastery table */
+@media (max-width: 620px) {
+  .table-wrap > .cur-table { min-width: 0; }
+  .cur-table thead { display: none; }
+  .cur-table, .cur-table tbody, .cur-table tr, .cur-table td { display: block; }
+  .cur-table tr {
+    border: 1px solid var(--rule); border-radius: var(--r-md);
+    background: var(--surface); padding: var(--s-3); margin-bottom: var(--s-2);
+  }
+  .cur-table td { border: none; padding: 0 0 var(--s-1); }
+  .cur-table td:first-child { font-size: var(--t-body); padding-bottom: var(--s-2); }
+  .cur-table td[data-label]::before {
+    content: attr(data-label) " ";
+    font-family: var(--font-mono); font-size: var(--t-micro); font-weight: 500;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft);
+    margin-right: var(--s-1);
+  }
+}

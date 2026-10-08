@@ -122,11 +122,7 @@ function NewTopic({ onDone }: { onDone: () => void }) {
 
       <label className="learner-label" htmlFor="new-topic">Topic to build into the graph</label>
       <p className="muted learner-hint" id="new-topic-hint">
-        Anything the graph does not have yet. It asks the model the same question three
-        times and keeps only what a majority names — once for the topic, then again for the
-        prerequisites of every concept it found — so a twenty-concept topic is sixty-odd
-        model calls over several minutes. What it writes goes into the graph every learner
-        shares, and this page cannot take it back out.
+        Add a new topic to the shared graph. Takes a few minutes and can't be undone here.
       </p>
 
       <div className="row">
@@ -190,7 +186,7 @@ function NewTopic({ onDone }: { onDone: () => void }) {
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={pct}
-            aria-valuetext={`${pct}% — ${job.phase ?? "queued"}`}
+            aria-valuetext={`${pct}%, ${job.phase ?? "queued"}`}
           >
             <div className="bar" style={{ width: `${pct}%` }} />
           </div>
@@ -203,8 +199,7 @@ function NewTopic({ onDone }: { onDone: () => void }) {
           <strong>Lost contact with this build</strong>
           <p>
             Three status checks in a row failed, so this page cannot say whether “
-            {job.topicName}” is still running. The job itself is unaffected by that — if
-            the server is alive, it is still working.
+            {job.topicName}” is still running. If the server is up, it still is.
           </p>
           <button onClick={() => setLost(false)}>Check again</button>
         </div>
@@ -258,7 +253,7 @@ function MasteryLegend() {
       {MASTERY_ORDER.map((m) => (
         <li key={m}>
           <span className="mastery-mark" data-level={m} aria-hidden="true" />
-          <b>{m}</b> — {MASTERY_MEANING[m]}
+          <b>{m}</b>: {MASTERY_MEANING[m]}
         </li>
       ))}
     </ul>
@@ -266,7 +261,6 @@ function MasteryLegend() {
 }
 
 export function LearnerPage() {
-  const [learners, setLearners] = useState<any[]>([]);
   const [topics, setTopics] = useState<any[]>([]);
   const [id, setId] = useStickyLearner();
   const [state, setState] = useState<any>(null);
@@ -288,7 +282,7 @@ export function LearnerPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    void api.learners().then((l) => { setLearners(l); setId(resolveLearner(id, l)); });
+    void api.learners().then((l) => setId(resolveLearner(id, l)));
     void api.topics().then(setTopics);
   }, []);
 
@@ -352,7 +346,7 @@ export function LearnerPage() {
     setBusy("replan"); setNote(null); setFailure(null);
     try {
       const r = await api.rebuildPlan(id);
-      setNote(`Plan v${r.version} — ${r.revisionReason ?? "no change"}`);
+      setNote(`Plan v${r.version}: ${r.revisionReason ?? "no change"}`);
       await load(id);
     } catch (e) {
       setFailure(asFailure(e));
@@ -372,15 +366,9 @@ export function LearnerPage() {
         <div className="stack stack--tight">
           <h2>Learner model</h2>
           <p className="muted">
-            What the tutor believes about this learner, and the plan it derives from it.
+            What this learner knows and what is next.
           </p>
         </div>
-        <label className="field">
-          learner
-          <select value={id} onChange={(e) => setId(e.target.value)}>
-            {learners.map((l) => <option key={l.id} value={l.id}>{l.email ?? l.name ?? l.id}</option>)}
-          </select>
-        </label>
       </div>
 
       {/* Mounted unconditionally: a region that appears already holding its text may never be spoken */}
@@ -397,9 +385,8 @@ export function LearnerPage() {
           <Lines count={1} />
         ) : goalUnknown ? (
           <p className="muted">
-            Your goal could not be read — the failure, and its retry, are under “Concept
-            record” below. This panel cannot say what your goal is, and setting one would
-            retire whatever is already there, so that action is off until the read lands.
+            Your goal could not be read. The error and a retry are under “Concept record”
+            below. Setting a new goal is off until it loads.
           </p>
         ) : activeGoal ? (
           <p className="learner-current">
@@ -467,10 +454,10 @@ export function LearnerPage() {
 
         <p className="muted learner-hint">
           {goalUnknown
-            ? "Replan is still safe — it keeps whatever goal the server holds and re-orders what is left of it. Setting a new goal is not, while this page cannot see the goal it would retire."
+            ? "Replan keeps your goal and reorders what is left. Setting a new goal is off until your goal loads."
             : dirty
-            ? "Replace plan starts a new goal and a new plan. Replan keeps your goal and re-orders what is left of it — that is the safe one."
-            : "These match your active goal, so there is nothing to replace. Replan re-orders what is left of it against what you now know."}
+            ? "Set goal & plan starts a new goal. Replan keeps your goal and reorders what is left."
+            : "These match your active goal. Replan reorders what is left."}
         </p>
 
         {confirming && activeGoal && (
@@ -488,14 +475,13 @@ export function LearnerPage() {
             <p>
               This retires your <b>{activeGoal.topic} · {depthLabel(activeGoal.depth)}</b> goal
               {plan && (
-                <> and plan v{plan.version} — {plan.steps.length} concepts, {committed} of
-                  them pinned as firm</>
+                <> and plan v{plan.version} ({plan.steps.length} concepts, {committed} of
+                  them firm)</>
               )}
               , and builds a new plan for <b>{targetTopic} · {depthLabel(depth)}</b>.
             </p>
             <p>
-              Mastery you have already demonstrated is kept — it lives on the concepts, not
-              on the plan. The path through them is what gets rebuilt.
+              Mastery you have already shown is kept. Only the path is rebuilt.
             </p>
             <div className="row">
               <button
@@ -523,7 +509,7 @@ export function LearnerPage() {
               <div className="row">
                 <span>{note}</span>
                 <button className="linkish learner-dismiss" onClick={() => setNote(null)}>
-                  dismiss
+                  Dismiss
                 </button>
               </div>
             </div>
@@ -534,7 +520,7 @@ export function LearnerPage() {
               <p>{failure.message}</p>
               {failure.remedy && <p>{failure.remedy}</p>}
               <button className="linkish learner-dismiss" onClick={() => setFailure(null)}>
-                dismiss
+                Dismiss
               </button>
             </div>
           )}
@@ -558,7 +544,7 @@ export function LearnerPage() {
           <Roadmap key={`${id}:${plan.version}`} learnerId={id} />
 
           <details className="learner-detail">
-            <summary>Plan detail — order, firm steps, and what each concept unlocks</summary>
+            <summary>Plan detail: order, firm steps, and what each concept unlocks</summary>
             <p className="muted learner-hint">
               The roadmap groups this path by milestone; these are the two fields it does
               not draw. <b>Firm</b> is the near horizon the planner committed to when it
@@ -587,7 +573,7 @@ export function LearnerPage() {
                           ? "met"
                           : `${st.currentMastery ?? "unknown"} → ${st.requiredLevel}`}
                       </td>
-                      <td>{st.committed ? "firm" : "—"}</td>
+                      <td>{st.committed ? "firm" : "later"}</td>
                       <td className="mono">{st.unlockCount ?? 0}</td>
                     </tr>
                   ))}
@@ -600,8 +586,7 @@ export function LearnerPage() {
         <div className="empty">You have a goal but no plan for it. Replan builds one.</div>
       ) : goalUnknown ? (
         <div className="empty">
-          No plan on the server. Whether there is a goal behind it could not be read — the
-          failure is under “Concept record” below.
+          No plan on the server. Your goal could not be read. See “Concept record” below.
         </div>
       ) : (
         <div className="empty">
@@ -616,7 +601,7 @@ export function LearnerPage() {
         <p className="muted">Nothing to probe until there is a plan.</p>
       ) : plan.probes.length === 0 ? (
         <p className="muted">
-          None — the next step can be taught without checking anything first.
+          None. The next step can be taught right away.
         </p>
       ) : (
         <div className="table-wrap">
@@ -643,9 +628,7 @@ export function LearnerPage() {
         Concept record{!loading && !stateFail && ` (${states.length})`}
       </h3>
       <p className="muted learner-hint">
-        One row per concept this learner has been assessed on — including the ones assessed
-        as not established. Confidence runs 0–1 and halves every 45 days, so a fresh 0.40
-        and a year-old 0.40 are not the same claim.
+        Every concept this learner has been assessed on. Confidence halves every 45 days.
       </p>
       <MasteryLegend />
 
@@ -694,7 +677,7 @@ export function LearnerPage() {
                         {s.reprobeQueued && s.blockedUntil && " · "}
                         {s.blockedUntil && `blocked until ${shortDate(s.blockedUntil)}`}
                       </>
-                    ) : "—"}
+                    ) : "none"}
                   </td>
                 </tr>
               ))}
@@ -729,7 +712,7 @@ export function LearnerPage() {
                       </button>
                     </td>
                     <td>{m.belief}</td>
-                    <td className="muted">{m.matchedFailureMode ?? "—"}</td>
+                    <td className="muted">{m.matchedFailureMode ?? "none"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -740,11 +723,10 @@ export function LearnerPage() {
 
       {state?.learner?.variant && (
         <p className="muted learner-arm">
-          Experiment arm: <b>{state.learner.variant}</b> —{" "}
+          Group: <b>{state.learner.variant}</b>{" "}
           {state.learner.variant === "graph"
-            ? "taught through the graph and this learner model."
-            : "taught by a plain strong-model tutor with no graph, which is the control the graph is measured against."}{" "}
-          Derived from the learner id, so it never changes.
+            ? "(taught through the graph)."
+            : "(no graph, used as the control)."}
         </p>
       )}
     </div>

@@ -32,13 +32,38 @@ function DueBadge() {
   return <span className="due-badge" title={`${count} concept(s) due for review`}>{count}</span>;
 }
 
+function LearnerPicker() {
+  const [learnerId, setLearnerId] = useLearner();
+  const [learners, setLearners] = useState<{ id: string; email?: string; name?: string }[]>([]);
+  useEffect(() => {
+    // Refetch on every change: a learner made on Home is not in the list yet
+    let cancelled = false;
+    api.learners()
+      .then((l) => { if (!cancelled) setLearners(l); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [learnerId]);
+  if (learners.length === 0) return null;
+  return (
+    <label className="field topbar-learner">
+      <span className="sr-only">Learner</span>
+      <select value={learnerId} onChange={(e) => setLearnerId(e.target.value)}>
+        {learners.map((l) => <option key={l.id} value={l.id}>{l.email ?? l.name ?? l.id}</option>)}
+      </select>
+    </label>
+  );
+}
+
 type Health = { llm: string | null; degraded: boolean };
 
 function ProviderBadge() {
   // A 500 can still parse as JSON, so check both res.ok and the shape
   const [state, setState] = useState<"loading" | "unreachable" | Health>("loading");
+  const [slow, setSlow] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    // The free host sleeps when idle, and waking it can take a minute
+    const timer = setTimeout(() => setSlow(true), 5000);
     fetch(apiUrl("/api/health"))
       .then(async (r) => {
         if (!r.ok) throw new Error(String(r.status));
@@ -48,14 +73,14 @@ function ProviderBadge() {
       })
       .then((h) => { if (!cancelled) setState(h); })
       .catch(() => { if (!cancelled) setState("unreachable"); });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, []);
 
-  if (state === "loading") return null;
+  if (state === "loading") return slow ? <span className="badge warn">waking the server</span> : null;
   if (state === "unreachable") {
     return (
-      <span className="badge warn" title="The API did not answer /api/health.">
-        backend unreachable
+      <span className="badge warn" title="The server did not answer.">
+        server unreachable
       </span>
     );
   }
@@ -63,9 +88,9 @@ function ProviderBadge() {
     <NavLink
       to="/settings"
       className={state.llm ? "badge" : "badge warn"}
-      title={state.llm ?? "No model configured — open Settings to choose one."}
+      title={state.llm ?? "Choose a model in Settings."}
     >
-      {state.llm ? `model: ${state.llm.split(":")[0]}` : "no model — click to set"}
+      {state.llm ? `model: ${state.llm.split(":")[0]}` : "No model set"}
     </NavLink>
   );
 }
@@ -115,6 +140,7 @@ export function App() {
             <NavLink to="/settings">Settings</NavLink>
           </nav>
           <span className="spacer" />
+          <LearnerPicker />
           <ProviderBadge />
         </header>
         <main id="main" ref={mainRef} tabIndex={-1} className="app-main">

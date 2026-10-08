@@ -372,7 +372,7 @@ export function ReviewSessionPage() {
           <strong>You were {pending.at + 1} of {pending.items.length} through a pass.</strong>
           <p>
             Picking it up keeps the tally and the items that were left. Starting again asks
-            for a fresh queue — everything already answered is recorded either way.
+            for a fresh queue. Answers already given are recorded either way.
           </p>
         </div>
         <div className="row rs-actions">
@@ -481,7 +481,7 @@ export function ReviewSessionPage() {
       <div className={PAGE}>
         <h2>Nothing due</h2>
         <p className="muted">
-          Nothing has decayed past the re-probe floor and no wrong beliefs are on record.
+          Nothing to review right now.
         </p>
         <Link className="btn" to="/">Home</Link>
       </div>
@@ -537,7 +537,7 @@ export function ReviewSessionPage() {
             <span className="mastery-mark" data-level={mastery} aria-hidden="true" />
             {mastery === "unknown"
               ? "Nothing recorded at any level yet."
-              : `Held at ${mastery} — ${MASTERY_MEANING[mastery]}.`}{" "}
+              : `Held at ${mastery}: ${MASTERY_MEANING[mastery]}.`}{" "}
             {confidencePhrase(current.kind, current.confidence)}
           </p>
         </div>
@@ -563,8 +563,8 @@ export function ReviewSessionPage() {
             </div>
             {question.requiresTransfer && (
               <p className="rs-transfer" id={transferId}>
-                Deliberately an unfamiliar setting — recalling the explanation will not be
-                enough here.
+                This is an unfamiliar setting, so recalling the explanation will not be
+                enough.
               </p>
             )}
             <label className="rs-answer">
@@ -614,7 +614,7 @@ export function ReviewSessionPage() {
                 <p>{current.belief}</p>
                 <p className="rs-belief-state">
                   {result.grade.correct
-                    ? "Cleared — you answered without being shown it."
+                    ? "Cleared. You answered without being shown it."
                     : "Still on record."}
                 </p>
               </div>

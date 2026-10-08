@@ -93,7 +93,7 @@ function DegradedNotice({ p }: { p: any }) {
         {lead.charAt(0).toUpperCase() + lead.slice(1)}.{" "}
         {p.llm
           ? "The counts and costs below are from real calls; what is weakened is described above."
-          : "Nothing here reflects live model behaviour — the numbers describe seeded and test data only."}
+          : "Demo data only."}
       </p>
       {caveats.length > 0 && (
         <ul className="metrics-caveats">
@@ -269,7 +269,7 @@ export function MetricsPage() {
             sub={
               taught === 0
                 ? "nothing has been taught yet"
-                : `failed checks diagnosed as a missing prerequisite, over ${taught} first contacts — a count, not a rate: one concept can fail repeatedly`
+                : `failed checks diagnosed as a missing prerequisite, over ${taught} first contacts. A count: one concept can fail repeatedly.`
             }
           />
           <Stat
@@ -311,9 +311,7 @@ export function MetricsPage() {
           />
         </dl>
         <p className="muted prose note">
-          Per outcome, never per hour — cost per hour can be improved by teaching cheaply and
-          badly. The hypothesis is that this falls as the graph and item bank accumulate,
-          while the baseline arm stays flat forever.
+          Cost per concept learned.
         </p>
         <p className="muted prose note">
           These three figures cover every arm and every learner: usage is recorded without a
@@ -323,13 +321,12 @@ export function MetricsPage() {
 
         <h2 className="section-title">Cost by purpose</h2>
         {byPurpose.length === 0 ? (
-          <Empty>No model calls recorded yet — one call to any purpose fills this in.</Empty>
+          <Empty>No model calls recorded yet.</Empty>
         ) : (
           <>
             {!spendKnown && (
               <div className="notice notice--info note">
-                Calls recorded at no cost, so there is no spend to apportion — a stub provider
-                reports zero dollars per call.
+                Calls were recorded at no cost, so there is no spend to split.
               </div>
             )}
             <div className="table-wrap" tabIndex={0} role="region" aria-label="Cost by purpose">
@@ -351,7 +348,7 @@ export function MetricsPage() {
                         <td className="mono">{p.purpose}</td>
                         <td className="num mono">{p.calls}</td>
                         <td className="num mono">{usd(p.costUsd)}</td>
-                        <td className="num mono">{share.measurable ? pct(share.value) : "—"}</td>
+                        <td className="num mono">{share.measurable ? pct(share.value) : "n/a"}</td>
                         <td className="num mono">
                           {usd(p.calls === 0 ? null : p.costUsd / p.calls)}
                         </td>
@@ -364,7 +361,7 @@ export function MetricsPage() {
                     <th scope="row">All purposes</th>
                     <td className="num mono">{purposeCalls}</td>
                     <td className="num mono">{usd(purposeSpend)}</td>
-                    <td className="num mono">{spendKnown ? "100%" : "—"}</td>
+                    <td className="num mono">{spendKnown ? "100%" : "n/a"}</td>
                     <td className="num mono">
                       {usd(purposeCalls === 0 ? null : purposeSpend / purposeCalls)}
                     </td>
@@ -377,7 +374,7 @@ export function MetricsPage() {
 
         <h2 className="section-title">Arms</h2>
         {arms.length === 0 ? (
-          <Empty>No sessions yet — nothing to compare.</Empty>
+          <Empty>No sessions yet.</Empty>
         ) : (
           <>
             {thinArms && (
@@ -426,8 +423,7 @@ export function MetricsPage() {
         <h2 className="section-title">Reuse by topic</h2>
         {reuseByTopic.length === 0 ? (
           <Empty>
-            No adjudicated proposals yet — expanding a second overlapping topic fills this in,
-            and it is where a thin corner of the graph shows up first.
+            No reviewed proposals yet.
           </Empty>
         ) : (
           <div className="table-wrap" tabIndex={0} role="region" aria-label="Reuse by topic">
@@ -447,7 +443,7 @@ export function MetricsPage() {
                     <tr key={t.topic}>
                       <td>{t.topic}</td>
                       <td className="num mono">{t.proposals}</td>
-                      <td className="num mono">{r.measurable ? pct(r.value, r.n, r.d) : "—"}</td>
+                      <td className="num mono">{r.measurable ? pct(r.value, r.n, r.d) : "n/a"}</td>
                     </tr>
                   );
                 })}

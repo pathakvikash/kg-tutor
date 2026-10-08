@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-export function Elapsed({ slowAfter = 12 }: { slowAfter?: number }) {
-  const [seconds, setSeconds] = useState(0);
+export function Elapsed({ slowAfter = 12, start = 0 }: { slowAfter?: number; start?: number }) {
+  const [seconds, setSeconds] = useState(start);
   useEffect(() => {
     const t = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(t);
@@ -9,7 +9,7 @@ export function Elapsed({ slowAfter = 12 }: { slowAfter?: number }) {
 
   const note =
     seconds >= 90
-      ? "much longer than usual — it will time out at two minutes"
+      ? "much longer than usual, it will time out at two minutes"
       : seconds >= 45
         ? "longer than usual, still going"
         : seconds > slowAfter

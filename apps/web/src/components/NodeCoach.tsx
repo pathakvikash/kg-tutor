@@ -161,9 +161,9 @@ export function NodeCoach({
             <div className="prereq-warn">
               <strong>{unmetPrerequisites.length === 1 ? "One thing" : `${unmetPrerequisites.length} things`} this builds on {unmetPrerequisites.length === 1 ? "is" : "are"} not solid yet.</strong>
               <p>
-                Items for {conceptName} are written so they cannot be answered without
-                {unmetPrerequisites.length === 1 ? " it" : " these"} — so a wrong answer here
-                would get recorded against {conceptName} when the gap is elsewhere.
+                Items for {conceptName} cannot be answered without
+                {unmetPrerequisites.length === 1 ? " it" : " these"}. A wrong answer here
+                would be recorded against {conceptName} when the gap is elsewhere.
               </p>
               <div className="chips">
                 {unmetPrerequisites.map((p) => (
@@ -185,7 +185,7 @@ export function NodeCoach({
                 {mastery === "unknown"
                   ? `Nothing recorded for ${conceptName} yet. One question decides where it starts.`
                   : atCeiling
-                    ? `Already ${mastery} — at or past the ${requiredLevel} the plan asks for. A correct answer will not raise it, so the only thing this can change is a record of a step back.`
+                    ? `Already ${mastery}, at or past the ${requiredLevel} the plan asks for. A correct answer will not raise it. A wrong one records a step back.`
                     : `Currently ${mastery}. A correct answer at ${target} moves it; a wrong one records what went wrong.`}
               </p>
               <div className="row">
@@ -217,8 +217,8 @@ export function NodeCoach({
               </div>
               {question.requiresTransfer && (
                 <p className="muted coach-note">
-                  Deliberately an unfamiliar setting — recalling the explanation will not
-                  be enough here.
+                  This is an unfamiliar setting, so recalling the explanation will not be
+                  enough.
                 </p>
               )}
               <textarea
@@ -282,8 +282,7 @@ export function NodeCoach({
           aria-labelledby={`${ids}-tab-ask`}
         >
           <p className="muted coach-note">
-            Questions about {conceptName}. Asking is not being taught — nothing here
-            changes what you know on record.
+            Questions about {conceptName}. Nothing here changes what you know on record.
           </p>
           <div className="coach-chat" ref={chat}>
             {turns.length === 0 && (

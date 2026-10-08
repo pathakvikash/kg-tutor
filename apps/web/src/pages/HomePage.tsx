@@ -64,7 +64,7 @@ function Failed({ what, at, onRetry }: { what: string; at: Failure; onRetry: () 
     <div className="notice notice--error" role="alert">
       <strong>Could not load {what}.</strong>
       <p className="home-fail-why">{at.remedy ?? at.message}</p>
-      <button className="linkish" onClick={onRetry}>try again</button>
+      <button className="linkish" onClick={onRetry}>Try again</button>
     </div>
   );
 }
@@ -76,7 +76,7 @@ function CardHead({ title, lead, rank }: { title: string; lead: boolean; rank: s
       {rank && (
         <span className="home-rank">
           {rank}
-          <span className="sr-only">{rank === "now" ? " — do this first" : " — do this next"}</span>
+          <span className="sr-only">{rank === "now" ? ". Do this first." : ". Do this next."}</span>
         </span>
       )}
     </div>
@@ -271,8 +271,7 @@ export function HomePage() {
         <Failed what="the review queue" at={due} onRetry={() => void load(learnerId)} />
       ) : dueTotal === 0 ? (
         <p className="muted">
-          Nothing has faded and no wrong beliefs are on record. Confidence decays on a
-          45-day half life, so this fills up on its own.
+          Nothing to review yet.
         </p>
       ) : (
         <>
@@ -322,8 +321,7 @@ export function HomePage() {
       ) : planData ? (
         <>
           <p className="muted">
-            Every step on the current plan is satisfied. Nothing is finished for good —
-            confidence fades, so what you proved comes back to be re-proved.
+            Plan complete. Topics will come back for review over time.
           </p>
           <div className="row">
             <Link className={ctaClass("plan")} to="/learn">Set a new goal</Link>
@@ -335,8 +333,8 @@ export function HomePage() {
       ) : (
         <>
           <p className="muted">
-            No plan yet. Name something you want to be able to do and the roadmap is built
-            out of the graph, skipping whatever you can already demonstrate.
+            No plan yet. Tell us what you want to learn and we'll build a path, skipping
+            what you already know.
           </p>
           <Link className={ctaClass("plan")} to="/learn">Tell me what you want to learn</Link>
         </>
@@ -435,24 +433,16 @@ export function HomePage() {
         <div>
           <h2>Where you left off</h2>
           {canShow && !ready ? (
-            <Busy label="checking what is waiting" clock={false} />
+            <Busy label="Checking what is waiting" slowLabel="Waking the server, up to a minute" clock={false} />
           ) : (
             <p className="muted">Everything waiting on you, in one place.</p>
           )}
         </div>
-        {hasRoster && (
-          <label className="field">
-            learner
-            <select value={learnerId} onChange={(e) => setLearnerId(e.target.value)}>
-              {learners.map((l) => <option key={l.id} value={l.id}>{l.email ?? l.name ?? l.id}</option>)}
-            </select>
-          </label>
-        )}
       </div>
 
       {roster.kind === "pending" && (
         <div className="panel stack home-card home-solo" aria-busy="true">
-          <span className="eyebrow">loading</span>
+          <Busy label="Loading" slowLabel="Waking the server, up to a minute" clock={false} />
           <Placeholder />
         </div>
       )}
@@ -541,7 +531,7 @@ export function HomePage() {
                         `&learner=${encodeURIComponent(learnerId)}`
                       }
                       aria-label={
-                        `${it.conceptName} — ${dueKindLabel(it.kind, 1)}. ` +
+                        `${it.conceptName}, ${dueKindLabel(it.kind, 1)}. ` +
                         `${it.reason ?? ""} Opens this concept in the graph.`
                       }
                     >
@@ -560,7 +550,7 @@ export function HomePage() {
               </ul>
               {hidden > 0 && (
                 <p className="home-more">
-                  <Link to="/review-session">+{hidden} more — start review</Link>
+                  <Link to="/review-session">+{hidden} more, start review</Link>
                 </p>
               )}
             </section>
@@ -596,14 +586,14 @@ export function HomePage() {
                   aria-disabled={langInert}
                   onClick={() => { if (!langInert) void saveLang(); }}
                 >
-                  save
+                  Save
                 </button>
-                {save.kind === "saving" && <Busy label="saving" clock={false} />}
+                {save.kind === "saving" && <Busy label="Saving" clock={false} />}
               </div>
               <p className="muted home-lang-note" id="lang-note">
                 {lang
                   ? "Every example and assessment is written in this."
-                  : "Unset — questions may arrive in whichever language the concept is usually taught in."}
+                  : "Not set. Questions use the language the concept is usually taught in."}
               </p>
               <p className="home-lang-status" id="lang-status" role="status">
                 {save.kind === "ok"
